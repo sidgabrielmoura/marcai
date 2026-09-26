@@ -1,0 +1,20 @@
+import Link from "next/link";
+import type { Prisma } from "@prisma/client";
+import { getAuthenticatedContext } from "@/application/security/auth-context";
+import { taskScope } from "@/application/security/operational-scope";
+import { prisma } from "@/infrastructure/database/prisma";
+import { EmployeeShell } from "@/presentation/components/mobile/employee-shell";
+import { PageHeader, StatusBadge, EmptyState } from "@/presentation/components/shared";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { ArrowUpRight } from "lucide-react";
+export default async function HistoryPage({ searchParams }: { searchParams: Promise<{ status?: string; period?: string; page?: string }> }) {
+  const c = await getAuthenticatedContext(); if (!c) return null;
+  const p = await searchParams, period = ["7", "30", "90", "365"].includes(p.period ?? "") ? p.period! : "30", status = ["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(p.status ?? "") ? p.status! : "ALL", page = Math.max(1, Number(p.page) || 1);
+  const where: Prisma.TaskWhereInput = { ...taskScope(c), deletedAt: null, status: status === "ALL" ? { in: ["COMPLETED", "CANCELLED", "NOT_COMPLETED"] } : status as "COMPLETED", updatedAt: { gte: new Date(Date.now() - Number(period) * 86400000) } };
+  const [tasks, count] = await Promise.all([prisma.task.findMany({ where, include: { location: { select: { name: true } } }, orderBy: { updatedAt: "desc" }, take: 20, skip: (page - 1) * 20 }), prisma.task.count({ where })]);
+  const url = (n: number) => `/history?period=${period}&status=${status}&page=${n}`;
+  return <EmployeeShell userName={c.userName} orgName={c.organizationName} role={c.role}><div className="page-stack"><PageHeader title="Histórico de tarefas" subtitle="Consulte entregas, cancelamentos e impedimentos da sua operação." /><form className="flex flex-wrap items-end gap-4"><FieldGroup className="form-grid sm:flex-1"><Field><FieldLabel htmlFor="history-period">Período</FieldLabel><NativeSelect id="history-period" name="period" className="w-full" defaultValue={period}>{[7, 30, 90, 365].map(v => <NativeSelectOption key={v} value={v}>Últimos {v} dias</NativeSelectOption>)}</NativeSelect></Field><Field><FieldLabel htmlFor="history-status">Resultado</FieldLabel><NativeSelect id="history-status" name="status" className="w-full" defaultValue={status}>{Object.entries({ ALL: "Todos os resultados", COMPLETED: "Concluídas", CANCELLED: "Canceladas", NOT_COMPLETED: "Não realizadas" }).map(([v, l]) => <NativeSelectOption key={v} value={v}>{l}</NativeSelectOption>)}</NativeSelect></Field></FieldGroup><Button type="submit" variant="outline">Aplicar filtros</Button></form>{!tasks.length ? <EmptyState title="Nenhuma tarefa neste período" description="Experimente ampliar o período ou escolher outro resultado." /> : <div className="flex flex-col gap-3">{tasks.map(t => <Card key={t.id}><CardContent className="flex flex-wrap justify-between items-center gap-4"><div><StatusBadge status={t.status} /><h2 className="text-card-title font-semibold mt-2">{t.title}</h2><p className="text-caption text-muted-foreground mt-1">{t.location?.name} · {(t.completedAt ?? t.cancelledAt ?? t.updatedAt).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</p></div><Button variant="outline" nativeButton={false} render={<Link href={`/tasks/${t.id}`} />}>Ver detalhes<ArrowUpRight data-icon="inline-end" /></Button></CardContent></Card>)}</div>}<nav className="flex justify-between items-center gap-3" aria-label="Paginação do histórico"><Button variant="outline" nativeButton={false} disabled={page <= 1} render={<Link href={url(page - 1)} />}>Anterior</Button><span className="text-caption">Página {page} de {Math.max(1, Math.ceil(count / 20))}</span><Button variant="outline" nativeButton={false} disabled={page * 20 >= count} render={<Link href={url(page + 1)} />}>Próxima</Button></nav></div></EmployeeShell>;
+}

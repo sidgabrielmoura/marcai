@@ -1,0 +1,774 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  SUPERADMIN
+  OWNER
+  ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum MemberStatus {
+  ACTIVE
+  INACTIVE
+  INVITED
+  SUSPENDED
+}
+
+enum LocationAccessType {
+  PRIMARY
+  SECONDARY
+  TEMPORARY
+}
+
+enum ProcessStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum Criticality {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum PendingPreviousPolicy {
+  CREATE_NEW
+  SKIP_IF_PENDING
+  BLOCK_NEW
+}
+
+enum ExecutionStatus {
+  SCHEDULED
+  AVAILABLE
+  IN_PROGRESS
+  PAUSED
+  NEEDS_CORRECTION
+  PENDING_REVIEW
+  COMPLETED
+  CANCELLED
+  NOT_COMPLETED
+}
+
+enum TaskOrigin {
+  PROCESS
+  AD_HOC
+}
+
+enum TaskStatus {
+  AVAILABLE
+  IN_PROGRESS
+  PAUSED
+  BLOCKED
+  SUBMITTED
+  NEEDS_CORRECTION
+  COMPLETED
+  CANCELLED
+  NOT_COMPLETED
+}
+
+enum AssignmentType {
+  PRIMARY
+  COLLABORATOR
+  JOINT_EXECUTOR
+}
+
+enum EvidenceType {
+  PHOTO
+  VIDEO
+  FILE
+  TEXT
+  NUMBER
+  SIGNATURE
+  LOCATION
+}
+
+enum ValidationStatus {
+  VALID
+  REJECTED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  NEEDS_CORRECTION
+}
+
+enum OccurrenceType {
+  IMPEDIMENT
+  VALIDATION_EXCEPTION
+  SLA_BREACH
+  PAUSE_ALERT
+}
+
+enum DependencyType {
+  BLOCKING
+  INFORMATIVE
+  APPROVAL_CONDITION
+}
+
+enum DependencyLogic {
+  AND
+  OR
+}
+
+model User {
+  id                     String   @id @default(cuid())
+  name                   String
+  email                  String?  @unique
+  phone                  String?
+  avatarUrl              String?
+  passwordHash           String?
+  platformRole           String?
+  status                 String   @default("ACTIVE")
+  twoFactorEnabled       Boolean  @default(false)
+  twoFactorSecret        String?
+  twoFactorRecoveryCodes String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  memberships OrganizationMember[]
+  resetTokens PasswordResetToken[]
+
+  @@map("users")
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  logoUrl   String?
+  status    String   @default("ACTIVE")
+  settings  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members            OrganizationMember[]
+  locations          Location[]
+  teams              Team[]
+  processTemplates   ProcessTemplate[]
+  processes          Process[]
+  executions         ProcessExecution[]
+  tasks              Task[]
+  notifications      Notification[]
+  activityLogs       ActivityLog[]
+  escalationPolicies EscalationPolicy[]
+  scheduledReports   ScheduledReport[]
+  memberInvites      MemberInvite[]
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id                     String       @id @default(cuid())
+  organizationId         String
+  userId                 String
+  role                   Role         @default(EMPLOYEE)
+  status                 MemberStatus @default(ACTIVE)
+  employeeCode           String?
+  pinHash                String?
+  availabilityStatus     String       @default("AVAILABLE")
+  manualAvailability     String       @default("AUTO")
+  lastAvailabilityChange DateTime     @default(now())
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  locationAccesses MemberLocationAccess[]
+  teamMemberships  TeamMember[]
+  taskAssignments  TaskAssignment[]
+  sessions         TaskExecutionSession[]
+  submissions      EvidenceSubmission[]
+  decisions        ApprovalDecision[]
+
+  @@unique([organizationId, userId])
+  @@index([organizationId, role])
+  @@index([organizationId, employeeCode])
+  @@map("organization_members")
+}
+
+model Location {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  address        String?
+  timezone       String   @default("America/Sao_Paulo")
+  openingTime    String?  @default("08:00")
+  closingTime    String?  @default("20:00")
+  operatingDays  String?  @default("MON,TUE,WED,THU,FRI,SAT")
+  status         String   @default("ACTIVE")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberAccesses MemberLocationAccess[]
+  teams          TeamLocation[]
+  processes      Process[]
+  executions     ProcessExecution[]
+  tasks          Task[]
+
+  @@index([organizationId, status])
+  @@map("locations")
+}
+
+model MemberLocationAccess {
+  id         String             @id @default(cuid())
+  memberId   String
+  locationId String
+  type       LocationAccessType @default(PRIMARY)
+  startsAt   DateTime?
+  expiresAt  DateTime?
+  grantedBy  String?
+  createdAt  DateTime           @default(now())
+
+  member   OrganizationMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  location Location           @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, locationId])
+  @@index([memberId, expiresAt])
+  @@map("member_location_accesses")
+}
+
+model Team {
+  id              String   @id @default(cuid())
+  organizationId  String
+  name            String
+  description     String?
+  managerMemberId String?
+  status          String   @default("ACTIVE")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members      TeamMember[]
+  locations    TeamLocation[]
+  tasks        Task[]
+
+  @@index([organizationId, status])
+  @@map("teams")
+}
+
+model TeamLocation {
+  id         String   @id @default(cuid())
+  teamId     String
+  locationId String
+  createdAt  DateTime @default(now())
+
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, locationId])
+  @@index([locationId])
+  @@map("team_locations")
+}
+
+model TeamMember {
+  id                   String   @id @default(cuid())
+  teamId               String
+  organizationMemberId String
+  isPrimary            Boolean  @default(false)
+  createdAt            DateTime @default(now())
+
+  team   Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  member OrganizationMember @relation(fields: [organizationMemberId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, organizationMemberId])
+  @@index([organizationMemberId, isPrimary])
+  @@map("team_members")
+}
+
+model ProcessTemplate {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  versions     ProcessTemplateVersion[]
+
+  @@index([organizationId])
+  @@map("process_templates")
+}
+
+model ProcessTemplateVersion {
+  id         String   @id @default(cuid())
+  templateId String
+  version    Int
+  definition Json
+  createdAt  DateTime @default(now())
+
+  template  ProcessTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  processes Process[]
+
+  @@unique([templateId, version])
+  @@map("process_template_versions")
+}
+
+model Process {
+  id                      String        @id @default(cuid())
+  organizationId          String
+  locationId              String?
+  sourceTemplateVersionId String?
+  name                    String
+  description             String?
+  status                  ProcessStatus @default(ACTIVE)
+  criticality             Criticality   @default(MEDIUM)
+  validFrom               DateTime?
+  validUntil              DateTime?
+  createdBy               String?
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+
+  organization          Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  location              Location?               @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  sourceTemplateVersion ProcessTemplateVersion? @relation(fields: [sourceTemplateVersionId], references: [id], onDelete: SetNull)
+
+  routines   Routine[]
+  executions ProcessExecution[]
+  tasks      Task[]
+
+  @@index([organizationId, status])
+  @@map("processes")
+}
+
+model Routine {
+  id                    String                @id @default(cuid())
+  processId             String
+  recurrenceRule        String
+  timezone              String                @default("America/Sao_Paulo")
+  generationLeadTime    Int                   @default(1440)
+  startsAt              DateTime
+  endsAt                DateTime?
+  pendingPreviousPolicy PendingPreviousPolicy @default(CREATE_NEW)
+  status                String                @default("ACTIVE")
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  process    Process            @relation(fields: [processId], references: [id], onDelete: Cascade)
+  exceptions RoutineException[]
+  executions ProcessExecution[]
+
+  @@index([processId, status])
+  @@map("routines")
+}
+
+model RoutineException {
+  id             String    @id @default(cuid())
+  routineId      String
+  date           DateTime
+  action         String
+  newScheduledAt DateTime?
+  reason         String?
+  createdAt      DateTime  @default(now())
+
+  routine Routine @relation(fields: [routineId], references: [id], onDelete: Cascade)
+
+  @@index([routineId, date])
+  @@map("routine_exceptions")
+}
+
+model ProcessExecution {
+  id                 String          @id @default(cuid())
+  organizationId     String
+  processId          String
+  routineId          String?
+  locationId         String?
+  status             ExecutionStatus @default(SCHEDULED)
+  scheduledAt        DateTime
+  availableAt        DateTime
+  startedAt          DateTime?
+  completedAt        DateTime?
+  reopenedAt         DateTime?
+  reopenedBy         String?
+  reopenReason       String?
+  cancelledAt        DateTime?
+  cancellationReason String?
+  definitionSnapshot Json?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  process      Process      @relation(fields: [processId], references: [id], onDelete: Cascade)
+  routine      Routine?     @relation(fields: [routineId], references: [id], onDelete: SetNull)
+  location     Location?    @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  tasks Task[]
+
+  @@index([organizationId, status])
+  @@index([processId, scheduledAt])
+  @@map("process_executions")
+}
+
+model Task {
+  id                 String      @id @default(cuid())
+  organizationId     String
+  executionId        String?
+  processId          String?
+  locationId         String?
+  teamId             String?
+  origin             TaskOrigin  @default(AD_HOC)
+  title              String
+  description        String?
+  instructions       String?
+  status             TaskStatus  @default(AVAILABLE)
+  priority           Priority    @default(MEDIUM)
+  criticality        Criticality @default(MEDIUM)
+  required           Boolean     @default(true)
+  scheduledDate      DateTime?
+  deadlineAt         DateTime?
+  slaStartEvent      String?     @default("ON_AVAILABLE")
+  slaDurationMinutes Int?
+  slaDueAt           DateTime?
+  slaExceededAt      DateTime?
+  estimatedDuration  Int?
+  maxDuration        Int?
+  actualDuration     Int?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  cancelledAt        DateTime?
+  cancellationReason String?
+  deletedAt          DateTime?
+  deletedBy          String?
+  deleteReason       String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  execution    ProcessExecution? @relation(fields: [executionId], references: [id], onDelete: SetNull)
+  process      Process?          @relation(fields: [processId], references: [id], onDelete: SetNull)
+  location     Location?         @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  team         Team?             @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  assignments          TaskAssignment[]
+  sessions             TaskExecutionSession[]
+  evidenceRequirements TaskEvidenceRequirement[]
+  occurrences          TaskOccurrence[]
+  approvalWorkflow     ApprovalWorkflow?
+  dependencies         TaskDependency[]          @relation("TaskDependsOn")
+  dependentTasks       TaskDependency[]          @relation("DependentTasks")
+
+  @@index([organizationId, status])
+  @@index([organizationId, deadlineAt])
+  @@index([organizationId, deletedAt])
+  @@index([organizationId, createdAt])
+  @@index([teamId])
+  @@index([locationId])
+  @@index([executionId])
+  @@map("tasks")
+}
+
+model TaskAssignment {
+  id         String         @id @default(cuid())
+  taskId     String
+  memberId   String
+  type       AssignmentType @default(PRIMARY)
+  assignedBy String?
+  assignedAt DateTime       @default(now())
+  removedAt  DateTime?
+
+  task   Task               @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  member OrganizationMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, type, removedAt])
+  @@index([memberId, removedAt])
+  @@map("task_assignments")
+}
+
+model TaskExecutionSession {
+  id        String    @id @default(cuid())
+  taskId    String
+  memberId  String
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+
+  task   Task               @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  member OrganizationMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  pauses TaskPause[]
+
+  @@index([taskId, memberId])
+  @@map("task_execution_sessions")
+}
+
+model TaskPause {
+  id               String    @id @default(cuid())
+  sessionId        String
+  reasonCategoryId String?
+  note             String?
+  startedAt        DateTime  @default(now())
+  endedAt          DateTime?
+
+  session TaskExecutionSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("task_pauses")
+}
+
+model TaskEvidenceRequirement {
+  id               String       @id @default(cuid())
+  taskId           String
+  type             EvidenceType
+  required         Boolean      @default(true)
+  minQuantity      Int          @default(1)
+  maxQuantity      Int          @default(1)
+  executionStage   String       @default("COMPLETION")
+  validationConfig Json?
+
+  task        Task                 @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  submissions EvidenceSubmission[]
+
+  @@index([taskId])
+  @@map("task_evidence_requirements")
+}
+
+model EvidenceSubmission {
+  id               String           @id @default(cuid())
+  requirementId    String
+  submittedBy      String
+  storageKey       String?
+  value            String?
+  metadata         Json?
+  attemptNumber    Int              @default(1)
+  validationStatus ValidationStatus @default(VALID)
+  rejectionReason  String?
+  createdAt        DateTime         @default(now())
+
+  requirement TaskEvidenceRequirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  submitter   OrganizationMember      @relation(fields: [submittedBy], references: [id], onDelete: Cascade)
+
+  @@index([requirementId, validationStatus])
+  @@map("evidence_submissions")
+}
+
+model ApprovalWorkflow {
+  id     String         @id @default(cuid())
+  taskId String         @unique
+  mode   String         @default("SEQUENTIAL")
+  status ApprovalStatus @default(PENDING)
+
+  task  Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  steps ApprovalStep[]
+
+  @@map("approval_workflows")
+}
+
+model ApprovalStep {
+  id               String         @id @default(cuid())
+  workflowId       String
+  sequence         Int
+  approverMemberId String?
+  approverTeamId   String?
+  fallbackMemberId String?
+  deadlineAt       DateTime?
+  status           ApprovalStatus @default(PENDING)
+
+  workflow  ApprovalWorkflow   @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  decisions ApprovalDecision[]
+
+  @@index([workflowId, sequence])
+  @@map("approval_steps")
+}
+
+model ApprovalDecision {
+  id        String   @id @default(cuid())
+  stepId    String
+  decidedBy String
+  decision  String
+  note      String?
+  createdAt DateTime @default(now())
+
+  step    ApprovalStep       @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  decider OrganizationMember @relation(fields: [decidedBy], references: [id], onDelete: Cascade)
+
+  @@index([stepId])
+  @@map("approval_decisions")
+}
+
+model TaskOccurrence {
+  id        String         @id @default(cuid())
+  taskId    String
+  type      OccurrenceType
+  category  String
+  reason    String
+  severity  String         @default("MEDIUM")
+  createdBy String?
+  createdAt DateTime       @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, type])
+  @@map("task_occurrences")
+}
+
+model Notification {
+  id             String    @id @default(cuid())
+  organizationId String
+  userId         String
+  type           String
+  priority       Priority  @default(MEDIUM)
+  title          String
+  message        String
+  data           Json?
+  readAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deliveries   NotificationDelivery[]
+
+  @@index([userId, readAt])
+  @@index([organizationId, createdAt])
+  @@map("notifications")
+}
+
+model ActivityLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  actorId        String?
+  action         String
+  entityType     String
+  entityId       String
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, entityType, entityId])
+  @@map("activity_logs")
+}
+
+model TaskDependency {
+  id          String          @id @default(cuid())
+  taskId      String
+  dependsOnId String
+  type        DependencyType  @default(BLOCKING)
+  logic       DependencyLogic @default(AND)
+  createdAt   DateTime        @default(now())
+
+  task          Task @relation("TaskDependsOn", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOnTask Task @relation("DependentTasks", fields: [dependsOnId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, dependsOnId])
+  @@index([taskId])
+  @@index([dependsOnId])
+  @@map("task_dependencies")
+}
+
+model NotificationDelivery {
+  id             String    @id @default(cuid())
+  notificationId String
+  channel        String    @default("INTERNAL")
+  status         String    @default("SENT")
+  attempts       Int       @default(1)
+  error          String?
+  sentAt         DateTime? @default(now())
+  createdAt      DateTime  @default(now())
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([notificationId])
+  @@index([status])
+  @@map("notification_deliveries")
+}
+
+model EscalationPolicy {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  status         String   @default("ACTIVE")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  steps        EscalationStep[]
+
+  @@index([organizationId])
+  @@map("escalation_policies")
+}
+
+model EscalationStep {
+  id             String   @id @default(cuid())
+  policyId       String
+  sequence       Int
+  delayMinutes   Int      @default(15)
+  notifyRole     Role?
+  notifyMemberId String?
+  notifyChannel  String   @default("INTERNAL")
+  createdAt      DateTime @default(now())
+
+  policy EscalationPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  @@index([policyId, sequence])
+  @@map("escalation_steps")
+}
+
+model ScheduledReport {
+  id             String    @id @default(cuid())
+  organizationId String
+  name           String
+  frequency      String
+  format         String    @default("PDF")
+  recipients     String
+  filters        Json?
+  status         String    @default("ACTIVE")
+  lastRunAt      DateTime?
+  nextRunAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+  @@map("scheduled_reports")
+}
+
+model MemberInvite {
+  id             String    @id @default(cuid())
+  organizationId String
+  email          String
+  role           Role      @default(EMPLOYEE)
+  token          String    @unique
+  expiresAt      DateTime
+  usedAt         DateTime?
+  invitedBy      String?
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, email])
+  @@map("member_invites")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}

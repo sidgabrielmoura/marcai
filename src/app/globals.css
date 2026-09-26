@@ -1,26 +1,236 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans:
+    var(--font-geist-sans), system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "Segoe UI Mono", monospace;
+  --font-heading:
+    var(--font-geist-sans), system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, sans-serif;
+
+  /* Shared type scale: application pages and shadcn/ui components. */
+  --text-small: var(--type-small);
+  --text-small--line-height: 1.45;
+  --text-caption: var(--type-caption);
+  --text-caption--line-height: 1.5;
+  --text-label: var(--type-label);
+  --text-label--line-height: 1.45;
+  --text-body: var(--type-body);
+  --text-body--line-height: 1.6;
+  --text-card-title: var(--type-card-title);
+  --text-card-title--line-height: 1.35;
+  --text-section-title: var(--type-section-title);
+  --text-section-title--line-height: 1.3;
+  --text-page-title: var(--type-page-title);
+  --text-page-title--line-height: 1.15;
+  --text-metric: var(--type-metric);
+  --text-metric--line-height: 1.1;
+
+  /* Cores da identidade */
+  --color-brand-900: var(--brand-900);
+  --color-brand-700: var(--brand-700);
+  --color-sage-400: var(--sage-400);
+  --color-neutral-300: var(--neutral-300);
+  --color-neutral-200: var(--neutral-200);
+  --color-surface: var(--surface);
+  --color-canvas: var(--canvas);
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  --radius-input: var(--radius-input);
+  --radius-card: var(--radius-card);
+  --radius-feature: var(--radius-feature);
+  --radius-sheet: var(--radius-sheet);
+  --radius-pill: var(--radius-pill);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  --brand-primary: #164d36;
+  --brand-secondary: #247b56;
+  --brand-soft: #e6efe9;
+  --neutral-medium: #c8d2cc;
+  --neutral-light: #e7ece8;
+  /* Geist variable provides real medium, semibold, bold and extra-bold weights. */
+  --font-sans:
+    var(--font-geist-sans), system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, sans-serif;
+  --type-small: 0.75rem;
+  --type-caption: 0.8125rem;
+  --type-label: 0.875rem;
+  --type-body: 0.9375rem;
+  --type-card-title: 1.125rem;
+  --type-section-title: 1.375rem;
+  --type-page-title: clamp(1.875rem, 2.5vw, 2.5rem);
+  --type-metric: clamp(2.125rem, 3vw, 2.75rem);
+  --weight-body: 500;
+  --weight-control: 600;
+  --weight-heading: 700;
+  --weight-display: 800;
+
+  /* Paleta da referência aprovada */
+  --brand-900: #164d36;
+  --brand-700: #247b56;
+  --sage-400: #97b4a5;
+  --neutral-300: #c8d2cc;
+  --neutral-200: #e7ece8;
+  --surface: #ffffff;
+  --canvas: #f5f6f5;
+  --text-primary: #1c2420;
+  --text-secondary: #58665e;
+  --border-subtle: #e7ece8;
+  --control-border: #247b56;
+  --radius-input: 14px;
+  --radius-card: 18px;
+  --radius-feature: 28px;
+  --radius-sheet: 28px;
+  --radius-pill: 999px;
+  --shadow-card: 0 4px 20px rgb(26 45 66 / 6%);
+  --shadow-float: 0 8px 24px rgb(26 45 66 / 10%);
+
+  /* Mapeamento Semântico para componentes */
+  --background: #f5f6f5;
+  --foreground: #1c2420;
+  --card: #ffffff;
+  --card-foreground: #1c2420;
+  --popover: #ffffff;
+  --popover-foreground: #1c2420;
+  --primary: #164d36;
+  --primary-foreground: #ffffff;
+  --secondary: #e7ece8;
+  --secondary-foreground: #164d36;
+  --muted: #f5f6f5;
+  --muted-foreground: #58665e;
+  --accent: #97b4a5;
+  --accent-foreground: #164d36;
+  --destructive: #a32d2d;
+  --destructive-foreground: #ffffff;
+  --border: #e7ece8;
+  --input: #b5c3ba;
+  --ring: #247b56;
+  --radius: 14px;
+
+  --chart-1: #164d36;
+  --chart-2: #247b56;
+  --chart-3: #97b4a5;
+  --chart-4: #c8d2cc;
+  --chart-5: #e7ece8;
+
+  --sidebar: #164d36;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #97b4a5;
+  --sidebar-primary-foreground: #164d36;
+  --sidebar-accent: #247b56;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #247b56;
+  --sidebar-ring: #97b4a5;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    box-sizing: border-box;
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  html {
+    font-family: var(--font-sans);
+    font-synthesis: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    background-color: #e9ece9;
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: var(--type-body);
+    font-weight: var(--weight-body);
+    line-height: 1.6;
+    min-height: 100dvh;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button,
+  input,
+  optgroup,
+  select,
+  textarea {
+    font-family: inherit;
+  }
+  h1 {
+    font-size: var(--type-page-title);
+    font-weight: var(--weight-display);
+    line-height: 1.15;
+    letter-spacing: -0.035em;
+  }
+  h2 {
+    font-size: var(--type-section-title);
+    font-weight: var(--weight-heading);
+    line-height: 1.3;
+    letter-spacing: -0.02em;
+  }
+  h3,
+  h4 {
+    font-size: var(--type-card-title);
+    font-weight: var(--weight-heading);
+    line-height: 1.35;
+    letter-spacing: -0.015em;
+  }
+  strong,
+  b {
+    font-weight: var(--weight-heading);
+  }
+  small {
+    font-size: var(--type-caption);
+  }
+  input,
+  textarea,
+  select {
+    font-weight: var(--weight-body);
+  }
+  ::placeholder {
+    color: var(--muted-foreground);
+    opacity: 1;
+  }
 }
