@@ -61,6 +61,14 @@ assert(
   canCompleteTask("IN_PROGRESS", reqValid).allowed === true,
   "Conclusão permitida com envio válido de evidência"
 );
+assert(
+  canCompleteTask("AVAILABLE", reqValid).allowed === true,
+  "Conclusão direta permitida para tarefa em AVAILABLE com envio válido"
+);
+assert(
+  canCompleteTask("AVAILABLE", reqPending).allowed === false,
+  "Conclusão direta bloqueada se evidência obrigatória estiver pendente"
+);
 
 // Caso 3: Evidência com 3 falhas de validação (D-05: prosseguir com ocorrência crítica)
 const req3Fails = [

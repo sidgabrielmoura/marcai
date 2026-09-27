@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { StatusBadge, PriorityBadge } from "../shared";
 import { ClaimTaskButton } from "./claim-task-button";
+import { QuickCompleteButton } from "./quick-complete-button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,15 +46,15 @@ export interface EmployeeTask {
   teamName: string | null;
   processName: string | null;
   evidenceCount: number;
+  hasRequiredEvidence: boolean;
   hasImpediment: boolean;
   impedimentReason?: string;
   isUnassigned: boolean;
 }
 
 export type ColumnId =
-  | "overdue"
   | "today"
-  | "in_progress"
+  | "overdue"
   | "unassigned"
   | "completed"
   | "upcoming";
@@ -79,19 +80,8 @@ const COLUMNS: ColumnDef[] = [
     accentColor: "bg-blue-600",
     pillBadgeClass: "bg-blue-100 text-blue-800",
     borderTopClass: "border-t-blue-500",
-    description: "Tarefas de hoje prontas para iniciar",
+    description: "Tarefas para realizar hoje",
     emptyText: "Nenhuma tarefa pendente para hoje.",
-  },
-  {
-    id: "in_progress",
-    title: "Em Andamento",
-    shortTitle: "Em Andamento",
-    icon: Play,
-    accentColor: "bg-amber-500",
-    pillBadgeClass: "bg-amber-100 text-amber-800",
-    borderTopClass: "border-t-amber-500",
-    description: "Atividades que você já iniciou",
-    emptyText: "Nenhuma tarefa em andamento no momento.",
   },
   {
     id: "overdue",
@@ -170,7 +160,6 @@ export function EmployeeKanbanBoard({
   const groupedTasks = useMemo(() => {
     const groups: Record<ColumnId, EmployeeTask[]> = {
       today: [],
-      in_progress: [],
       overdue: [],
       unassigned: [],
       completed: [],
@@ -190,12 +179,7 @@ export function EmployeeKanbanBoard({
         continue;
       }
 
-      if (task.status === "IN_PROGRESS" || task.status === "PAUSED") {
-        groups.in_progress.push(task);
-        continue;
-      }
-
-      // Tarefas não iniciadas com prazo estourado
+      // Tarefas não concluídas com SLA ou prazo estourado
       if (task.slaExceeded || (task.deadlineAt && new Date(task.deadlineAt) < now)) {
         groups.overdue.push(task);
         continue;
@@ -212,7 +196,7 @@ export function EmployeeKanbanBoard({
         }
       }
 
-      // Padrão para tarefas do dia ou sem data futura
+      // Padrão para tarefas do dia ou sem data futura (AVAILABLE, IN_PROGRESS, PAUSED, NEEDS_CORRECTION)
       groups.today.push(task);
     }
 
@@ -397,8 +381,7 @@ export function EmployeeKanbanBoard({
                 </Badge>
               </div>
 
-              {/* Lista Vertical de Cartões da Coluna */}
-              <div className="flex flex-col gap-2.5 overflow-y-auto max-h-[calc(100vh-270px)] pr-0.5">
+              <div className="flex flex-col gap-2.5 overflow-y-auto! max-h-[calc(100vh-270px)] pr-0.5">
                 {tasksInCol.length === 0 ? (
                   <div className="p-6 text-center rounded-xl bg-white/60 dark:bg-card/60 border border-dashed border-slate-200 dark:border-border my-auto">
                     <p className="text-xs text-slate-500 font-medium leading-relaxed">
@@ -419,9 +402,6 @@ export function EmployeeKanbanBoard({
   );
 }
 
-/**
- * Cartão de Tarefa Estilo Trello
- */
 function TrelloCard({
   task,
   isOverdueCol,
@@ -429,12 +409,10 @@ function TrelloCard({
   task: EmployeeTask;
   isOverdueCol: boolean;
 }) {
-  const isStarted = task.status === "IN_PROGRESS" || task.status === "PAUSED";
   const isCompleted = task.status === "COMPLETED";
 
   return (
-    <Card className="group relative bg-white dark:bg-card border border-slate-200/80 dark:border-border rounded-xl p-3! shadow-xs hover:shadow-md transition-all flex flex-col gap-2.5">
-      {/* Linha Superior: Origem / Processo & Prioridade */}
+    <Card className="group relative min-h-fit! h-fit! bg-white dark:bg-card border border-slate-200/80 dark:border-border rounded-xl p-3! shadow-xs hover:shadow-md transition-all flex flex-col gap-2.5">
       <div className="flex items-center justify-between gap-1.5">
         <div className="flex items-center gap-1 text-[11px] font-medium text-slate-500 truncate">
           {task.origin === "PROCESS" ? (
@@ -462,6 +440,24 @@ function TrelloCard({
       {/* Badges de Status & SLA */}
       <div className="flex flex-wrap items-center gap-1.5">
         <StatusBadge status={task.status} size="sm" />
+        {task.status === "PAUSED" && (
+          <Badge
+            variant="outline"
+            className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-amber-50 text-amber-800 border-amber-200 flex items-center gap-1"
+          >
+            <Clock className="size-2.5 shrink-0" />
+            Pausada
+          </Badge>
+        )}
+        {task.status === "NEEDS_CORRECTION" && (
+          <Badge
+            variant="outline"
+            className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-orange-50 text-orange-800 border-orange-200 flex items-center gap-1"
+          >
+            <AlertCircle className="size-2.5 shrink-0" />
+            Correção solicitada
+          </Badge>
+        )}
         {task.slaExceeded && (
           <Badge
             variant="destructive"
@@ -535,27 +531,35 @@ function TrelloCard({
             <Eye className="size-3 mr-1" />
             Ver detalhes da entrega
           </Button>
-        ) : isStarted ? (
-          <Button
-            nativeButton={false}
-            size="sm"
-            render={<Link href={`/tasks/${task.id}`} />}
-            className="w-full h-8 text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white shadow-xs"
-          >
-            <Play className="size-3 mr-1 fill-white" />
-            Continuar tarefa
-          </Button>
-        ) : (
+        ) : task.status === "PAUSED" ? (
           <Button
             nativeButton={false}
             variant="outline"
             size="sm"
             render={<Link href={`/tasks/${task.id}`} />}
-            className="w-full h-8 text-xs font-semibold text-brand-900 border-slate-200 hover:bg-slate-50 justify-between"
+            className="w-full h-8 text-xs font-semibold text-amber-800 border-amber-300 hover:bg-amber-50 justify-between"
           >
-            Iniciar tarefa
-            <ArrowRight className="size-3 text-slate-400" />
+            <span className="flex items-center gap-1.5">
+              <Clock className="size-3.5 text-amber-600" />
+              <span>Retomar / Concluir</span>
+            </span>
+            <ArrowRight className="size-3 text-amber-600" />
           </Button>
+        ) : task.hasRequiredEvidence ? (
+          <Button
+            nativeButton={false}
+            size="sm"
+            render={<Link href={`/tasks/${task.id}`} />}
+            className="w-full h-8 text-xs font-semibold bg-brand-900 hover:bg-brand-600 text-white shadow-xs justify-between"
+          >
+            <span className="flex items-center gap-1.5 truncate">
+              <Camera className="size-3.5 shrink-0" />
+              <span>Anexar e concluir</span>
+            </span>
+            <ArrowRight className="size-3 text-white/80 shrink-0" />
+          </Button>
+        ) : (
+          <QuickCompleteButton taskId={task.id} taskTitle={task.title} />
         )}
       </div>
     </Card>

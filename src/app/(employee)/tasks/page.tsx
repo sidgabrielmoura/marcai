@@ -134,6 +134,7 @@ export default async function EmployeeTasksPage({
       teamName: t.team?.name || null,
       processName: t.process?.name || t.execution?.process?.name || null,
       evidenceCount: t.evidenceRequirements?.length || 0,
+      hasRequiredEvidence: t.evidenceRequirements?.some((r) => r.required) || false,
       hasImpediment: (t.occurrences?.length || 0) > 0,
       impedimentReason: t.occurrences?.[0]?.reason || undefined,
       isUnassigned,
@@ -149,17 +150,12 @@ export default async function EmployeeTasksPage({
   let initialCol: ColumnId = "today";
   if (params.tab === "unassigned") initialCol = "unassigned";
   else if (params.tab === "overdue") initialCol = "overdue";
-  else if (params.tab === "in_progress") initialCol = "in_progress";
   else if (params.tab === "completed") initialCol = "completed";
   else if (params.tab === "upcoming") initialCol = "upcoming";
   else {
-    // Se houver tarefas em andamento, abrir nelas; se houver atrasadas, abrir nelas
+    // Se houver tarefas com SLA ou prazo estourado, priorizar foco nelas
     const hasOverdue = allTasks.some((t) => !t.isUnassigned && t.slaExceeded);
-    const hasInProgress = allTasks.some(
-      (t) => !t.isUnassigned && (t.status === "IN_PROGRESS" || t.status === "PAUSED"),
-    );
-    if (hasInProgress) initialCol = "in_progress";
-    else if (hasOverdue) initialCol = "overdue";
+    if (hasOverdue) initialCol = "overdue";
   }
 
   return (

@@ -20,10 +20,11 @@ export function calculateSlaDueDate(params: SlaDueCalculationParams): Date | nul
 
   switch (params.startEvent) {
     case "ON_SCHEDULED":
-      baseDate = params.scheduledAt ?? null;
+      baseDate = params.scheduledAt ?? params.availableAt ?? null;
       break;
     case "ON_FIRST_START":
-      baseDate = params.firstStartedAt ?? null;
+      // Operação direta: sem necessidade de clique de início, o SLA conta a partir de availableAt / scheduledAt
+      baseDate = params.firstStartedAt ?? params.availableAt ?? params.scheduledAt ?? null;
       break;
     case "ON_AVAILABLE":
     default:

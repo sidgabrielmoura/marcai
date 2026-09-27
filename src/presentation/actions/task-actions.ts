@@ -97,7 +97,10 @@ async function saveEvidence(taskId: string, requirementId: string, value: string
       if (!task) return { error: "Tarefa não encontrada no seu acesso." };
       const req = await tx.taskEvidenceRequirement.findFirst({ where: { id: requirementId, taskId }, include: { submissions: true } });
       if (!req) return { error: "Evidência não encontrada." };
-      if (task.status !== "IN_PROGRESS" && !(req.executionStage === "START" && ["AVAILABLE", "NEEDS_CORRECTION"].includes(task.status))) return { error: "Inicie ou retome a tarefa antes de registrar a evidência." };
+      if (!["AVAILABLE", "IN_PROGRESS", "NEEDS_CORRECTION", "PAUSED"].includes(task.status)) return { error: "Esta tarefa não está disponível para registrar evidências." };
+      if (!task.startedAt) {
+        await tx.task.update({ where: { id: taskId }, data: { startedAt: new Date() } });
+      }
       const round = await getEvidenceRound(tx, c.organizationId, taskId);
       const attemptNumber = req.submissions.length + 1;
       req.submissions = evidenceInRound(req.submissions, round);
@@ -132,23 +135,129 @@ export async function completeTaskAction(taskId: string): Promise<ActionResult> 
   const c = await getAuthenticatedContext(); if (!c) return { error: "Não autenticado." };
   const result = await prisma.$transaction(async tx => {
     await lockTask(tx, c.organizationId, taskId);
-    const task = await tx.task.findFirst({ where: { ...taskScope(c), id: taskId, deletedAt: null }, include: { evidenceRequirements: { include: { submissions: true } }, sessions: { include: { pauses: true } }, approvalWorkflow: { include: { steps: true } } } });
+    const task = await tx.task.findFirst({
+      where: { ...taskScope(c), id: taskId, deletedAt: null },
+      include: {
+        execution: true,
+        location: true,
+        organization: { select: { settings: true } },
+        evidenceRequirements: { include: { submissions: true } },
+        sessions: { include: { pauses: true } },
+        approvalWorkflow: { include: { steps: true } },
+      },
+    });
     if (!task) return { error: "Tarefa não encontrada no seu acesso." };
+    if (!await eligibleMember(c.organizationId, c.memberId, task.locationId, task.teamId, tx)) return { error: "Seu acesso à equipe ou unidade mudou. Solicite uma nova atribuição à gestão." };
+
     const round = await getEvidenceRound(tx, c.organizationId, taskId);
     task.evidenceRequirements.forEach(r => { r.submissions = evidenceInRound(r.submissions, round); });
-    const check = canCompleteTask(task.status, task.evidenceRequirements.map(r => ({ id: r.id, required: r.required, minQuantity: r.minQuantity, validSubmissionsCount: r.submissions.filter(s => s.validationStatus === "VALID").length, failedAttemptsCount: r.submissions.filter(s => s.validationStatus === "REJECTED").length })));
+    const check = canCompleteTask(task.status, task.evidenceRequirements.map(r => ({
+      id: r.id,
+      required: r.required,
+      minQuantity: r.minQuantity,
+      validSubmissionsCount: r.submissions.filter(s => s.validationStatus === "VALID").length,
+      failedAttemptsCount: r.submissions.filter(s => s.validationStatus === "REJECTED").length,
+    })));
     if (!check.allowed) return { error: check.reason };
-    const review = !!task.approvalWorkflow, now = new Date();
-    if (review) { await tx.approvalWorkflow.update({ where: { id: task.approvalWorkflow!.id }, data: { status: "PENDING" } }); await tx.approvalStep.updateMany({ where: { workflowId: task.approvalWorkflow!.id }, data: { status: "PENDING" } }); }
+
+    const now = new Date();
+
+    // Verificação de início antecipado / janela operacional
+    const scheduledOrAvailable = task.execution?.availableAt ?? task.scheduledDate ?? null;
+    const settings = (task.organization?.settings as Record<string, any>) || {};
+    if (scheduledOrAvailable && scheduledOrAvailable > now) {
+      const earlyEval = evaluateEarlyExecution({
+        policy: settings.earlyExecutionPolicy || "NOT_ALLOWED",
+        scheduledOrAvailableAt: scheduledOrAvailable,
+        currentTime: now,
+        windowMinutes: settings.earlyExecutionWindowMinutes ?? 60,
+        justification: null,
+      });
+      if (!earlyEval.allowed) {
+        return { error: earlyEval.reason || "Esta tarefa ainda está programada para um horário futuro." };
+      }
+    }
+
+    // Guarda de horário operacional da unidade
+    if (task.location) {
+      const open = isLocationOpenAt(task.location, now);
+      if (!open) {
+        await tx.taskOccurrence.create({
+          data: {
+            taskId: task.id,
+            type: "IMPEDIMENT",
+            category: "OUT_OF_OPERATING_HOURS",
+            reason: `Tarefa concluída fora do horário de funcionamento da unidade (${task.location.name}).`,
+            severity: "MEDIUM",
+            createdBy: c.memberId,
+          },
+        });
+      }
+    }
+
+    const review = !!task.approvalWorkflow;
+    if (review) {
+      await tx.approvalWorkflow.update({ where: { id: task.approvalWorkflow!.id }, data: { status: "PENDING" } });
+      await tx.approvalStep.updateMany({ where: { workflowId: task.approvalWorkflow!.id }, data: { status: "PENDING" } });
+    }
+
+    // Encerrar sessões abertas
     await tx.taskExecutionSession.updateMany({ where: { taskId, endedAt: null }, data: { endedAt: now } });
-    await tx.task.update({ where: { id: taskId }, data: { status: review ? "SUBMITTED" : "COMPLETED", completedAt: review ? null : now, actualDuration: effectiveWorkSeconds(task.sessions, now) } });
-    await tx.activityLog.create({ data: { organizationId: c.organizationId, actorId: c.memberId, action: review ? "TASK_SUBMITTED" : "TASK_COMPLETED", entityType: "TASK", entityId: taskId, metadata: { bypassedEvidence: !!check.generateOccurrence } } });
-    if (review) await notifyManagers(tx, task, "Entrega aguardando aprovação", `A tarefa “${task.title}” está pronta para revisão.`);
+
+    // Determinar início e calcular duração real
+    const startedAt = task.startedAt ?? task.scheduledDate ?? task.createdAt ?? now;
+    const actualDuration = task.sessions.length > 0
+      ? effectiveWorkSeconds(task.sessions, now)
+      : Math.max(1, Math.round((now.getTime() - startedAt.getTime()) / 1000));
+
+    await tx.task.update({
+      where: { id: taskId },
+      data: {
+        status: review ? "SUBMITTED" : "COMPLETED",
+        startedAt: task.startedAt ?? startedAt,
+        completedAt: review ? null : now,
+        actualDuration,
+      },
+    });
+
+    if (check.generateOccurrence) {
+      await tx.taskOccurrence.create({
+        data: {
+          taskId: task.id,
+          type: check.generateOccurrence.type,
+          category: check.generateOccurrence.category,
+          reason: check.generateOccurrence.reason,
+          severity: check.generateOccurrence.severity,
+          createdBy: c.memberId,
+        },
+      });
+    }
+
+    await tx.activityLog.create({
+      data: {
+        organizationId: c.organizationId,
+        actorId: c.memberId,
+        action: review ? "TASK_SUBMITTED" : "TASK_COMPLETED",
+        entityType: "TASK",
+        entityId: taskId,
+        metadata: {
+          bypassedEvidence: !!check.generateOccurrence,
+          directCompletion: !task.startedAt,
+        },
+      },
+    });
+
+    if (review) {
+      await notifyManagers(tx, task, "Entrega aguardando aprovação", `A tarefa “${task.title}” está pronta para revisão.`);
+    }
+
     await synchronizeExecution(tx, c.organizationId, task.executionId);
     return { success: true };
   });
+
   if (result.success) {
     eventBus.publish("TASK_COMPLETED", c.organizationId, { taskId, memberId: c.memberId });
   }
-  refresh(taskId); return result;
+  refresh(taskId);
+  return result;
 }

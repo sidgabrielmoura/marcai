@@ -121,9 +121,6 @@ export function canAccessTask(
   return false;
 }
 
-/**
- * Validação para conclusão de tarefa com regra das 3 tentativas (D-05)
- */
 export function canCompleteTask(
   currentStatus: TaskStatus,
   requirements: Array<{
@@ -134,10 +131,38 @@ export function canCompleteTask(
     minQuantity?: number;
   }>
 ): CanCompleteResult {
-  if (currentStatus !== "IN_PROGRESS") {
+  if (currentStatus === "BLOCKED") {
     return {
       allowed: false,
-      reason: "Apenas tarefas em andamento podem ser concluídas.",
+      reason: "Esta tarefa está bloqueada por dependências operacionais não concluídas.",
+    };
+  }
+
+  if (currentStatus === "COMPLETED") {
+    return {
+      allowed: false,
+      reason: "Esta tarefa já foi concluída.",
+    };
+  }
+
+  if (currentStatus === "CANCELLED" || currentStatus === "NOT_COMPLETED") {
+    return {
+      allowed: false,
+      reason: "Esta tarefa foi cancelada ou encerrada.",
+    };
+  }
+
+  if (currentStatus === "SUBMITTED") {
+    return {
+      allowed: false,
+      reason: "Esta tarefa está aguardando revisão e aprovação.",
+    };
+  }
+
+  if (!["AVAILABLE", "IN_PROGRESS", "NEEDS_CORRECTION", "PAUSED"].includes(currentStatus)) {
+    return {
+      allowed: false,
+      reason: "Esta tarefa não está disponível para conclusão.",
     };
   }
 
