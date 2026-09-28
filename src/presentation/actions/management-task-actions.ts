@@ -7,7 +7,7 @@ import { taskScope, isManagement, eligibleMember } from "@/application/security/
 import { lockTask } from "@/application/tasks/task-lock";
 import { effectiveWorkSeconds } from "@/domain/rules/execution-state";
 import { synchronizeExecution } from "@/application/tasks/synchronize-execution";
-import { notifyManagers } from "@/application/tasks/notify-managers";
+import { notifyManagers, notifyTaskAssignees, notifyApprovers } from "@/application/tasks/notify-managers";
 import { prisma } from "@/infrastructure/database/prisma";
 import { getAuthenticatedContext } from "@/application/security/auth-context";
 import {
@@ -146,6 +146,24 @@ export async function createAdHocTaskAction(formData: FormData): Promise<ActionR
           assignedBy: context.memberId,
         },
       });
+
+      const assignedMember = await tx.organizationMember.findFirst({
+        where: { id: primaryMemberId, organizationId: context.organizationId },
+        select: { userId: true },
+      });
+      if (assignedMember) {
+        await tx.notification.create({
+          data: {
+            organizationId: context.organizationId,
+            userId: assignedMember.userId,
+            type: "TASK_ASSIGNED",
+            priority: priority as Priority,
+            title: "Você recebeu uma nova tarefa",
+            message: title,
+            data: { taskId: newTask.id },
+          },
+        });
+      }
     }
 
     // Se houver requisito de evidência configurado
@@ -275,6 +293,13 @@ export async function claimTaskAction(taskId: string): Promise<ActionResult> {
     if (!task.teamId || !task.locationId || !await eligibleMember(c.organizationId, c.memberId, task.locationId, task.teamId, tx)) return { error: "Apenas membros da equipe com acesso à unidade podem assumir." };
     await tx.taskAssignment.create({ data: { taskId, memberId: c.memberId, type: "PRIMARY", assignedBy: c.memberId } });
     await audit(tx, task, c, "TASK_CLAIMED");
+    await notifyManagers(
+      tx,
+      task,
+      "Tarefa assumida",
+      `O colaborador ${c.userName || "da equipe"} assumiu a tarefa “${task.title}”.`,
+      { type: "TASK_CLAIMED", priority: "LOW", excludeUserId: c.userId }
+    );
     await synchronizeExecution(tx, c.organizationId, task.executionId);
     return { success: true };
   });
@@ -291,6 +316,13 @@ export async function pauseTaskAction(taskId: string, category = "OUTROS", note?
     await tx.taskPause.create({ data: { sessionId: session.id, reasonCategoryId: category, note: note || null } });
     await tx.task.update({ where: { id: task.id }, data: { status: "PAUSED" } });
     await audit(tx, task, c, "TASK_PAUSED", { category, note: note ?? "" });
+    await notifyManagers(
+      tx,
+      task,
+      "Tarefa pausada",
+      `A tarefa “${task.title}” foi pausada por ${c.userName || "um colaborador"}. Motivo: ${category}${note ? ` (${note})` : ""}.`,
+      { type: "TASK_PAUSED", priority: "MEDIUM", excludeUserId: c.userId }
+    );
     return { success: true };
   });
 }
@@ -299,7 +331,15 @@ export async function resumeTaskAction(taskId: string): Promise<ActionResult> {
     const check = canResumeTask(task.status); if (!check.allowed) return { error: check.reason };
     await tx.taskPause.updateMany({ where: { session: { taskId }, endedAt: null }, data: { endedAt: new Date() } });
     await tx.task.update({ where: { id: taskId }, data: { status: "IN_PROGRESS" } });
-    await audit(tx, task, c, "TASK_RESUMED"); return { success: true };
+    await audit(tx, task, c, "TASK_RESUMED");
+    await notifyManagers(
+      tx,
+      task,
+      "Tarefa retomada",
+      `A tarefa “${task.title}” foi retomada por ${c.userName || "um colaborador"}.`,
+      { type: "TASK_RESUMED", priority: "LOW", excludeUserId: c.userId }
+    );
+    return { success: true };
   });
 }
 export async function reportImpedimentAction(taskId: string, category: string, reason: string): Promise<ActionResult> {
@@ -319,7 +359,15 @@ export async function cancelTaskAction(taskId: string, reason: string, category 
     if (!reasonSchema.safeParse(reason).success || !reasonSchema.safeParse(category).success) return { error: "Informe o motivo do cancelamento (3 a 1000 caracteres)." };
     await endSessions(tx, task);
     await tx.task.update({ where: { id: taskId }, data: { status: "CANCELLED", cancelledAt: new Date(), cancellationReason: "[" + category + "] " + reason.trim() } });
-    await audit(tx, task, c, "TASK_CANCELLED", { category, reason }); return { success: true };
+    await audit(tx, task, c, "TASK_CANCELLED", { category, reason });
+    await notifyTaskAssignees(
+      tx,
+      task,
+      "Tarefa cancelada",
+      `A tarefa “${task.title}” foi cancelada pela gestão. Motivo: ${reason}`,
+      { type: "TASK_CANCELLED", priority: "MEDIUM", excludeUserId: c.userId }
+    );
+    return { success: true };
   });
 }
 export async function trashTaskAction(taskId: string, reason?: string): Promise<ActionResult> {
@@ -363,7 +411,28 @@ export async function submitApprovalDecisionAction(stepId: string, decision: "AP
     if (decision === "REJECTED" || allApproved) {
       await tx.task.update({ where: { id: task.id }, data: { status: allApproved ? "COMPLETED" : "NEEDS_CORRECTION", completedAt: allApproved ? new Date() : null } });
       const owner = task.assignments.find(a => a.type === "PRIMARY");
-      if (owner) await tx.notification.create({ data: { organizationId: context.organizationId, userId: owner.member.userId, type: "APPROVAL_UPDATED", title: allApproved ? "Entrega aprovada" : "Correção solicitada", message: task.title + (note ? ": " + note : ""), data: { taskId: task.id } } });
+      if (owner) await tx.notification.create({ data: { organizationId: context.organizationId, userId: owner.member.userId, type: "APPROVAL_UPDATED", priority: allApproved ? "LOW" : "HIGH", title: allApproved ? "Entrega aprovada" : "Correção solicitada", message: task.title + (note ? ": " + note : ""), data: { taskId: task.id } } });
+      if (allApproved) {
+        await notifyManagers(
+          tx,
+          task,
+          "Entrega aprovada e concluída",
+          `A tarefa “${task.title}” foi aprovada e concluída.`,
+          { type: "TASK_COMPLETED", priority: "LOW", excludeUserId: context.userId }
+        );
+      }
+    } else if (decision === "APPROVED" && workflow.mode === "SEQUENTIAL") {
+      const nextStep = workflow.steps.find(s => s.sequence > step.sequence && s.status === "PENDING");
+      if (nextStep) {
+        await notifyApprovers(
+          tx,
+          task,
+          nextStep,
+          "Aprovação pendente",
+          `A tarefa “${task.title}” aguarda sua aprovação (Etapa ${nextStep.sequence}).`,
+          { type: "APPROVAL_REQUESTED", priority: "HIGH", excludeUserId: context.userId }
+        );
+      }
     }
     await audit(tx, task, context, decision === "APPROVED" ? "APPROVAL_APPROVED" : "APPROVAL_REJECTED", { decision, note: note ?? "", stepSequence: step.sequence }); return { success: true };
   });

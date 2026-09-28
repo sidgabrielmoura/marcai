@@ -4,7 +4,7 @@ import { prisma } from "@/infrastructure/database/prisma";
 import { getAuthenticatedContext } from "@/application/security/auth-context";
 import { taskScope, eligibleMember } from "@/application/security/operational-scope";
 import { synchronizeExecution } from "@/application/tasks/synchronize-execution";
-import { notifyManagers } from "@/application/tasks/notify-managers";
+import { notifyManagers, notifyApprovers } from "@/application/tasks/notify-managers";
 import { lockTask } from "@/application/tasks/task-lock";
 import { getEvidenceRound, evidenceInRound } from "@/application/tasks/evidence-round";
 import { effectiveWorkSeconds } from "@/domain/rules/execution-state";
@@ -247,8 +247,36 @@ export async function completeTaskAction(taskId: string): Promise<ActionResult> 
       },
     });
 
-    if (review) {
-      await notifyManagers(tx, task, "Entrega aguardando aprovação", `A tarefa “${task.title}” está pronta para revisão.`);
+    if (review && task.approvalWorkflow?.steps?.length) {
+      const firstStep = [...task.approvalWorkflow.steps].sort((a, b) => a.sequence - b.sequence)[0];
+      await notifyApprovers(
+        tx,
+        task,
+        firstStep,
+        "Entrega aguardando aprovação",
+        `A tarefa “${task.title}” está pronta para revisão.`,
+        { type: "APPROVAL_REQUESTED", priority: "HIGH", excludeUserId: c.userId }
+      );
+    } else if (review) {
+      await notifyManagers(
+        tx,
+        task,
+        "Entrega aguardando aprovação",
+        `A tarefa “${task.title}” está pronta para revisão.`,
+        { type: "APPROVAL_REQUESTED", priority: "HIGH", excludeUserId: c.userId }
+      );
+    } else {
+      await notifyManagers(
+        tx,
+        task,
+        "Tarefa concluída",
+        `A tarefa “${task.title}” foi concluída por ${c.userName || "um colaborador"}.`,
+        {
+          type: "TASK_COMPLETED",
+          priority: check.generateOccurrence ? "HIGH" : "LOW",
+          excludeUserId: c.userId,
+        }
+      );
     }
 
     await synchronizeExecution(tx, c.organizationId, task.executionId);
@@ -260,4 +288,178 @@ export async function completeTaskAction(taskId: string): Promise<ActionResult> 
   }
   refresh(taskId);
   return result;
+}
+
+export type TaskDetailResult = {
+  id: string;
+  title: string;
+  description: string | null;
+  instructions: string | null;
+  status: string;
+  priority: string;
+  deadlineAt: string | null;
+  scheduledDate: string | null;
+  requiresApproval: boolean;
+  correctionRequested: boolean;
+  locationName: string | null;
+  isUnassigned?: boolean;
+  dependencies: {
+    id: string;
+    type: string;
+    logic: string;
+    dependsOnTask: {
+      id: string;
+      title: string;
+      status: string;
+    };
+  }[];
+  occurrences: {
+    id: string;
+    type: string;
+    category: string;
+    reason: string;
+    severity: string;
+    createdAt: string;
+  }[];
+  evidenceRequirements: {
+    id: string;
+    type: string;
+    required: boolean;
+    minQuantity: number;
+    executionStage?: string;
+    submissions: {
+      id: string;
+      validationStatus: string;
+      attemptNumber: number;
+      value: string | null;
+      storageKey?: string | null;
+      createdAt: string;
+    }[];
+  }[];
+};
+
+export async function getTaskDetailAction(taskId: string): Promise<{ success?: boolean; error?: string; task?: TaskDetailResult }> {
+  const c = await getAuthenticatedContext();
+  if (!c) return { error: "Não autenticado." };
+  if (!taskId || typeof taskId !== "string") return { error: "Identificador inválido." };
+
+  try {
+    const [task, rawDependencies] = await Promise.all([
+      prisma.task.findFirst({
+        where: {
+          id: taskId,
+          organizationId: c.organizationId,
+          deletedAt: null,
+          OR: [
+            taskScope(c),
+            {
+              status: { in: ["AVAILABLE", "BLOCKED"] },
+              ...(c.scope?.teamIds ? { teamId: { in: c.scope.teamIds } } : {}),
+              ...(c.scope?.locationIds ? { locationId: { in: c.scope.locationIds } } : {}),
+              assignments: { none: { type: "PRIMARY", removedAt: null } },
+            },
+          ],
+        },
+        include: {
+          location: true,
+          approvalWorkflow: true,
+          assignments: {
+            where: { removedAt: null },
+            select: { id: true, memberId: true, type: true },
+          },
+          evidenceRequirements: {
+            include: {
+              submissions: {
+                orderBy: { attemptNumber: "asc" },
+              },
+            },
+          },
+          occurrences: {
+            orderBy: { createdAt: "desc" },
+          },
+        },
+      }),
+      "taskDependency" in prisma &&
+      typeof (prisma as any).taskDependency?.findMany === "function"
+        ? (prisma as any).taskDependency
+            .findMany({
+              where: {
+                taskId,
+                task: {
+                  organizationId: c.organizationId,
+                  deletedAt: null,
+                },
+              },
+              include: {
+                dependsOnTask: {
+                  select: { id: true, title: true, status: true },
+                },
+              },
+            })
+            .catch(() => [])
+        : Promise.resolve([]),
+    ]);
+
+    if (!task) {
+      return { error: "Tarefa não encontrada ou sem permissão de acesso." };
+    }
+
+    const evidenceRound = await getEvidenceRound(prisma, c.organizationId, taskId);
+    const dependenciesList: any[] = Array.isArray(rawDependencies) ? rawDependencies : [];
+    const isUnassigned = !task.assignments.some((a) => a.type === "PRIMARY");
+
+    return {
+      success: true,
+      task: {
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        instructions: task.instructions,
+        status: task.status,
+        priority: task.priority,
+        deadlineAt: task.deadlineAt ? task.deadlineAt.toISOString() : null,
+        scheduledDate: task.scheduledDate ? task.scheduledDate.toISOString() : null,
+        requiresApproval: !!task.approvalWorkflow,
+        correctionRequested: !!evidenceRound,
+        locationName: task.location?.name || null,
+        isUnassigned,
+        dependencies: dependenciesList.map((d: any) => ({
+          id: d.id,
+          type: d.type,
+          logic: d.logic,
+          dependsOnTask: {
+            id: d.dependsOnTask?.id || "",
+            title: d.dependsOnTask?.title || "Etapa anterior",
+            status: d.dependsOnTask?.status || "AVAILABLE",
+          },
+        })),
+        occurrences: task.occurrences.map((o) => ({
+          id: o.id,
+          type: o.type,
+          category: o.category,
+          reason: o.reason,
+          severity: o.severity,
+          createdAt: o.createdAt.toISOString(),
+        })),
+        evidenceRequirements: task.evidenceRequirements.map((req) => ({
+          id: req.id,
+          type: req.type,
+          required: req.required,
+          minQuantity: req.minQuantity,
+          executionStage: req.executionStage ?? undefined,
+          submissions: evidenceInRound(req.submissions, evidenceRound).map((s) => ({
+            id: s.id,
+            validationStatus: s.validationStatus,
+            attemptNumber: s.attemptNumber,
+            value: s.value,
+            storageKey: s.storageKey,
+            createdAt: s.createdAt.toISOString(),
+          })),
+        })),
+      },
+    };
+  } catch (error) {
+    console.error("[getTaskDetailAction] Error:", error);
+    return { error: "Erro ao consultar a tarefa." };
+  }
 }

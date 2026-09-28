@@ -4,24 +4,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   CheckSquare,
-  Play,
   AlertTriangle,
   Users,
   CheckCircle2,
   Calendar,
-  MapPin,
-  Clock,
   ArrowRight,
   Search,
   X,
-  Camera,
-  GitMerge,
-  AlertCircle,
-  Eye,
 } from "lucide-react";
-import { StatusBadge, PriorityBadge } from "../shared";
+import { taskClock, formatClock } from "@/domain/rules/employee-task-clock";
 import { ClaimTaskButton } from "./claim-task-button";
 import { QuickCompleteButton } from "./quick-complete-button";
+import { EmployeeTaskDetailDrawer } from "./task-detail-drawer";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,6 +34,9 @@ export interface EmployeeTask {
   deadlineAt: string | null;
   completedAt: string | null;
   startedAt: string | null;
+  slaDueAt: string | null;
+  elapsedSeconds: number | null;
+  timerRunning: boolean;
   slaExceeded: boolean;
   delayMinutes: number;
   locationName: string | null;
@@ -131,15 +128,64 @@ const COLUMNS: ColumnDef[] = [
 
 interface EmployeeKanbanBoardProps {
   tasks: EmployeeTask[];
+  snapshotAt: number;
   initialColumn?: ColumnId;
 }
 
 export function EmployeeKanbanBoard({
   tasks,
+  snapshotAt,
   initialColumn = "today",
 }: EmployeeKanbanBoardProps) {
   const [activeColumn, setActiveColumn] = useState<ColumnId>(initialColumn);
   const [searchQuery, setSearchQuery] = useState("");
+  const [now, setNow] = useState(snapshotAt);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const showLocation = new Set(tasks.map(task => task.locationName).filter(Boolean)).size > 1;
+
+  function handleOpenTask(taskId: string) {
+    setSelectedTaskId(taskId);
+    setSheetOpen(true);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("taskId", taskId);
+      window.history.replaceState(null, "", url.toString());
+    }
+  }
+
+  function handleSheetChange(open: boolean) {
+    setSheetOpen(open);
+    if (!open && typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("taskId")) {
+        url.searchParams.delete("taskId");
+        window.history.replaceState(null, "", url.pathname + (url.search ? url.search : ""));
+      }
+    }
+  }
+
+  // Verificar se há taskId na URL ao carregar a página
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const taskIdParam = params.get("taskId");
+      if (taskIdParam) {
+        setSelectedTaskId(taskIdParam);
+        setSheetOpen(true);
+      }
+    }
+  }, []);
+
+  // A single clock for all cards, calculated from timestamps to avoid drift.
+  useEffect(() => {
+    const clientAnchor = Date.now();
+    const tick = () => setNow(snapshotAt + Math.max(0, Date.now() - clientAnchor));
+    tick();
+    const interval = window.setInterval(tick, 1000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { window.clearInterval(interval); document.removeEventListener("visibilitychange", tick); };
+  }, [snapshotAt]);
 
   const boardRef = useRef<HTMLDivElement>(null);
   const columnRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -166,7 +212,7 @@ export function EmployeeKanbanBoard({
       upcoming: [],
     };
 
-    const now = new Date();
+    const currentDate = new Date(now);
 
     for (const task of filteredTasks) {
       if (task.isUnassigned) {
@@ -180,7 +226,7 @@ export function EmployeeKanbanBoard({
       }
 
       // Tarefas não concluídas com SLA ou prazo estourado
-      if (task.slaExceeded || (task.deadlineAt && new Date(task.deadlineAt) < now)) {
+      if ((taskClock(task, now, snapshotAt).remaining ?? Infinity) <= 0) {
         groups.overdue.push(task);
         continue;
       }
@@ -189,7 +235,7 @@ export function EmployeeKanbanBoard({
       const targetDate = task.scheduledDate || task.deadlineAt;
       if (targetDate) {
         const d = new Date(targetDate);
-        const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        const todayEnd = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), 23, 59, 59, 999);
         if (d > todayEnd) {
           groups.upcoming.push(task);
           continue;
@@ -201,7 +247,7 @@ export function EmployeeKanbanBoard({
     }
 
     return groups;
-  }, [filteredTasks]);
+  }, [filteredTasks, now, snapshotAt]);
 
   // Navegar suavemente até uma coluna específica
   function scrollToColumn(colId: ColumnId) {
@@ -266,6 +312,7 @@ export function EmployeeKanbanBoard({
         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-[var(--brand-700)]/60" />
         <Input
           type="text"
+          aria-label="Buscar tarefas"
           placeholder="Buscar tarefas por título, unidade ou processo..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
@@ -274,6 +321,7 @@ export function EmployeeKanbanBoard({
         {searchQuery && (
           <button
             type="button"
+            aria-label="Limpar busca"
             onClick={() => setSearchQuery("")}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
           >
@@ -346,7 +394,7 @@ export function EmployeeKanbanBoard({
         {COLUMNS.map((col) => {
           const tasksInCol = groupedTasks[col.id];
           const Icon = col.icon;
-          const isOverdue = col.id === "overdue";
+
 
           return (
             <div
@@ -390,7 +438,14 @@ export function EmployeeKanbanBoard({
                   </div>
                 ) : (
                   tasksInCol.map((task) => (
-                    <TrelloCard key={task.id} task={task} isOverdueCol={isOverdue} />
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      now={now}
+                      snapshotAt={snapshotAt}
+                      showLocation={showLocation}
+                      onOpenTask={handleOpenTask}
+                    />
                   ))
                 )}
               </div>
@@ -398,170 +453,93 @@ export function EmployeeKanbanBoard({
           );
         })}
       </div>
+
+      {/* Drawer para visualização e execução da tarefa selecionada (baixo para cima) */}
+      <EmployeeTaskDetailDrawer
+        taskId={selectedTaskId}
+        open={sheetOpen}
+        onOpenChange={handleSheetChange}
+      />
     </div>
   );
 }
 
-function TrelloCard({
+
+function TaskCard({
   task,
-  isOverdueCol,
+  now,
+  snapshotAt,
+  showLocation,
+  onOpenTask,
 }: {
   task: EmployeeTask;
-  isOverdueCol: boolean;
+  now: number;
+  snapshotAt: number;
+  showLocation: boolean;
+  onOpenTask: (taskId: string) => void;
 }) {
-  const isCompleted = task.status === "COMPLETED";
+  const clock = taskClock(task, now, snapshotAt);
+  const completed = task.status === "COMPLETED";
+  const overdue = clock.remaining !== null && clock.remaining <= 0;
+  const state = ({ PAUSED: "Pausada", NEEDS_CORRECTION: "Correção solicitada", BLOCKED: "Aguardando etapa anterior", SUBMITTED: "Aguardando aprovação" } as Record<string, string>)[task.status];
+  const action = completed ? "Ver entrega" : task.status === "PAUSED" ? "Retomar tarefa" : task.status === "NEEDS_CORRECTION" ? "Corrigir entrega" : task.status === "IN_PROGRESS" ? (task.hasRequiredEvidence ? "Registrar entrega" : "Continuar tarefa") : "Abrir tarefa";
 
   return (
-    <Card className="group relative min-h-fit! h-fit! bg-white dark:bg-card border border-slate-200/80 dark:border-border rounded-xl p-3! shadow-xs hover:shadow-md transition-all flex flex-col gap-2.5">
-      <div className="flex items-center justify-between gap-1.5">
-        <div className="flex items-center gap-1 text-[11px] font-medium text-slate-500 truncate">
-          {task.origin === "PROCESS" ? (
-            <>
-              <GitMerge className="size-3 text-brand-700 shrink-0" />
-              <span className="truncate">{task.processName || "Processo"}</span>
-            </>
-          ) : (
-            <span className="uppercase text-[10px] tracking-wide text-slate-400">
-              Tarefa avulsa
-            </span>
-          )}
-        </div>
-        <PriorityBadge priority={task.priority} size="sm" />
-      </div>
-
-      {/* Título da Tarefa com Link */}
-      <Link
-        href={`/tasks/${task.id}`}
-        className="text-[14px] font-bold text-[var(--brand-900)] dark:text-foreground hover:text-brand-700 leading-snug line-clamp-2"
+    <Card className="employee-task-card shrink-0 h-fit gap-3 ring-0 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] p-4 shadow-none">
+      <button
+        type="button"
+        onClick={() => onOpenTask(task.id)}
+        className="text-left rounded-sm text-sm font-semibold leading-snug text-[var(--text-primary)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--brand-700)] cursor-pointer"
       >
         {task.title}
-      </Link>
-
-      {/* Badges de Status & SLA */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        <StatusBadge status={task.status} size="sm" />
-        {task.status === "PAUSED" && (
-          <Badge
-            variant="outline"
-            className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-amber-50 text-amber-800 border-amber-200 flex items-center gap-1"
-          >
-            <Clock className="size-2.5 shrink-0" />
-            Pausada
-          </Badge>
-        )}
-        {task.status === "NEEDS_CORRECTION" && (
-          <Badge
-            variant="outline"
-            className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-orange-50 text-orange-800 border-orange-200 flex items-center gap-1"
-          >
-            <AlertCircle className="size-2.5 shrink-0" />
-            Correção solicitada
-          </Badge>
-        )}
-        {task.slaExceeded && (
-          <Badge
-            variant="destructive"
-            className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-red-100 text-red-800 border-red-200 flex items-center gap-1"
-          >
-            <AlertTriangle className="size-2.5 shrink-0" />
-            SLA Excedido
-          </Badge>
-        )}
-        {task.evidenceCount > 0 && (
-          <span className="text-[11px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md flex items-center gap-1 font-medium">
-            <Camera className="size-3 text-slate-500" />
-            {task.evidenceCount} comprovação(ões)
-          </span>
-        )}
-      </div>
-
-      {task.hasImpediment && (
-        <div className="text-[11px] font-medium bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-2 flex items-start gap-1.5">
-          <AlertCircle className="size-3.5 text-amber-700 shrink-0 mt-0.5" />
-          <span className="line-clamp-2">
-            <strong>Impedimento:</strong> {task.impedimentReason || "Operação interrompida"}
-          </span>
+      </button>
+      {showLocation && task.locationName && <p className="text-xs text-[var(--text-secondary)]">{task.locationName}</p>}
+      {state && <p className="text-xs font-medium text-[var(--text-secondary)]">{state}</p>}
+      {(clock.elapsed !== null || clock.remaining !== null) && (
+        <div className="flex flex-wrap gap-x-5 gap-y-2" role="timer" aria-live="off" aria-label="Tempos da tarefa">
+          {clock.elapsed !== null && (
+            <div className="min-w-0">
+              <p className="text-[11px] text-[var(--text-secondary)]">{completed ? "Tempo total" : "Decorrido"}</p>
+              <span className="font-mono text-sm font-medium tabular-nums text-[var(--text-primary)]">{formatClock(clock.elapsed)}</span>
+            </div>
+          )}
+          {clock.remaining !== null && (
+            <div className={overdue ? "text-red-700 dark:text-red-400" : "text-[var(--text-primary)]"} title={clock.deadlineLabel}>
+              <p className="text-[11px]">{overdue ? "Em atraso" : "Restante"}</p>
+              <span className="font-mono text-sm font-medium tabular-nums">{formatClock(clock.remaining)}</span>
+            </div>
+          )}
         </div>
       )}
-
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-border text-[11px] text-slate-500">
-        {task.locationName && (
-          <div className="flex items-center gap-1 truncate max-w-35" title={task.locationName}>
-            <MapPin className="size-3 text-slate-400 shrink-0" />
-            <span className="truncate">{task.locationName}</span>
+      <div className="mt-1">
+        {task.isUnassigned && task.status === "AVAILABLE" ? (
+          <ClaimTaskButton taskId={task.id} onClaimed={(id) => onOpenTask(id)} />
+        ) : task.status === "IN_PROGRESS" && !task.hasRequiredEvidence ? (
+          <div className="flex items-center gap-2">
+            <QuickCompleteButton taskId={task.id} taskTitle={task.title} className="flex-1 h-10! bg-[var(--brand-900)]! shadow-none!" />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => onOpenTask(task.id)}
+              aria-label="Ver detalhes da tarefa"
+              className="h-10 w-10 shrink-0 cursor-pointer"
+            >
+              <ArrowRight className="size-3.5" aria-hidden="true" />
+            </Button>
           </div>
-        )}
-
-        {(task.deadlineAt || task.scheduledDate) && (
-          <div
-            className={`flex items-center gap-1 ml-auto font-medium ${task.slaExceeded || isOverdueCol
-              ? "text-red-700 font-semibold"
-              : "text-slate-600"
-              }`}
-          >
-            <Clock className="size-3 shrink-0" />
-            <span>
-              {new Date(task.deadlineAt || task.scheduledDate!).toLocaleTimeString("pt-BR", {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-              {" · "}
-              {new Date(task.deadlineAt || task.scheduledDate!).toLocaleDateString("pt-BR", {
-                day: "2-digit",
-                month: "2-digit",
-              })}
-            </span>
-          </div>
-        )}
-      </div>
-
-      <div className="pt-1 flex items-center justify-between gap-2">
-        {task.isUnassigned ? (
-          <div className="w-full">
-            <ClaimTaskButton taskId={task.id} />
-          </div>
-        ) : isCompleted ? (
-          <Button
-            nativeButton={false}
-            variant="outline"
-            size="sm"
-            render={<Link href={`/tasks/${task.id}`} />}
-            className="w-full h-8 text-xs font-semibold text-emerald-800 border-emerald-200 hover:bg-emerald-50"
-          >
-            <Eye className="size-3 mr-1" />
-            Ver detalhes da entrega
-          </Button>
-        ) : task.status === "PAUSED" ? (
-          <Button
-            nativeButton={false}
-            variant="outline"
-            size="sm"
-            render={<Link href={`/tasks/${task.id}`} />}
-            className="w-full h-8 text-xs font-semibold text-amber-800 border-amber-300 hover:bg-amber-50 justify-between"
-          >
-            <span className="flex items-center gap-1.5">
-              <Clock className="size-3.5 text-amber-600" />
-              <span>Retomar / Concluir</span>
-            </span>
-            <ArrowRight className="size-3 text-amber-600" />
-          </Button>
-        ) : task.hasRequiredEvidence ? (
-          <Button
-            nativeButton={false}
-            size="sm"
-            render={<Link href={`/tasks/${task.id}`} />}
-            className="w-full h-8 text-xs font-semibold bg-brand-900 hover:bg-brand-600 text-white shadow-xs justify-between"
-          >
-            <span className="flex items-center gap-1.5 truncate">
-              <Camera className="size-3.5 shrink-0" />
-              <span>Anexar e concluir</span>
-            </span>
-            <ArrowRight className="size-3 text-white/80 shrink-0" />
-          </Button>
         ) : (
-          <QuickCompleteButton taskId={task.id} taskTitle={task.title} />
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => onOpenTask(task.id)}
+            className="h-10 w-full justify-between px-0 text-xs font-semibold text-[var(--brand-900)] hover:bg-transparent hover:underline cursor-pointer"
+          >
+            {action}<ArrowRight className="size-3.5" aria-hidden="true" />
+          </Button>
         )}
       </div>
     </Card>
   );
 }
+

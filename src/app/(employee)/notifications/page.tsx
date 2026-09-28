@@ -104,40 +104,78 @@ export default async function NotificationsPage({
           />
         ) : (
           <div className="flex flex-col gap-3">
-            {notifications.map((n) => (
-              <Card key={n.id}>
-                <CardContent className="flex flex-col justify-between items-start gap-4">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-col items-start gap-2">
-                      {!n.readAt && <Badge>Novo</Badge>}
-                      <h2 className="text-card-title font-semibold">
-                        {n.title}
-                      </h2>
+            {notifications.map((n) => {
+              const data = (n.data as Record<string, any>) || null;
+              const taskId = data?.taskId ? String(data.taskId) : null;
+              const taskLink = taskId
+                ? (c.role === "EMPLOYEE" ? `/tasks/${taskId}` : `/management/tasks/${taskId}`)
+                : null;
+
+              return (
+                <Card key={n.id}>
+                  <CardContent className="flex flex-col justify-between items-start gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {!n.readAt && <Badge>Novo</Badge>}
+                        {(n.priority === "HIGH" || n.priority === "CRITICAL") && (
+                          <Badge variant="destructive">
+                            {n.priority === "CRITICAL" ? "Crítico" : "Alta prioridade"}
+                          </Badge>
+                        )}
+                        {n.type === "APPROVAL_REQUESTED" && (
+                          <Badge variant="secondary">Aprovação</Badge>
+                        )}
+                        {n.type === "TASK_UNBLOCKED" && (
+                          <Badge variant="outline">Liberada</Badge>
+                        )}
+                        {n.type === "TASK_OVERDUE" && (
+                          <Badge variant="destructive">Prazo SLA</Badge>
+                        )}
+                        {n.type === "TASK_PAUSED" && (
+                          <Badge variant="secondary">Pausa</Badge>
+                        )}
+                        <h2 className="text-card-title font-semibold w-full">
+                          {n.title}
+                        </h2>
+                      </div>
+
+                      <p className="mt-2 text-muted-foreground">{n.message}</p>
+
+                      <p className="mt-2 text-caption text-muted-foreground">
+                        {n.createdAt.toLocaleString("pt-BR", {
+                          timeZone: "America/Sao_Paulo",
+                          dateStyle: "short",
+                          timeStyle: "short",
+                        })}
+                      </p>
                     </div>
 
-                    <p className="mt-2 text-muted-foreground">{n.message}</p>
+                    <div className="flex flex-wrap items-center gap-2 w-full md:w-fit">
+                      {taskLink && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          nativeButton={false}
+                          className="flex-1 md:flex-initial"
+                          render={<Link href={taskLink} />}
+                        >
+                          Ver tarefa
+                        </Button>
+                      )}
 
-                    <p className="mt-2 text-caption text-muted-foreground">
-                      {n.createdAt.toLocaleString("pt-BR", {
-                        timeZone: "America/Sao_Paulo",
-                        dateStyle: "short",
-                        timeStyle: "short",
-                      })}
-                    </p>
-                  </div>
-
-                  {!n.readAt && (
-                    <form action={markNotificationReadAction} className="w-full md:w-fit">
-                      <input type="hidden" name="id" value={n.id} />
-
-                      <Button variant="outline" size="sm" className="w-full">
-                        Marcar como lido
-                      </Button>
-                    </form>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
+                      {!n.readAt && (
+                        <form action={markNotificationReadAction} className="flex-1 md:flex-initial">
+                          <input type="hidden" name="id" value={n.id} />
+                          <Button variant="outline" size="sm" className="w-full">
+                            Marcar como lido
+                          </Button>
+                        </form>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
 

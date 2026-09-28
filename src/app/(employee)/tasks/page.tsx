@@ -1,6 +1,7 @@
 import { getAuthenticatedContext } from "@/application/security/auth-context";
 import { taskScope } from "@/application/security/operational-scope";
 import { prisma } from "@/infrastructure/database/prisma";
+import { effectiveWorkSeconds } from "@/domain/rules/execution-state";
 import { taskTiming } from "@/domain/rules/task-metrics";
 import { EmployeeShell } from "@/presentation/components/mobile/employee-shell";
 import { PageHeader } from "@/presentation/components/shared";
@@ -62,6 +63,8 @@ export default async function EmployeeTasksPage({
     deadlineAt: true,
     completedAt: true,
     startedAt: true,
+    actualDuration: true,
+    sessions: { select: { startedAt: true, endedAt: true, pauses: { select: { startedAt: true, endedAt: true } } } },
     slaDueAt: true,
     location: { select: { id: true, name: true, timezone: true } },
     team: { select: { id: true, name: true } },
@@ -114,6 +117,8 @@ export default async function EmployeeTasksPage({
     ],
   });
 
+  const snapshotAt = new Date();
+
   function formatTask(t: (typeof assigned)[0], isUnassigned: boolean): EmployeeTask {
     const timing = taskTiming(t, now);
     return {
@@ -128,6 +133,9 @@ export default async function EmployeeTasksPage({
       deadlineAt: t.deadlineAt ? t.deadlineAt.toISOString() : null,
       completedAt: t.completedAt ? t.completedAt.toISOString() : null,
       startedAt: t.startedAt ? t.startedAt.toISOString() : null,
+      slaDueAt: t.slaDueAt?.toISOString() ?? null,
+      elapsedSeconds: t.sessions.length ? effectiveWorkSeconds(t.sessions, snapshotAt) : t.actualDuration,
+      timerRunning: t.status === "IN_PROGRESS" && t.sessions.some(session => !session.endedAt && !session.pauses.some(pause => !pause.endedAt)),
       slaExceeded: timing.slaExceeded,
       delayMinutes: timing.delayMinutes,
       locationName: t.location?.name || null,
@@ -170,7 +178,7 @@ export default async function EmployeeTasksPage({
           subtitle="Acompanhe suas atividades no turno e assuma novas tarefas da equipe."
         />
 
-        <EmployeeKanbanBoard tasks={allTasks} initialColumn={initialCol} />
+        <EmployeeKanbanBoard tasks={allTasks} initialColumn={initialCol} snapshotAt={snapshotAt.getTime()} />
       </div>
     </EmployeeShell>
   );

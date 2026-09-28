@@ -52,7 +52,22 @@ export async function generateRoutineExecution(routineId: string, context: Authe
       taskIds.set(t.id, task.id);
       if (t.primaryMemberId) {
         const member = await tx.organizationMember.findFirst({ where: { id: t.primaryMemberId, organizationId: context.organizationId, status: "ACTIVE", user: { status: "ACTIVE" }, teamMemberships: { some: { teamId: t.teamId } }, locationAccesses: { some: { locationId: definition.locationId, AND: [{ OR: [{ startsAt: null }, { startsAt: { lte: scheduledAt } }] }, { OR: [{ expiresAt: null }, { expiresAt: { gt: scheduledAt } }] }] } } } });
-        if (member) await tx.taskAssignment.create({ data: { taskId: task.id, memberId: member.id, assignedBy: context.memberId || null } });
+        if (member) {
+          await tx.taskAssignment.create({ data: { taskId: task.id, memberId: member.id, assignedBy: context.memberId || null } });
+          if (!blocked) {
+            await tx.notification.create({
+              data: {
+                organizationId: context.organizationId,
+                userId: member.userId,
+                type: "TASK_ASSIGNED",
+                priority: definition.criticality,
+                title: "Você recebeu uma tarefa de rotina",
+                message: t.title,
+                data: { taskId: task.id, executionId: execution.id },
+              },
+            });
+          }
+        }
       }
     }
     for (const t of definition.tasks) for (const id of t.dependsOn) await tx.taskDependency.create({ data: { taskId: taskIds.get(t.id)!, dependsOnId: taskIds.get(id)!, type: t.dependencyType, logic: t.dependencyLogic } });
