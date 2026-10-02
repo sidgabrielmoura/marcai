@@ -3,7 +3,6 @@ import { getManagementContext } from "@/application/security/auth-context";
 import { readProcessDefinition } from "@/domain/rules/process-definition";
 import { prisma } from "@/infrastructure/database/prisma";
 import { ManagementShell } from "@/presentation/components/mobile/management-shell";
-import { ProcessNavTabs } from "@/presentation/components/processes/process-nav-tabs";
 import { ProcessListClient } from "@/presentation/components/processes/process-list-client";
 
 export default async function ManagementProcessesPage({
@@ -13,7 +12,7 @@ export default async function ManagementProcessesPage({
 }) {
   const { tab } = await searchParams;
   if (tab === "archived") {
-    redirect("/management/processes/archived");
+    redirect("/management/archived");
   }
 
   const context = await getManagementContext();
@@ -73,7 +72,6 @@ export default async function ManagementProcessesPage({
       orgName={context.organizationName}
       role={context.role}
     >
-      <ProcessNavTabs />
       <ProcessListClient processes={formatted} userRole={context.role} />
     </ManagementShell>
   );

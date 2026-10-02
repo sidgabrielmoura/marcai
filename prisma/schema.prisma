@@ -143,8 +143,9 @@ model User {
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
-  memberships OrganizationMember[]
-  resetTokens PasswordResetToken[]
+  memberships  OrganizationMember[]
+  resetTokens  PasswordResetToken[]
+  deviceTokens UserDeviceToken[]
 
   @@map("users")
 }
@@ -440,6 +441,7 @@ model Task {
   slaDurationMinutes Int?
   slaDueAt           DateTime?
   slaExceededAt      DateTime?
+  toleranceMinutes   Int?        @default(20)
   estimatedDuration  Int?
   maxDuration        Int?
   actualDuration     Int?
@@ -771,4 +773,19 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+model UserDeviceToken {
+  id         String   @id @default(cuid())
+  userId     String
+  token      String   @unique
+  userAgent  String?
+  lastUsedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_device_tokens")
 }

@@ -32,6 +32,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "@/components/ui/toast";
 import { Field, FieldLabel, FieldGroup, FieldSet, FieldLegend } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { ScheduleFields } from "./schedule-fields";
@@ -109,7 +110,6 @@ export function ProcessEditorWizard({
   const heading = useRef<HTMLHeadingElement>(null);
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
 
   const [value, setValue] = useState<ProcessDefinition>(
     initial ?? {
@@ -174,7 +174,11 @@ export function ProcessEditorWizard({
   function navigate(next: number) {
     if (next > step) {
       if (step === 0 && (value.name.trim().length < 3 || !value.locationId)) {
-        setError("Informe o nome do processo e escolha uma unidade para continuar.");
+        toast.add({
+          title: "Campos obrigatórios",
+          description: "Informe o nome do processo e escolha uma unidade para continuar.",
+          type: "warning",
+        });
         return;
       }
       if (
@@ -188,11 +192,14 @@ export function ProcessEditorWizard({
               t.slaMinutes < 1,
           ))
       ) {
-        setError("Adicione pelo menos uma tarefa e preencha nome, equipe e tempos válidos.");
+        toast.add({
+          title: "Tarefas incompletas",
+          description: "Adicione pelo menos uma tarefa e preencha nome, equipe e tempos válidos.",
+          type: "warning",
+        });
         return;
       }
     }
-    setError("");
     setStep(next);
     requestAnimationFrame(() => heading.current?.focus());
   }
@@ -200,23 +207,42 @@ export function ProcessEditorWizard({
   async function save() {
     const parsed = processDefinitionSchema.safeParse(value);
     if (!parsed.success) {
-      setError(parsed.error.issues[0].message);
+      toast.add({
+        title: "Erro de validação",
+        description: parsed.error.issues[0].message,
+        type: "error",
+      });
       return;
     }
     setBusy(true);
-    setError("");
     try {
       const form = new FormData();
       form.set("definition", JSON.stringify(parsed.data));
       if (processId) form.set("processId", processId);
       const result = await createProcessAction(form);
-      if (result.error) setError(result.error);
-      else {
+      if (result.error) {
+        toast.add({
+          title: "Erro ao salvar processo",
+          description: result.error,
+          type: "error",
+        });
+      } else {
+        toast.add({
+          title: processId ? "Processo atualizado" : "Processo criado",
+          description: processId
+            ? "O processo foi atualizado com sucesso."
+            : "O processo foi criado com sucesso.",
+          type: "success",
+        });
         router.push("/management/processes");
         router.refresh();
       }
     } catch {
-      setError("Não foi possível salvar. Seus dados continuam nesta tela; tente novamente.");
+      toast.add({
+        title: "Erro ao salvar",
+        description: "Não foi possível salvar. Seus dados continuam nesta tela; tente novamente.",
+        type: "error",
+      });
     } finally {
       setBusy(false);
     }
@@ -279,13 +305,6 @@ export function ProcessEditorWizard({
           </CardHeader>
 
           <CardContent className="flex flex-col gap-6">
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-
-            {/* ETAPA 0: DADOS GERAIS (SIMPLIFICADO) */}
             {step === 0 && (
               <FieldGroup className="gap-4">
                 <Field>
@@ -627,12 +646,7 @@ export function ProcessEditorWizard({
               (processId ? (
                 <Alert>
                   <AlertDescription>
-                    A edição atualiza as tarefas deste processo. Para programar ou alterar horários
-                    recorrentes, acesse{" "}
-                    <Link className="underline font-semibold" href={`/management/routines?process=${processId}`}>
-                      Rotinas deste processo
-                    </Link>
-                    .
+                    A edição atualiza as tarefas e a estrutura definida para este processo.
                   </AlertDescription>
                 </Alert>
               ) : (

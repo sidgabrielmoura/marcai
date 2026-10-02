@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, AlertCircle } from "lucide-react";
+import { Plus } from "lucide-react";
 import { createAdHocTaskAction } from "@/presentation/actions/management-task-actions";
 
 import { PageHeader } from "@/presentation/components/shared";
@@ -21,7 +21,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "@/components/ui/toast";
 import { Spinner } from "@/components/ui/spinner";
 
 interface CreateTaskFormProps {
@@ -55,6 +55,17 @@ const evidenceTypeItems = [
   { label: "Arquivo", value: "FILE" },
 ];
 
+const toleranceItems = [
+  { label: "0 minutos (Sem tolerância)", value: "0" },
+  { label: "5 minutos", value: "5" },
+  { label: "10 minutos", value: "10" },
+  { label: "15 minutos", value: "15" },
+  { label: "20 minutos (Padrão)", value: "20" },
+  { label: "30 minutos", value: "30" },
+  { label: "45 minutos", value: "45" },
+  { label: "60 minutos (1 hora)", value: "60" },
+];
+
 export function CreateTaskForm({
   locations,
   teams,
@@ -62,13 +73,13 @@ export function CreateTaskForm({
 }: CreateTaskFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const [locationId, setLocationId] = useState<string>(locations[0]?.id || "");
   const [teamId, setTeamId] = useState<string>("none");
   const [primaryMemberId, setPrimaryMemberId] = useState<string>("none");
   const [priority, setPriority] = useState<string>("MEDIUM");
   const [criticality, setCriticality] = useState<string>("MEDIUM");
+  const [toleranceMinutes, setToleranceMinutes] = useState<string>("20");
   const [evidenceType, setEvidenceType] = useState<string>("NONE");
   const [evidenceRequired, setEvidenceRequired] = useState<boolean>(true);
 
@@ -91,7 +102,6 @@ export function CreateTaskForm({
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
-    setErrorMsg(null);
 
     const formData = new FormData(e.currentTarget);
     // Explicitly guarantee values in formData
@@ -103,18 +113,32 @@ export function CreateTaskForm({
     );
     formData.set("priority", priority);
     formData.set("criticality", criticality);
+    formData.set("toleranceMinutes", toleranceMinutes);
     formData.set("evidenceType", evidenceType === "NONE" ? "" : evidenceType);
     formData.set("evidenceRequired", evidenceRequired ? "true" : "false");
 
     try {
       const res = await createAdHocTaskAction(formData);
       if (res.error) {
-        setErrorMsg(res.error);
+        toast.add({
+          title: "Erro ao criar tarefa",
+          description: res.error,
+          type: "error",
+        });
       } else {
+        toast.add({
+          title: "Tarefa criada",
+          description: "Tarefa criada com sucesso.",
+          type: "success",
+        });
         router.push("/management/tasks");
       }
     } catch {
-      setErrorMsg("Erro inesperado ao criar tarefa.");
+      toast.add({
+        title: "Erro inesperado",
+        description: "Erro inesperado ao criar tarefa.",
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -123,17 +147,10 @@ export function CreateTaskForm({
   return (
     <div className="page-stack">
       <PageHeader
-        title="Criar tarefa"
-        subtitle="Defina o que precisa ser feito e quem será responsável."
+        title="Criar tarefa avulsa"
+        subtitle="Cadastre uma demanda pontual para a equipe (fora de rotinas de processos)."
         backHref="/management/tasks"
       />
-
-      {errorMsg && (
-        <Alert variant="destructive" className="rounded-[14px]">
-          <AlertCircle data-icon="inline-start" />
-          <AlertDescription>{errorMsg}</AlertDescription>
-        </Alert>
-      )}
 
       <form onSubmit={handleSubmit} className="task-form-grid">
         {/* Bloco 1: Dados Gerais */}
@@ -356,6 +373,32 @@ export function CreateTaskForm({
                 placeholder="Ex: 60"
                 className="w-full h-11 text-[length:var(--type-label)] px-3.5 bg-[var(--canvas)] border-[var(--border-subtle)] rounded-[14px] text-[var(--brand-900)]"
               />
+            </Field>
+
+            <Field>
+              <FieldLabel className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]">
+                Tempo de tolerância
+              </FieldLabel>
+              <Select
+                items={toleranceItems}
+                value={toleranceMinutes}
+                onValueChange={(val) => {
+                  if (val) setToleranceMinutes(val);
+                }}
+              >
+                <SelectTrigger className="w-full h-11 text-[length:var(--type-label)] px-3.5 bg-[var(--canvas)] border-[var(--border-subtle)] rounded-[14px] text-[var(--brand-900)]">
+                  <SelectValue placeholder="Tolerância (padrão 20 min)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {toleranceItems.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </Field>
           </div>
         </Card>

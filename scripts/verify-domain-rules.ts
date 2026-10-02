@@ -1,4 +1,5 @@
-import { canStartTask, isManagerInScope, canCompleteTask, canAccessTask } from "../src/domain/rules/task-rules";
+import { canStartTask, isManagerInScope, canCompleteTask, canAccessTask, canPauseTask, canResumeTask, canReportImpediment } from "../src/domain/rules/task-rules";
+import { calculateMemberAvailability, sortMembersByAvailability } from "../src/domain/rules/member-availability";
 import { ManagerScope } from "../src/domain/types";
 
 function assert(condition: boolean, message: string) {
@@ -119,15 +120,72 @@ const depInfo = evaluateTaskDependencies([
 ]);
 assert(depInfo.isBlocked === false, "Dependência INFORMATIVE não bloqueia execução");
 
-// 5. Invariante: Pausa e Retomada de Tarefas (Item 20)
-assert(canPauseTask("IN_PROGRESS").allowed === true, "Tarefa IN_PROGRESS pode ser pausada");
-assert(canPauseTask("AVAILABLE").allowed === false, "Tarefa AVAILABLE não pode ser pausada sem iniciar");
+// 5. Invariante: Pausa e Retomada de Tarefas (Item 20 - Sistema não permite pausar tarefas)
+assert(canPauseTask("IN_PROGRESS").allowed === false, "Sistema não permite pausar tarefas");
+assert(canPauseTask("AVAILABLE").allowed === false, "Tarefa AVAILABLE não pode ser pausada");
 assert(canResumeTask("PAUSED").allowed === true, "Tarefa PAUSED pode ser retomada");
 assert(canResumeTask("IN_PROGRESS").allowed === false, "Tarefa já em andamento não pode ser retomada");
 
 // 6. Invariante: Impedimento Operacional (Item 26)
 assert(canReportImpediment("IN_PROGRESS").allowed === true, "Impedimento operacional pode ser registrado em tarefa em andamento");
 assert(canReportImpediment("COMPLETED").allowed === false, "Impedimento não pode ser registrado em tarefa concluída");
+
+// 7. Invariante: Disponibilidade Operacional 100% Automatizada
+assert(
+  calculateMemberAvailability({
+    memberStatus: "INACTIVE",
+    isWithinOperatingHours: true,
+    inProgressTasksCount: 0,
+  }) === "UNAVAILABLE",
+  "Membro INACTIVE fica UNAVAILABLE mesmo no expediente"
+);
+
+assert(
+  calculateMemberAvailability({
+    memberStatus: "ACTIVE",
+    isWithinOperatingHours: false,
+    inProgressTasksCount: 0,
+  }) === "UNAVAILABLE",
+  "Membro ACTIVE fora do expediente fica UNAVAILABLE"
+);
+
+assert(
+  calculateMemberAvailability({
+    memberStatus: "ACTIVE",
+    isWithinOperatingHours: true,
+    inProgressTasksCount: 2,
+  }) === "BUSY",
+  "Membro ACTIVE no expediente com tarefas em andamento fica BUSY"
+);
+
+assert(
+  calculateMemberAvailability({
+    memberStatus: "ACTIVE",
+    isWithinOperatingHours: true,
+    inProgressTasksCount: 0,
+  }) === "AVAILABLE",
+  "Membro ACTIVE no expediente e sem tarefas ativas fica AVAILABLE"
+);
+
+// Ignora qualquer tentativa de override manual
+assert(
+  calculateMemberAvailability({
+    memberStatus: "ACTIVE",
+    manualSetting: "UNAVAILABLE",
+    isWithinOperatingHours: true,
+    inProgressTasksCount: 0,
+  }) === "AVAILABLE",
+  "Disponibilidade é estritamente automatizada e ignora tentativas de override manual"
+);
+
+const sorted = sortMembersByAvailability([
+  { id: "1", name: "Zeca", availability: "UNAVAILABLE" },
+  { id: "2", name: "Ana", availability: "BUSY" },
+  { id: "3", name: "Beto", availability: "AVAILABLE" },
+]);
+assert(sorted[0].availability === "AVAILABLE", "Prioridade 1 de atribuição é AVAILABLE");
+assert(sorted[1].availability === "BUSY", "Prioridade 2 de atribuição é BUSY");
+assert(sorted[2].availability === "UNAVAILABLE", "Prioridade 3 de atribuição é UNAVAILABLE");
 
 console.log("=== TODOS OS TESTES DE REGRAS DE DOMÍNIO PASSARAM COM SUCESSO! ===");
 

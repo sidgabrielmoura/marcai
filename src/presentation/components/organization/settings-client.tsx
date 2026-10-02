@@ -8,8 +8,6 @@ import {
   Shield,
   Clock,
   Database,
-  CheckCircle2,
-  AlertCircle,
   Save,
   Trash2,
   Info,
@@ -23,7 +21,7 @@ import { PageHeader } from "@/presentation/components/shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "@/components/ui/toast";
 import { Field, FieldLabel, FieldDescription } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -50,13 +48,8 @@ export function SettingsClient({
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<string>("org");
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const orgSettings = organization.settings || {};
-  const [policy, setPolicy] = useState(
-    orgSettings.earlyExecutionPolicy || "ALLOW_AND_LOG",
-  );
 
   const initialMilestones: number[] =
     Array.isArray(orgSettings.delayMilestones) && orgSettings.delayMilestones.length > 0
@@ -70,22 +63,35 @@ export function SettingsClient({
     4: initialMilestones[3] ?? 120,
   });
 
+  const [allowManagersToEditSensitiveData, setAllowManagersToEditSensitiveData] =
+    useState<boolean>(Boolean(orgSettings.allowManagersToEditSensitiveData));
+
   const [purgeLoading, setPurgeLoading] = useState(false);
-  const [purgeResult, setPurgeResult] = useState<string | null>(null);
 
   async function handleRunPurge() {
     setPurgeLoading(true);
-    setPurgeResult(null);
     try {
       const res = await executeRetentionPurgeAction();
       if (res.success && res.data) {
         const d = res.data as { trashedTasksPurged: number; evidencesPurged: number; executionsArchived: number };
-        setPurgeResult(`Expurgo concluído: ${d.trashedTasksPurged} tarefas excluídas, ${d.evidencesPurged} arquivos removidos, ${d.executionsArchived} execuções arquivadas.`);
+        toast.add({
+          title: "Expurgo concluído",
+          description: `${d.trashedTasksPurged} tarefas excluídas, ${d.evidencesPurged} arquivos removidos e ${d.executionsArchived} execuções arquivadas.`,
+          type: "success",
+        });
       } else {
-        setPurgeResult(res.error || "Erro ao executar expurgo.");
+        toast.add({
+          title: "Erro no expurgo",
+          description: res.error || "Erro ao executar expurgo.",
+          type: "error",
+        });
       }
     } catch {
-      setPurgeResult("Erro ao executar expurgo.");
+      toast.add({
+        title: "Erro",
+        description: "Erro ao executar expurgo.",
+        type: "error",
+      });
     } finally {
       setPurgeLoading(false);
     }
@@ -94,22 +100,29 @@ export function SettingsClient({
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
-    setErrorMsg(null);
-    setSuccessMsg(null);
     const formData = new FormData(e.currentTarget);
-    if (!formData.get("earlyExecutionPolicy") && policy) {
-      formData.set("earlyExecutionPolicy", policy);
-    }
     try {
       const res = await updateOrganizationSettingsAction(formData);
       if (res.error) {
-        setErrorMsg(res.error);
+        toast.add({
+          title: "Erro ao salvar",
+          description: res.error,
+          type: "error",
+        });
       } else {
-        setSuccessMsg("Configurações atualizadas.");
+        toast.add({
+          title: "Configurações atualizadas",
+          description: "As alterações foram salvas com sucesso.",
+          type: "success",
+        });
         router.refresh();
       }
     } catch {
-      setErrorMsg("Erro ao atualizar configurações.");
+      toast.add({
+        title: "Erro",
+        description: "Erro ao atualizar configurações.",
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -128,20 +141,6 @@ export function SettingsClient({
         title="Configurações"
         subtitle="Ajuste os dados da organização, os prazos e os acessos."
       />
-
-      {errorMsg && (
-        <Alert variant="destructive">
-          <AlertCircle className="size-4 shrink-0" />
-          <AlertDescription>{errorMsg}</AlertDescription>
-        </Alert>
-      )}
-
-      {successMsg && (
-        <Alert className="bg-emerald-50 border-emerald-200 text-emerald-800">
-          <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
-          <AlertDescription>{successMsg}</AlertDescription>
-        </Alert>
-      )}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <Tabs
@@ -201,52 +200,6 @@ export function SettingsClient({
                     Este código é fixo e identifica a empresa no acesso por PIN.
                   </FieldDescription>
                 </Field>
-
-                <Field className="flex flex-col gap-2">
-                  <FieldLabel className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]">
-                    Início de rotinas antes do horário previsto
-                  </FieldLabel>
-                  <FieldDescription className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                    Define o comportamento do sistema quando um colaborador tenta iniciar uma rotina ou tarefa antes do horário oficial agendado (ex.: a rotina está programada para 08:00, mas o colaborador chegou às 07:30 e deseja iniciar o checklist).
-                  </FieldDescription>
-                  <NativeSelect
-                    name="earlyExecutionPolicy"
-                    value={policy}
-                    onChange={(e) => setPolicy(e.target.value)}
-                    className="w-full h-10"
-                  >
-                    <NativeSelectOption value="ALLOW_AND_LOG">
-                      Permitir e registrar no histórico (Recomendado) — Inicia livremente e registra o adiantamento para auditoria
-                    </NativeSelectOption>
-                    <NativeSelectOption value="ALLOW">
-                      Permitir livremente — Colaborador inicia a qualquer momento sem avisos especiais
-                    </NativeSelectOption>
-                    <NativeSelectOption value="ALLOW_AND_ALERT">
-                      Permitir com aviso ao gestor — Colaborador inicia e o gestor recebe notificação imediata
-                    </NativeSelectOption>
-                    <NativeSelectOption value="BLOCK">
-                      Bloquear execução antecipada — Só permite iniciar a partir do minuto exato agendado
-                    </NativeSelectOption>
-                  </NativeSelect>
-
-                  <div className="rounded-xl bg-slate-50 border border-slate-200/80 p-3 text-xs text-slate-700 flex items-start gap-2.5 mt-1">
-                    <Info className="size-4 text-blue-600 shrink-0 mt-0.5" />
-                    <div>
-                      {policy === "ALLOW_AND_LOG" && (
-                        <span><strong>Como funciona na prática:</strong> O colaborador não fica travado se quiser adiantar o trabalho. A execução é liberada e o sistema anota que foi iniciada antes do horário para seus relatórios de pontualidade.</span>
-                      )}
-                      {policy === "ALLOW" && (
-                        <span><strong>Como funciona na prática:</strong> Total flexibilidade. Tarefas programadas podem ser abertas e preenchidas a qualquer momento sem restrições.</span>
-                      )}
-                      {policy === "ALLOW_AND_ALERT" && (
-                        <span><strong>Como funciona na prática:</strong> O colaborador consegue iniciar a tarefa antes da hora, mas o sistema envia uma notificação aos gestores da unidade/equipe avisando do adiantamento.</span>
-                      )}
-                      {policy === "BLOCK" && (
-                        <span><strong>Como funciona na prática:</strong> Controle rígido. O colaborador visualiza a tarefa na lista, mas o botão de início permanece travado até o horário agendado.</span>
-                      )}
-                    </div>
-                  </div>
-                </Field>
               </CardContent>
             </Card>
           </TabsContent>
@@ -276,21 +229,21 @@ export function SettingsClient({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Card 1 */}
-                  <div className="p-4 rounded-xl border border-blue-100 bg-blue-50/40 flex flex-col gap-2.5">
+                  <div className="p-4 sm:p-5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] flex flex-col gap-3 transition-colors hover:border-[var(--brand-900)]/30">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="size-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">
+                      <div className="flex items-center gap-2.5">
+                        <div className="size-7 rounded-lg bg-[var(--canvas)] text-[var(--text-primary)] border border-[var(--border-subtle)] flex items-center justify-center font-bold text-xs">
                           1º
                         </div>
-                        <span className="font-semibold text-sm text-[var(--brand-900)]">
+                        <span className="font-semibold text-sm text-[var(--text-primary)]">
                           Lembrete de Tolerância
                         </span>
                       </div>
-                      <span className="text-[10px] font-medium bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                      <span className="text-[11px] font-medium text-[var(--text-secondary)] bg-[var(--canvas)] border border-[var(--border-subtle)] px-2.5 py-0.5 rounded-full">
                         Início do atraso
                       </span>
                     </div>
-                    <p className="text-xs text-[var(--text-secondary)]">
+                    <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
                       Primeiro aviso à equipe assim que o prazo limite da tarefa expirar.
                     </p>
                     <div className="mt-1">
@@ -302,7 +255,7 @@ export function SettingsClient({
                             1: Number(e.target.value),
                           }))
                         }
-                        className="w-full h-9 bg-white"
+                        className="w-full h-9 bg-[var(--canvas)] border-[var(--border-subtle)] text-xs"
                       >
                         <NativeSelectOption value={5}>5 minutos de atraso</NativeSelectOption>
                         <NativeSelectOption value={10}>10 minutos de atraso</NativeSelectOption>
@@ -314,21 +267,21 @@ export function SettingsClient({
                   </div>
 
                   {/* Card 2 */}
-                  <div className="p-4 rounded-xl border border-amber-100 bg-amber-50/40 flex flex-col gap-2.5">
+                  <div className="p-4 sm:p-5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] flex flex-col gap-3 transition-colors hover:border-[var(--brand-900)]/30">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="size-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-xs">
+                      <div className="flex items-center gap-2.5">
+                        <div className="size-7 rounded-lg bg-[var(--canvas)] text-[var(--text-primary)] border border-[var(--border-subtle)] flex items-center justify-center font-bold text-xs">
                           2º
                         </div>
-                        <span className="font-semibold text-sm text-[var(--brand-900)]">
+                        <span className="font-semibold text-sm text-[var(--text-primary)]">
                           Atenção Operacional
                         </span>
                       </div>
-                      <span className="text-[10px] font-medium bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                      <span className="text-[11px] font-medium text-[var(--text-secondary)] bg-[var(--canvas)] border border-[var(--border-subtle)] px-2.5 py-0.5 rounded-full">
                         Atraso moderado
                       </span>
                     </div>
-                    <p className="text-xs text-[var(--text-secondary)]">
+                    <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
                       Segundo aviso caso a tarefa permaneça sem finalização.
                     </p>
                     <div className="mt-1">
@@ -340,7 +293,7 @@ export function SettingsClient({
                             2: Number(e.target.value),
                           }))
                         }
-                        className="w-full h-9 bg-white"
+                        className="w-full h-9 bg-[var(--canvas)] border-[var(--border-subtle)] text-xs"
                       >
                         <NativeSelectOption value={15}>15 minutos de atraso</NativeSelectOption>
                         <NativeSelectOption value={30}>30 minutos de atraso (Padrão)</NativeSelectOption>
@@ -352,21 +305,21 @@ export function SettingsClient({
                   </div>
 
                   {/* Card 3 */}
-                  <div className="p-4 rounded-xl border border-orange-100 bg-orange-50/40 flex flex-col gap-2.5">
+                  <div className="p-4 sm:p-5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] flex flex-col gap-3 transition-colors hover:border-[var(--brand-900)]/30">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="size-7 rounded-lg bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-xs">
+                      <div className="flex items-center gap-2.5">
+                        <div className="size-7 rounded-lg bg-[var(--canvas)] text-[var(--text-primary)] border border-[var(--border-subtle)] flex items-center justify-center font-bold text-xs">
                           3º
                         </div>
-                        <span className="font-semibold text-sm text-[var(--brand-900)]">
+                        <span className="font-semibold text-sm text-[var(--text-primary)]">
                           Atraso Crítico
                         </span>
                       </div>
-                      <span className="text-[10px] font-medium bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
+                      <span className="text-[11px] font-medium text-[var(--text-secondary)] bg-[var(--canvas)] border border-[var(--border-subtle)] px-2.5 py-0.5 rounded-full">
                         Aviso aos gestores
                       </span>
                     </div>
-                    <p className="text-xs text-[var(--text-secondary)]">
+                    <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
                       Notificação direta aos gestores e supervisores da equipe.
                     </p>
                     <div className="mt-1">
@@ -378,7 +331,7 @@ export function SettingsClient({
                             3: Number(e.target.value),
                           }))
                         }
-                        className="w-full h-9 bg-white"
+                        className="w-full h-9 bg-[var(--canvas)] border-[var(--border-subtle)] text-xs"
                       >
                         <NativeSelectOption value={45}>45 minutos de atraso</NativeSelectOption>
                         <NativeSelectOption value={60}>60 minutos (1 hora - Padrão)</NativeSelectOption>
@@ -390,21 +343,21 @@ export function SettingsClient({
                   </div>
 
                   {/* Card 4 */}
-                  <div className="p-4 rounded-xl border border-red-100 bg-red-50/40 flex flex-col gap-2.5">
+                  <div className="p-4 sm:p-5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] flex flex-col gap-3 transition-colors hover:border-[var(--brand-900)]/30">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="size-7 rounded-lg bg-red-100 text-red-700 flex items-center justify-center font-bold text-xs">
+                      <div className="flex items-center gap-2.5">
+                        <div className="size-7 rounded-lg bg-[var(--canvas)] text-[var(--text-primary)] border border-[var(--border-subtle)] flex items-center justify-center font-bold text-xs">
                           4º
                         </div>
-                        <span className="font-semibold text-sm text-[var(--brand-900)]">
+                        <span className="font-semibold text-sm text-[var(--text-primary)]">
                           Incidente Grave
                         </span>
                       </div>
-                      <span className="text-[10px] font-medium bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
+                      <span className="text-[11px] font-medium text-[var(--text-secondary)] bg-[var(--canvas)] border border-[var(--border-subtle)] px-2.5 py-0.5 rounded-full">
                         Escalação máxima
                       </span>
                     </div>
-                    <p className="text-xs text-[var(--text-secondary)]">
+                    <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
                       Alerta máximo por estouro severo de prazo de entrega.
                     </p>
                     <div className="mt-1">
@@ -416,7 +369,7 @@ export function SettingsClient({
                             4: Number(e.target.value),
                           }))
                         }
-                        className="w-full h-9 bg-white"
+                        className="w-full h-9 bg-[var(--canvas)] border-[var(--border-subtle)] text-xs"
                       >
                         <NativeSelectOption value={90}>90 minutos (1h 30m)</NativeSelectOption>
                         <NativeSelectOption value={120}>120 minutos (2 horas - Padrão)</NativeSelectOption>
@@ -434,24 +387,67 @@ export function SettingsClient({
           {/* Aba Segurança */}
           <TabsContent value="security" keepMounted>
             <Card className="p-6">
-              <CardContent className="p-0 flex flex-col gap-4">
-                <h3 className="text-[var(--text-primary)] text-[length:var(--type-card-title)] font-bold">
-                  Permissões e acesso
-                </h3>
-
-                <p className="text-[length:var(--type-label)] text-[var(--text-secondary)]">
-                  Na área de pessoas, adicione colaboradores, defina permissões
-                  e redefina PINs.
-                </p>
+              <CardContent className="p-0 flex flex-col gap-5">
                 <div>
-                  <Button nativeButton={false}
-                    variant="outline"
-                    size="sm"
-                    render={<Link href="/management/people" />}
-                    className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]"
-                  >
-                    Gerenciar pessoas e acessos
-                  </Button>
+                  <h3 className="text-[var(--text-primary)] text-[length:var(--type-card-title)] font-bold">
+                    Permissões e controle de acesso
+                  </h3>
+                  <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
+                    Configure os privilégios da equipe e o nível de autonomia concedido aos gestores operacionais.
+                  </p>
+                </div>
+
+                <input type="hidden" name="hasSecuritySettings" value="true" />
+                <input
+                  type="hidden"
+                  name="allowManagersToEditSensitiveData"
+                  value={allowManagersToEditSensitiveData ? "true" : "false"}
+                />
+
+                <div className="p-4 rounded-xl border border-slate-200 bg-white flex flex-col gap-3 shadow-xs">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-sm text-[var(--brand-900)]">
+                          Permitir que gestores alterem dados sensíveis de colaboradores
+                        </span>
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                          {allowManagersToEditSensitiveData ? "Habilitado" : "Desabilitado"}
+                        </span>
+                      </div>
+                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                        Quando esta opção estiver <strong>ativada</strong>, usuários com cargo de <strong>Gestor (MANAGER)</strong> poderão alterar senha, PIN, permissão e unidade dos funcionários das suas equipes na página de pessoas.
+                        <br />
+                        Quando <strong>desativada</strong> (padrão), gestores têm permissão apenas para alterar dados simples: nome, e-mail e equipe.
+                      </p>
+                    </div>
+
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
+                      <input
+                        type="checkbox"
+                        checked={allowManagersToEditSensitiveData}
+                        onChange={(e) => setAllowManagersToEditSensitiveData(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--brand-900)]"></div>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-[var(--border-subtle)]">
+                  <p className="text-xs text-[var(--text-secondary)]">
+                    Deseja cadastrar novas pessoas, alterar cargos ou redefinir acessos diretamente?
+                  </p>
+                  <div>
+                    <Button nativeButton={false}
+                      variant="outline"
+                      size="sm"
+                      render={<Link href="/management/people" />}
+                      className="text-xs font-semibold text-[var(--brand-900)]"
+                    >
+                      Gerenciar pessoas e acessos
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -536,11 +532,6 @@ export function SettingsClient({
                     <p className="text-xs text-[var(--text-secondary)]">
                       Aplica as regras acima imediatamente: remove permanentemente itens na lixeira há mais tempo que o configurado e arquiva históricos antigos.
                     </p>
-                    {purgeResult && (
-                      <p className="text-xs text-[var(--brand-700)] font-medium mt-1">
-                        {purgeResult}
-                      </p>
-                    )}
                   </div>
                   {["OWNER", "ADMIN"].includes(userRole) && (
                     <Button
@@ -561,11 +552,11 @@ export function SettingsClient({
           </TabsContent>
         </Tabs>
 
-        {["OWNER", "ADMIN"].includes(userRole) && activeTab !== "security" && (
+        {["OWNER", "ADMIN"].includes(userRole) && (
           <Button
             type="submit"
             disabled={loading}
-            className="w-full min-h-[48px] bg-[var(--brand-900)] text-white text-[length:var(--type-label)] font-semibold hover:bg-[var(--brand-700)] shadow-sm"
+            className="w-full min-h-12 bg-brand-900 text-white text-(length:--type-label) font-semibold hover:bg-brand-700 shadow-sm"
           >
             {loading ? (
               <Spinner className="size-4" data-icon="inline-start" />

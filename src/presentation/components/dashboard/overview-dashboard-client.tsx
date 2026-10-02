@@ -8,10 +8,8 @@ import {
   Clock,
   ChevronLeft,
   ChevronRight,
-  AlertCircle,
-  CheckCircle2,
 } from "lucide-react";
-import { PageHeader, EmptyState, StatusBadge } from "../shared";
+import { PageHeader, EmptyState, StatusBadge, PriorityBadge } from "../shared";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -33,7 +31,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "../shared/modal";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "@/components/ui/toast";
 import { Spinner } from "@/components/ui/spinner";
 import { createScheduledReportAction } from "@/presentation/actions/report-actions";
 import type { TaskStatus, Priority, Criticality } from "@/domain/types";
@@ -100,7 +98,6 @@ export function OverviewDashboardClient({
   // Modal de Agendamento de Relatórios
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [scheduleLoading, setScheduleLoading] = useState(false);
-  const [scheduleMsg, setScheduleMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const filtered = useMemo(() => {
     return tasks.filter((t) => {
@@ -111,8 +108,15 @@ export function OverviewDashboardClient({
       const matchTeam = team === "ALL" || t.teamId === team;
       const matchProcess = process === "ALL" || t.processId === process;
       const matchAssignee = assignee === "ALL" || t.assigneeName === assignee;
-      const matchStatus = statusFilter === "ALL" || t.status === statusFilter;
-      const matchPriority = priorityFilter === "ALL" || t.priority === priorityFilter;
+      const matchStatus =
+        statusFilter === "ALL" ||
+        (statusFilter === "OPEN"
+          ? ["AVAILABLE", "IN_PROGRESS"].includes(t.status)
+          : statusFilter === "BLOCKED"
+            ? ["BLOCKED", "PAUSED"].includes(t.status)
+            : t.status === statusFilter);
+      const matchPriority =
+        priorityFilter === "ALL" || t.priority === priorityFilter;
 
       return (
         matchPeriod &&
@@ -142,8 +146,8 @@ export function OverviewDashboardClient({
 
   const averageDelay = breached.length
     ? Math.round(
-        breached.reduce((n, t) => n + t.delayMinutes, 0) / breached.length,
-      )
+      breached.reduce((n, t) => n + t.delayMinutes, 0) / breached.length,
+    )
     : 0;
 
   const durations = completed.filter(
@@ -151,11 +155,11 @@ export function OverviewDashboardClient({
   );
   const deviation = durations.length
     ? Math.round(
-        durations.reduce(
-          (n, t) => n + t.actualDuration! / 60 - t.estimatedDuration!,
-          0,
-        ) / durations.length,
-      )
+      durations.reduce(
+        (n, t) => n + t.actualDuration! / 60 - t.estimatedDuration!,
+        0,
+      ) / durations.length,
+    )
     : null;
 
   const activity = useMemo(() => {
@@ -280,19 +284,30 @@ export function OverviewDashboardClient({
   async function handleScheduleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setScheduleLoading(true);
-    setScheduleMsg(null);
     const formData = new FormData(e.currentTarget);
     formData.set("filters", JSON.stringify({ period, location, team, process }));
     try {
       const res = await createScheduledReportAction(formData);
       if (res.error) {
-        setScheduleMsg({ type: "error", text: res.error });
+        toast.add({
+          title: "Erro ao agendar relatório",
+          description: res.error,
+          type: "error",
+        });
       } else {
-        setScheduleMsg({ type: "success", text: "Relatório agendado com sucesso!" });
-        setTimeout(() => setShowScheduleModal(false), 1500);
+        toast.add({
+          title: "Relatório agendado",
+          description: "Relatório agendado com sucesso!",
+          type: "success",
+        });
+        setShowScheduleModal(false);
       }
     } catch {
-      setScheduleMsg({ type: "error", text: "Erro ao agendar envio." });
+      toast.add({
+        title: "Erro inesperado",
+        description: "Erro ao agendar envio.",
+        type: "error",
+      });
     } finally {
       setScheduleLoading(false);
     }
@@ -332,7 +347,6 @@ export function OverviewDashboardClient({
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  setScheduleMsg(null);
                   setShowScheduleModal(true);
                 }}
                 className="gap-1.5 h-9"
@@ -439,10 +453,9 @@ export function OverviewDashboardClient({
                 }}
               >
                 <NativeSelectOption value="ALL">Todos os status</NativeSelectOption>
+                <NativeSelectOption value="OPEN">Abertas</NativeSelectOption>
+                <NativeSelectOption value="BLOCKED">Bloqueadas</NativeSelectOption>
                 <NativeSelectOption value="COMPLETED">Concluídas</NativeSelectOption>
-                <NativeSelectOption value="IN_PROGRESS">Em andamento</NativeSelectOption>
-                <NativeSelectOption value="AVAILABLE">Disponíveis</NativeSelectOption>
-                <NativeSelectOption value="PAUSED">Pausadas</NativeSelectOption>
                 <NativeSelectOption value="SUBMITTED">Em aprovação</NativeSelectOption>
                 <NativeSelectOption value="NEEDS_CORRECTION">Em correção</NativeSelectOption>
                 <NativeSelectOption value="NOT_COMPLETED">Não realizadas</NativeSelectOption>
@@ -573,7 +586,7 @@ export function OverviewDashboardClient({
                   "Aguardando aprovação",
                   filtered.filter((t) => t.pendingApproval).length,
                 ],
-                ["Pausadas", filtered.filter((t) => t.isPaused).length],
+                ["Bloqueadas", filtered.filter((t) => t.status === "BLOCKED" || t.isPaused).length],
                 [
                   "Desvio médio de duração",
                   deviation === null
@@ -646,102 +659,111 @@ export function OverviewDashboardClient({
       </div>
 
       {/* Tabela de Detalhamento das Tarefas com Paginação */}
-      <Card>
-        <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      <Card className="bg-[var(--surface)] rounded-2xl overflow-hidden shadow-none border border-[var(--border-subtle)]">
+        <CardHeader className="px-6 py-5 border-b border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <CardTitle>Detalhamento operacional das tarefas</CardTitle>
-            <CardDescription>
-              Lista completa das tarefas filtradas para auditoria e controle fino.
+            <CardTitle className="text-base font-semibold text-[var(--text-primary)]">
+              Detalhamento operacional das tarefas
+            </CardTitle>
+            <CardDescription className="text-xs text-[var(--text-secondary)] mt-0.5">
+              Lista granular para auditoria e controle de prazos da operação.
             </CardDescription>
           </div>
-          <div className="text-xs text-muted-foreground">
-            Total: <strong>{filtered.length}</strong> tarefas
+          <div className="text-xs text-[var(--text-secondary)]">
+            Total: <strong className="font-semibold text-[var(--text-primary)]">{filtered.length}</strong> tarefas
           </div>
         </CardHeader>
 
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Tarefa</TableHead>
-                  <TableHead>Unidade / Equipe</TableHead>
-                  <TableHead>Responsável</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Prioridade</TableHead>
-                  <TableHead>Prazo limite (SLA)</TableHead>
-                  <TableHead className="text-right">Atraso</TableHead>
+            <Table className="w-full text-left">
+              <TableHeader className="bg-[var(--canvas)]/70 border-b border-[var(--border-subtle)] text-[var(--text-secondary)] text-xs font-semibold">
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="px-5 py-3.5 font-semibold text-[var(--text-primary)]">
+                    Tarefa
+                  </TableHead>
+                  <TableHead className="px-4 py-3.5 font-semibold text-[var(--text-primary)]">
+                    Local e Equipe
+                  </TableHead>
+                  <TableHead className="px-4 py-3.5 font-semibold text-[var(--text-primary)]">
+                    Responsável
+                  </TableHead>
+                  <TableHead className="px-4 py-3.5 font-semibold text-[var(--text-primary)]">
+                    Prioridade
+                  </TableHead>
+                  <TableHead className="px-4 py-3.5 font-semibold text-[var(--text-primary)]">
+                    Status
+                  </TableHead>
+                  <TableHead className="px-5 py-3.5 text-right font-semibold text-[var(--text-primary)]">
+                    Prazo
+                  </TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody className="divide-y divide-[var(--border-subtle)]">
                 {paginatedTasks.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center py-10 text-muted-foreground text-sm">
                       Nenhuma tarefa encontrada com os filtros selecionados.
                     </TableCell>
                   </TableRow>
                 ) : (
                   paginatedTasks.map((task) => (
-                    <TableRow key={task.id} className="hover:bg-muted/40">
-                      <TableCell>
-                        <div className="flex flex-col gap-0.5">
-                          <Link
-                            href={`/management/tasks/${task.id}`}
-                            className="font-semibold text-sm hover:underline text-(--brand-900)"
-                          >
-                            {task.title}
-                          </Link>
-                          <span className="text-xs text-muted-foreground">
+                    <TableRow key={task.id} className="hover:bg-[var(--canvas)]/50 transition-colors">
+                      <TableCell className="px-5 py-4">
+                        <Link
+                          href={`/management/tasks/${task.id}`}
+                          className="font-medium text-sm text-[var(--text-primary)] hover:text-[var(--brand-900)] hover:underline block truncate max-w-xs transition-colors"
+                        >
+                          {task.title}
+                        </Link>
+                        {task.processName && (
+                          <span className="text-xs text-[var(--text-secondary)] block truncate max-w-xs mt-0.5">
                             {task.processName}
                           </span>
-                        </div>
+                        )}
                       </TableCell>
 
-                      <TableCell>
-                        <div className="flex flex-col text-xs">
-                          <span className="font-medium">{task.locationName}</span>
-                          <span className="text-muted-foreground">{task.teamName}</span>
-                        </div>
+                      <TableCell className="px-4 py-4 whitespace-nowrap text-xs text-[var(--text-secondary)]">
+                        <span>{task.locationName || "Sem unidade"}</span>
+                        {task.teamName && (
+                          <>
+                            <span className="mx-1 text-muted-foreground">·</span>
+                            <span className="text-[var(--text-primary)]">{task.teamName}</span>
+                          </>
+                        )}
                       </TableCell>
 
-                      <TableCell className="text-xs">
-                        {task.assigneeName}
+                      <TableCell className="px-4 py-4 whitespace-nowrap text-xs text-[var(--text-secondary)]">
+                        {task.assigneeName || <span className="text-muted-foreground">-</span>}
                       </TableCell>
 
-                      <TableCell>
-                        <StatusBadge status={task.status} />
+                      <TableCell className="px-4 py-4 whitespace-nowrap">
+                        <PriorityBadge priority={task.priority} size="sm" />
                       </TableCell>
 
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs font-normal">
-                          {task.priority === "CRITICAL"
-                            ? "Urgente"
-                            : task.priority === "HIGH"
-                            ? "Alta"
-                            : task.priority === "MEDIUM"
-                            ? "Média"
-                            : "Baixa"}
-                        </Badge>
+                      <TableCell className="px-4 py-4 whitespace-nowrap">
+                        <StatusBadge status={task.status} size="sm" />
                       </TableCell>
 
-                      <TableCell className="text-xs">
-                        {task.deadlineAt
-                          ? new Date(task.deadlineAt).toLocaleString("pt-BR", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })
-                          : "Sem prazo"}
-                      </TableCell>
-
-                      <TableCell className="text-right text-xs">
-                        {task.slaExceeded ? (
-                          <span className="font-bold text-red-600">
-                            +{task.delayMinutes} min
-                          </span>
+                      <TableCell className="px-5 py-4 text-right whitespace-nowrap text-xs">
+                        {task.deadlineAt ? (
+                          <div className="flex flex-col items-end gap-0.5">
+                            <span className={task.slaExceeded ? "text-red-600 font-medium" : "text-[var(--text-secondary)]"}>
+                              {new Date(task.deadlineAt).toLocaleString("pt-BR", {
+                                day: "2-digit",
+                                month: "2-digit",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                            {task.slaExceeded && (
+                              <span className="inline-flex items-center text-[10px] text-red-600 bg-red-50 border border-red-200/60 px-1.5 py-0.5 rounded font-medium">
+                                +{task.delayMinutes}m atraso
+                              </span>
+                            )}
+                          </div>
                         ) : (
-                          <span className="text-emerald-700 font-medium">No prazo</span>
+                          <span className="text-muted-foreground">Sem prazo</span>
                         )}
                       </TableCell>
                     </TableRow>
@@ -753,10 +775,11 @@ export function OverviewDashboardClient({
 
           {/* Controles de Paginação */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between p-4 border-t border-(--border-subtle)">
-              <div className="text-xs text-muted-foreground">
-                Página <strong>{safePage}</strong> de <strong>{totalPages}</strong> (
-                {filtered.length} tarefas no total)
+            <div className="flex items-center justify-between px-6 py-4 border-t border-[var(--border-subtle)] bg-[var(--canvas)]/30">
+              <div className="text-xs text-[var(--text-secondary)]">
+                Página <strong className="font-semibold text-[var(--text-primary)]">{safePage}</strong> de{" "}
+                <strong className="font-semibold text-[var(--text-primary)]">{totalPages}</strong> (
+                {filtered.length} tarefas)
               </div>
 
               <div className="flex items-center gap-2">
@@ -765,7 +788,7 @@ export function OverviewDashboardClient({
                   size="sm"
                   disabled={safePage <= 1}
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  className="gap-1 h-8 text-xs"
+                  className="gap-1 h-8 text-xs cursor-pointer border-[var(--border-subtle)] hover:bg-[var(--canvas)]"
                 >
                   <ChevronLeft className="size-3.5" />
                   <span>Anterior</span>
@@ -776,7 +799,7 @@ export function OverviewDashboardClient({
                   size="sm"
                   disabled={safePage >= totalPages}
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  className="gap-1 h-8 text-xs"
+                  className="gap-1 h-8 text-xs cursor-pointer border-[var(--border-subtle)] hover:bg-[var(--canvas)]"
                 >
                   <span>Próxima</span>
                   <ChevronRight className="size-3.5" />
@@ -796,24 +819,6 @@ export function OverviewDashboardClient({
             if (!scheduleLoading) setShowScheduleModal(false);
           }}
         >
-          {scheduleMsg && (
-            <Alert
-              variant={scheduleMsg.type === "error" ? "destructive" : "default"}
-              className={
-                scheduleMsg.type === "success"
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-800 mb-4"
-                  : "mb-4"
-              }
-            >
-              {scheduleMsg.type === "success" ? (
-                <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
-              ) : (
-                <AlertCircle className="size-4 shrink-0" />
-              )}
-              <AlertDescription>{scheduleMsg.text}</AlertDescription>
-            </Alert>
-          )}
-
           <p className="text-xs text-muted-foreground mb-4">
             Configure para que os gestores recebam este relatório consolidado periodicamente em suas caixas de entrada.
           </p>

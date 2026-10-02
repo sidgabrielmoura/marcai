@@ -9,6 +9,14 @@ export default async function ManagementTeamsPage() {
   const context = await getManagementContext();
   if (!context) return null;
 
+  const now = new Date();
+  const validAccess = {
+    AND: [
+      { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+      { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+    ],
+  };
+
   const whereClause: any = {
     organizationId: context.organizationId,
     status: "ACTIVE",
@@ -18,16 +26,25 @@ export default async function ManagementTeamsPage() {
     whereClause.id = { in: context.scope.teamIds };
   }
 
-  const [teams, managers, allLocations] = await Promise.all([
+  const [teams, managers, allLocations, allMembers] = await Promise.all([
     prisma.team.findMany({
       where: whereClause,
       include: {
         locations: { include: { location: true } },
         members: {
-          where: context.role === "MANAGER" ? { member: { locationAccesses: { some: { locationId: { in: context.scope?.locationIds ?? [] }, AND: [
-            { OR: [{ startsAt: null }, { startsAt: { lte: new Date() } }] },
-            { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
-          ] } } } } : {},
+          where:
+            context.role === "MANAGER"
+              ? {
+                  member: {
+                    locationAccesses: {
+                      some: {
+                        locationId: { in: context.scope?.locationIds ?? [] },
+                        ...validAccess,
+                      },
+                    },
+                  },
+                }
+              : {},
           include: {
             member: {
               include: { user: true },
@@ -60,9 +77,29 @@ export default async function ManagementTeamsPage() {
       where: {
         organizationId: context.organizationId,
         status: "ACTIVE",
-        ...(context.role === "MANAGER" ? { id: { in: context.scope?.locationIds ?? [] } } : {}),
+        ...(context.role === "MANAGER"
+          ? { id: { in: context.scope?.locationIds ?? [] } }
+          : {}),
       },
       select: { id: true, name: true },
+    }),
+    prisma.organizationMember.findMany({
+      where: {
+        organizationId: context.organizationId,
+        status: "ACTIVE",
+        ...(context.role === "MANAGER"
+          ? {
+              locationAccesses: {
+                some: {
+                  locationId: { in: context.scope?.locationIds ?? [] },
+                  ...validAccess,
+                },
+              },
+            }
+          : {}),
+      },
+      include: { user: true },
+      orderBy: { user: { name: "asc" } },
     }),
   ]);
 
@@ -76,8 +113,17 @@ export default async function ManagementTeamsPage() {
       managerMemberId: t.managerMemberId,
       membersCount: t.members.length,
       activeTasksCount: t._count.tasks,
-      members: t.members.map((m) => m.member.user.name),
-      locations: t.locations.map((tl) => ({ id: tl.location.id, name: tl.location.name })),
+      members: t.members.map((m) => ({
+        id: m.member.id,
+        name: m.member.user.name,
+        email: m.member.user.email,
+        role: m.member.role,
+        isPrimary: m.isPrimary,
+      })),
+      locations: t.locations.map((tl) => ({
+        id: tl.location.id,
+        name: tl.location.name,
+      })),
     };
   });
 
@@ -91,6 +137,12 @@ export default async function ManagementTeamsPage() {
         teams={formatted}
         managers={managers.map((m) => ({ id: m.id, name: m.user.name }))}
         locations={allLocations}
+        allMembers={allMembers.map((m) => ({
+          id: m.id,
+          name: m.user.name,
+          email: m.user.email,
+          role: m.role,
+        }))}
         userRole={context.role}
       />
     </ManagementShell>

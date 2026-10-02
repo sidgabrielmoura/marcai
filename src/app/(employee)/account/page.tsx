@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { uiLabel } from "@/presentation/components/shared/ui-labels";
 import { prisma } from "@/infrastructure/database/prisma";
-import { MemberAvailabilityCard } from "@/presentation/components/mobile/member-availability-card";
+import { calculateMemberAvailability } from "@/domain/rules/member-availability";
+import { isLocationOpenAt } from "@/domain/rules/operating-hours";
 
 export default async function EmployeeAccountPage() {
   const context = await getAuthenticatedContext();
@@ -17,8 +18,27 @@ export default async function EmployeeAccountPage() {
 
   const member = await prisma.organizationMember.findUnique({
     where: { id: context.memberId },
-    select: { manualAvailability: true, availabilityStatus: true },
+    include: {
+      locationAccesses: { include: { location: true } },
+      taskAssignments: {
+        where: { removedAt: null, task: { status: "IN_PROGRESS", deletedAt: null } },
+      },
+    },
   });
+
+  const primaryLoc =
+    member?.locationAccesses.find((l) => l.type === "PRIMARY")?.location ??
+    member?.locationAccesses[0]?.location;
+  const isLocationOpen = primaryLoc ? isLocationOpenAt(primaryLoc, new Date()) : true;
+
+  const availabilityStatus = member
+    ? calculateMemberAvailability({
+      memberStatus: member.status,
+      inProgressTasksCount: member.taskAssignments.length,
+      isWithinOperatingHours: isLocationOpen,
+    })
+    : "AVAILABLE";
+
 
   return (
     <EmployeeShell
@@ -33,42 +53,37 @@ export default async function EmployeeAccountPage() {
         />
 
         <div className="flex flex-col gap-4">
-          <Card className="bg-[var(--surface)] rounded-[18px] p-5 shadow-none border border-[var(--border-subtle)] ring-0 flex-row items-center gap-4">
-            <Avatar className="size-14 rounded-full bg-[var(--brand-900)] text-white flex items-center justify-center font-semibold text-lg shadow-none">
-              <AvatarFallback className="bg-[var(--brand-900)] text-white text-lg font-semibold">
-                {context.userName.charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <h3 className="text-[var(--text-primary)] truncate text-[length:var(--type-card-title)] font-bold">
-                {context.userName}
-              </h3>
-              <p className="text-[length:var(--type-label)] text-[var(--text-secondary)] truncate">
-                {context.userEmail || "Sem e-mail cadastrado"}
-              </p>
-              <div className="mt-2 flex items-center gap-2">
-                <Badge
-                  variant="outline"
-                  className="text-[length:var(--type-caption)] font-semibold px-2.5 py-0.5 rounded-full bg-[var(--sage-400)]/30 text-[var(--brand-900)] border border-[var(--sage-400)]/40 h-auto"
-                >
-                  {uiLabel(context.role)}
-                </Badge>
-                {context.employeeCode && (
-                  <span className="text-[length:var(--type-label)] font-mono text-[var(--text-secondary)]">
-                    Matrícula: {context.employeeCode}
-                  </span>
-                )}
+          <Card className="bg-[var(--surface)] flex-col rounded-[18px] p-5 shadow-none border border-[var(--border-subtle)] ring-0 items-end gap-4">
+            <div className="flex items-center gap-2 w-full">
+              <Avatar className="size-14 rounded-full bg-[var(--brand-900)] text-white flex items-center justify-center font-semibold text-lg shadow-none">
+                <AvatarFallback className="bg-[var(--brand-900)] text-white text-lg font-semibold">
+                  {context.userName.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-[var(--text-primary)] truncate text-[length:var(--type-card-title)] font-bold">
+                  {context.userName}
+                </h3>
+                <p className="text-[length:var(--type-label)] text-[var(--text-secondary)] truncate">
+                  {context.userEmail || "Sem e-mail cadastrado"}
+                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <Badge
+                    variant="outline"
+                    className="text-[length:var(--type-caption)] font-semibold px-2.5 py-0.5 rounded-full bg-[var(--sage-400)]/30 text-[var(--brand-900)] border border-[var(--sage-400)]/40 h-auto"
+                  >
+                    {uiLabel(context.role)}
+                  </Badge>
+                </div>
               </div>
             </div>
+            {context.employeeCode && (
+              <span className="text-[length:var(--type-label)] font-mono text-[var(--text-secondary)]">
+                Matrícula: {context.employeeCode}
+              </span>
+            )}
           </Card>
 
-          {/* Card de Disponibilidade Operacional Híbrida (Item 35) */}
-          <MemberAvailabilityCard
-            initialManual={member?.manualAvailability || "AUTO"}
-            initialCalculated={member?.availabilityStatus || "AVAILABLE"}
-          />
-
-          {/* Card de Organização Ativa */}
           <Card className="bg-[var(--surface)] rounded-[18px] p-5 shadow-none border border-[var(--border-subtle)] ring-0">
             <CardHeader className="p-0 mb-2">
               <CardTitle className="text-[length:var(--type-body)] font-bold text-[var(--text-secondary)] flex items-center gap-1.5">

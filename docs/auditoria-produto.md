@@ -121,8 +121,6 @@ Os caminhos são relativos à raiz do repositório.
 | TRASH | `src/presentation/components/tasks/trash-client.tsx`; `src/app/(management)/management/tasks/trash/page.tsx` |
 | WIZARD | `src/presentation/components/processes/process-editor-wizard.tsx`; `src/presentation/components/processes/schedule-fields.tsx` |
 | PROCESS-LIST | `src/presentation/components/processes/process-list-client.tsx` |
-| ROUTINES | `src/presentation/components/processes/routines-client.tsx`; `src/app/(management)/management/routines/page.tsx` |
-| EXECUTIONS | `src/presentation/components/processes/executions-client.tsx`; `src/app/(management)/management/executions/page.tsx` |
 | MOBILE | `src/presentation/components/mobile/task-detail-client.tsx` |
 | EMP | `src/app/(employee)/tasks/page.tsx`; `src/presentation/components/mobile/claim-task-button.tsx` |
 | HISTORY | `src/app/(employee)/history/page.tsx` |

@@ -3,6 +3,7 @@ export type ClockTask = {
   deadlineAt: string | null;
   slaDueAt: string | null;
   startedAt: string | null;
+  toleranceMinutes?: number | null;
   elapsedSeconds: number | null;
   timerRunning: boolean;
 };
@@ -13,8 +14,28 @@ export function taskClock(task: ClockTask, now: number, snapshotAt: number) {
     .filter((value): value is string => !!value)
     .map(value => Date.parse(value)).filter(Number.isFinite);
   const dueAt = terminal || task.status === "BLOCKED" || !deadlines.length ? null : Math.min(...deadlines);
+  const toleranceMinutes = task.toleranceMinutes ?? 20;
+  const toleranceLimitAt = dueAt !== null ? dueAt + toleranceMinutes * 60 * 1000 : null;
+
+  // Se atingiu o limite de tolerância, a tarefa para de correr o tempo
+  const toleranceExceeded = toleranceLimitAt !== null && !terminal && now > toleranceLimitAt;
+
+  let elapsed: number | null = null;
+  if (task.startedAt || task.elapsedSeconds !== null) {
+    const startTimestamp = task.startedAt ? Date.parse(task.startedAt) : null;
+    if (toleranceExceeded && startTimestamp && Number.isFinite(startTimestamp)) {
+      // Congela o tempo decorrido no exato instante em que a tolerância esgotou
+      elapsed = Math.max(0, Math.floor((toleranceLimitAt - startTimestamp) / 1000));
+    } else {
+      const baseSeconds = task.elapsedSeconds ?? (startTimestamp ? Math.max(0, Math.floor((snapshotAt - startTimestamp) / 1000)) : 0);
+      const isRunning = task.timerRunning && !terminal && !toleranceExceeded;
+      elapsed = Math.max(0, baseSeconds + (isRunning ? Math.floor(Math.max(0, now - snapshotAt) / 1000) : 0));
+    }
+  }
+
   return {
-    elapsed: task.startedAt && task.elapsedSeconds !== null ? Math.max(0, task.elapsedSeconds + (task.timerRunning && !terminal ? Math.floor(Math.max(0, now - snapshotAt) / 1000) : 0)) : null,
+    elapsed,
+    toleranceExceeded,
     remaining: dueAt === null ? null : Math.ceil((dueAt - now) / 1000),
     deadlineLabel: dueAt !== null && dueAt === Date.parse(task.slaDueAt ?? "") ? "Limite de SLA" : "Prazo final",
   };

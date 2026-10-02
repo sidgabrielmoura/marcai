@@ -78,7 +78,10 @@ export function ReportsClient({
     (task) =>
       new Date(task.createdAt).getTime() >= start &&
       (location === "ALL" || task.locationName === location) &&
-      (statusFilter === "ALL" || task.status === statusFilter) &&
+      (statusFilter === "ALL" ||
+        (statusFilter === "OPEN"
+          ? ["AVAILABLE", "IN_PROGRESS"].includes(task.status)
+          : task.status === statusFilter)) &&
       (priorityFilter === "ALL" || task.priority === priorityFilter),
   );
   const completed = filtered.filter(
@@ -232,10 +235,9 @@ export function ReportsClient({
           <Select
             items={[
               { value: "ALL", label: "Todos os status" },
-              { value: "COMPLETED", label: "Concluídas" },
-              { value: "IN_PROGRESS", label: "Em andamento" },
-              { value: "AVAILABLE", label: "Disponíveis" },
+              { value: "OPEN", label: "Abertas" },
               { value: "BLOCKED", label: "Bloqueadas" },
+              { value: "COMPLETED", label: "Concluídas" },
               { value: "NOT_COMPLETED", label: "Impedimentos" },
               { value: "CANCELLED", label: "Canceladas" },
             ]}
@@ -251,10 +253,9 @@ export function ReportsClient({
             <SelectContent>
               <SelectGroup>
                 <SelectItem value="ALL">Todos os status</SelectItem>
-                <SelectItem value="COMPLETED">Concluídas</SelectItem>
-                <SelectItem value="IN_PROGRESS">Em andamento</SelectItem>
-                <SelectItem value="AVAILABLE">Disponíveis</SelectItem>
+                <SelectItem value="OPEN">Abertas</SelectItem>
                 <SelectItem value="BLOCKED">Bloqueadas</SelectItem>
+                <SelectItem value="COMPLETED">Concluídas</SelectItem>
                 <SelectItem value="NOT_COMPLETED">Impedimentos</SelectItem>
                 <SelectItem value="CANCELLED">Canceladas</SelectItem>
               </SelectGroup>

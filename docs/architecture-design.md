@@ -101,7 +101,7 @@ Toda requisição/mutação segue os 9 passos da Seção 13.1:
 ## 5. Roteiro de Execução da Etapa 1 e 2
 1. **Configuração da Fundação Técnica:**
    * Dependências: `@prisma/client`, `prisma`, `zod`, `bcryptjs` (ou `argon2`).
-   * Configuração de variáveis de ambiente (`.env.example`).
+   * Configuração de variáveis de ambiente (`.env`).
    * Centralização dos tokens visuais CSS no `src/app/globals.css`.
 2. **Modelagem Físico-Relacional (`prisma/schema.prisma`):**
    * Modelos do baseline com chaves estrangeiras, `UNIQUE(organizationId, userId)` e índices de performance.

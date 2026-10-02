@@ -14,3 +14,4 @@ function Spinner({ className, ...props }: React.ComponentProps<"svg">) {
 }
 
 export { Spinner };
+export { LogoLoader, LogoLoaderPage } from "@/components/loader/logo-loader";

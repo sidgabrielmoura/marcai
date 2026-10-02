@@ -202,13 +202,10 @@ export function canCompleteTask(
  * SLA continua correndo durante a pausa.
  */
 export function canPauseTask(currentStatus: TaskStatus): CanStartResult {
-  if (currentStatus !== "IN_PROGRESS") {
-    return {
-      allowed: false,
-      reason: "Apenas tarefas em andamento podem ser pausadas.",
-    };
-  }
-  return { allowed: true };
+  return {
+    allowed: false,
+    reason: "O sistema não permite pausar tarefas. A tarefa permanece aberta até ser cancelada ou concluída.",
+  };
 }
 
 /**

@@ -10,6 +10,7 @@ export default async function ManagementTasksPage() {
   const whereClause: any = {
     organizationId: context.organizationId,
     deletedAt: null,
+    origin: "AD_HOC",
   };
 
   if (context.role === "MANAGER" && context.scope) {

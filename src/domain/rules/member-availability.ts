@@ -3,32 +3,22 @@ export type ManualAvailabilitySetting = "AUTO" | "AVAILABLE" | "UNAVAILABLE";
 
 export interface CalculateAvailabilityParams {
   memberStatus: string; // ACTIVE, INACTIVE, etc.
-  manualSetting?: string | null; // AUTO, AVAILABLE, UNAVAILABLE
+  manualSetting?: string | null; // Mantido apenas para compatibilidade de tipos
   inProgressTasksCount: number;
   isWithinOperatingHours: boolean;
 }
 
 /**
- * Regra de cálculo de Disponibilidade Híbrida Operacional (Item 35)
- * Combina estado manual (AUTO/AVAILABLE/UNAVAILABLE), execução ativa e horário da unidade.
+ * Regra de cálculo de Disponibilidade Operacional 100% Automatizada.
+ * O funcionário não define manualmente: o sistema calcula em tempo real
+ * com base no status do membro, tarefas em andamento e horário de funcionamento da unidade.
  */
 export function calculateMemberAvailability(params: CalculateAvailabilityParams): MemberAvailability {
   if (params.memberStatus !== "ACTIVE") {
     return "UNAVAILABLE";
   }
 
-  // Se o colaborador definiu manualmente como indisponível:
-  if (params.manualSetting === "UNAVAILABLE") {
-    return "UNAVAILABLE";
-  }
-
-  // Se o colaborador forçou manualmente como disponível:
-  if (params.manualSetting === "AVAILABLE") {
-    return "AVAILABLE";
-  }
-
-  // Modo AUTO:
-  // 1. Se estiver fora do horário da unidade, fica indisponível
+  // 1. Se estiver fora do horário de funcionamento da unidade, fica indisponível
   if (!params.isWithinOperatingHours) {
     return "UNAVAILABLE";
   }

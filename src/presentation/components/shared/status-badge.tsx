@@ -46,13 +46,13 @@ export function StatusBadge({
       icon: CheckCircle2,
     },
     IN_PROGRESS: {
-      label: "Em andamento",
+      label: "Aberta",
       bg: "bg-[var(--brand-900)]",
       text: "text-white",
       icon: Clock,
     },
     AVAILABLE: {
-      label: "Disponível",
+      label: "Aberta",
       bg: "bg-[var(--sage-400)]/30",
       text: "text-[var(--brand-900)]",
       border: "border-[var(--sage-400)]/40",

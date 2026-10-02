@@ -3,6 +3,7 @@
 import { useState, useTransition, useEffect, useRef } from "react";
 import { Building2, ChevronDown, Check } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
+import { LogoLoader } from "@/components/loader/logo-loader";
 import { Button } from "@/components/ui/button";
 import {
   switchOrganizationAction,
@@ -169,9 +170,8 @@ export function OrganizationSwitcher({
           <div className="h-px bg-[var(--border-subtle)] my-0.5" />
 
           {loading && orgs.length === 0 ? (
-            <div className="flex items-center justify-center gap-2 p-4 text-xs text-[var(--text-secondary)]">
-              <Spinner className="size-3.5" />
-              <span>Carregando organizações...</span>
+            <div className="flex flex-col items-center justify-center p-6 gap-2 text-xs text-[var(--text-secondary)]">
+              <LogoLoader size={44} text="Carregando organizações..." />
             </div>
           ) : orgs.length === 0 ? (
             <div className="p-3 text-xs text-center text-[var(--text-secondary)]">
@@ -220,7 +220,7 @@ export function OrganizationSwitcher({
                     </div>
 
                     {isSwitchingThis ? (
-                      <Spinner className="size-4 shrink-0 text-[var(--brand-900)]" />
+                      <LogoLoader size={20} className="shrink-0" />
                     ) : org.isActive ? (
                       <Check className="size-4 shrink-0 text-[var(--brand-900)]" />
                     ) : null}

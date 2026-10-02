@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   CheckSquare,
   GitMerge,
+  Archive,
   CalendarClock,
   PlayCircle,
   Users,
@@ -29,6 +30,9 @@ import {
 } from "lucide-react";
 import { logoutAction } from "@/presentation/actions/auth-actions";
 import { searchWorkspaceAction, type SearchResult } from "@/presentation/actions/search-actions";
+import { useRealtimeEvents } from "@/presentation/hooks/use-realtime-events";
+import { toast } from "@/components/ui/toast";
+import { getCurrentUserSummaryAction } from "@/presentation/actions/notification-actions";
 import { Brand } from "./brand";
 import { OrganizationSwitcher } from "./organization-switcher";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -70,15 +74,9 @@ const managementNav: NavItem[] = [
     group: "Principal",
   },
   {
-    label: "Rotinas",
-    href: "/management/routines",
-    icon: CalendarClock,
-    group: "Principal",
-  },
-  {
-    label: "Execuções",
-    href: "/management/executions",
-    icon: PlayCircle,
+    label: "Arquivados",
+    href: "/management/archived",
+    icon: Archive,
     group: "Principal",
   },
   {
@@ -187,6 +185,7 @@ export function AppShell({
   role = "EMPLOYEE",
   mode = "management",
   activeView = "overview",
+  userId,
 }: {
   children: ReactNode;
   userName: string;
@@ -194,8 +193,11 @@ export function AppShell({
   role?: string;
   mode?: "management" | "employee" | "platform";
   activeView?: string;
+  userId?: string;
 }) {
   const pathname = usePathname();
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [currentUserId, setCurrentUserId] = useState<string | undefined>(userId);
   const [searchOpen, setSearchOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -203,6 +205,54 @@ export function AppShell({
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
   const [searchError, setSearchError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    getCurrentUserSummaryAction()
+      .then((summary) => {
+        if (active && summary) {
+          setUnreadCount(summary.unreadCount);
+          if (summary.userId) setCurrentUserId(summary.userId);
+        }
+      })
+      .catch(() => { });
+    return () => {
+      active = false;
+    };
+  }, [pathname]);
+
+  useRealtimeEvents((eventType, payload) => {
+    if (eventType === "NOTIFICATION_CREATED" && payload) {
+      const targetUserId = payload.userId;
+      if (!currentUserId || !targetUserId || targetUserId === currentUserId) {
+        setUnreadCount((c) => c + 1);
+        const typeMap: Record<string, string> = {
+          TASK_ASSIGNED: "info",
+          APPROVAL_REQUESTED: "warning",
+          TASK_CORRECTION_REQUESTED: "error",
+          TASK_EXPIRING_SOON: "warning",
+          TASK_OVERDUE: "error",
+          PAUSE_ALERT: "warning",
+          OPERATIONAL_ALERT: "error",
+        };
+        const toastType =
+          typeMap[payload.type] ||
+          (payload.priority === "HIGH" || payload.priority === "CRITICAL"
+            ? "warning"
+            : "info");
+        try {
+          toast.add({
+            title: payload.title || "Nova notificação",
+            description: payload.message || "",
+            type: toastType,
+          });
+        } catch {
+          // ignore
+        }
+      }
+    }
+  });
+
   useEffect(() => {
     let current = true;
     setSearchResults([]);
@@ -257,26 +307,33 @@ export function AppShell({
     return () => window.removeEventListener("keydown", shortcut);
   }, []);
 
-  const renderNav = (item: NavItem) => (
-    <Link
-      key={item.href}
-      href={item.href}
-      onClick={() => setSearchOpen(false)}
-      className={`sidebar-link ${isActive(item) ? "is-active" : ""}`}
-      aria-current={isActive(item) ? "page" : undefined}
-    >
-      <item.icon size={18} strokeWidth={1.7} />
-      <span>{item.label}</span>
-    </Link>
-  );
+  const renderNav = (item: NavItem) => {
+    const isNotification = item.href === "/notifications";
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        onClick={() => setSearchOpen(false)}
+        className={`sidebar-link ${isActive(item) ? "is-active" : ""}`}
+        aria-current={isActive(item) ? "page" : undefined}
+      >
+        <item.icon size={18} strokeWidth={1.7} />
+        <span>{item.label}</span>
+        {isNotification && unreadCount > 0 && (
+          <span className="sidebar-badge" aria-label={`${unreadCount} avisos não lidos`}>
+            {unreadCount > 99 ? "99+" : unreadCount}
+          </span>
+        )}
+      </Link>
+    );
+  };
   const moreActive =
     ["/notifications", "/account"].includes(pathname) ||
     (pathname.startsWith("/management/") &&
       ![
         "/management/tasks",
         "/management/processes",
-        "/management/routines",
-        "/management/executions",
+        "/management/archived",
       ].some((path) => pathname.startsWith(path)));
 
   return (
@@ -365,10 +422,15 @@ export function AppShell({
             {mode !== "platform" && (
               <Link
                 href="/notifications"
-                className="icon-button"
-                aria-label="Notificações"
+                className="icon-button relative"
+                aria-label={unreadCount > 0 ? `${unreadCount} notificações não lidas` : "Notificações"}
               >
                 <Bell size={19} strokeWidth={1.6} />
+                {unreadCount > 0 && (
+                  <span className="topbar-badge" aria-hidden="true">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
               </Link>
             )}
             {mode === "platform" ? (
@@ -445,10 +507,15 @@ export function AppShell({
             </Link>
             <Link
               href="/management/more"
-              className={moreActive ? "is-active" : ""}
+              className={`relative ${moreActive ? "is-active" : ""}`}
             >
               <Menu size={20} />
               <span>Mais</span>
+              {unreadCount > 0 && (
+                <span className="mobile-badge" aria-hidden="true">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
             </Link>
           </>
         ) : (
@@ -456,13 +523,18 @@ export function AppShell({
             <Link
               href={item.href}
               key={item.href}
-              className={isActive(item) ? "is-active" : ""}
+              className={`relative ${isActive(item) ? "is-active" : ""}`}
               aria-current={isActive(item) ? "page" : undefined}
             >
               <item.icon size={20} />
               <span>
                 {item.label.replace("Minhas ", "").replace("Minha ", "")}
               </span>
+              {item.href === "/notifications" && unreadCount > 0 && (
+                <span className="mobile-badge" aria-hidden="true">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
             </Link>
           ))
         )}

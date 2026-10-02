@@ -5,6 +5,8 @@ export function ManagementShell(props: {
   userName: string;
   orgName: string;
   role: string;
+  userId?: string;
 }) {
   return <AppShell {...props} mode="management" />;
 }
+

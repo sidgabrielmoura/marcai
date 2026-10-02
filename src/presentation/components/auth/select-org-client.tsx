@@ -397,9 +397,8 @@ export function SelectOrgClient({
         </Card>
       </main>
 
-      {/* Footer da Página */}
       <footer className="w-full max-w-xl text-center mt-6 text-xs text-[var(--text-secondary)]">
-        <p>Marcai • Gestão operacional simplificada e transparente</p>
+        <p>Marcaí • Gestão operacional simplificada e transparente</p>
       </footer>
     </div>
   );

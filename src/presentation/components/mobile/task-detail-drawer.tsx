@@ -13,14 +13,12 @@ import {
 } from "@/components/ui/drawer";
 import {
   getTaskDetailAction,
-  startTaskAction,
   completeTaskAction,
   submitEvidenceAction,
   uploadEvidenceAction,
   type TaskDetailResult,
 } from "@/presentation/actions/task-actions";
 import {
-  pauseTaskAction,
   resumeTaskAction,
   reportImpedimentAction,
   claimTaskAction,
@@ -28,7 +26,7 @@ import {
 import { StatusBadge, PriorityBadge, Modal } from "../shared";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "@/components/ui/toast";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -36,8 +34,8 @@ import { Field, FieldLabel, FieldGroup } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LogoLoader } from "@/components/loader/logo-loader";
 import {
-  Pause,
   Check,
   MapPin,
   Send,
@@ -88,26 +86,31 @@ export function EmployeeTaskDetailDrawer({
   const router = useRouter();
   const [task, setTask] = useState<TaskDetailResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
-  const [dialog, setDialog] = useState<"pause" | "impediment" | null>(null);
+  const [dialog, setDialog] = useState<"impediment" | null>(null);
   const [reason, setReason] = useState("");
   const [category, setCategory] = useState("OUTROS");
 
   const loadTask = useCallback(async (id: string) => {
     setLoading(true);
-    setError(null);
     try {
       const res = await getTaskDetailAction(id);
       if (res.error) {
-        setError(res.error);
+        toast.add({
+          title: "Erro ao carregar tarefa",
+          description: res.error,
+          type: "error",
+        });
         setTask(null);
       } else if (res.task) {
         setTask(res.task);
       }
     } catch {
-      setError("Não foi possível carregar os detalhes da tarefa.");
+      toast.add({
+        title: "Erro inesperado",
+        description: "Não foi possível carregar os detalhes da tarefa.",
+        type: "error",
+      });
       setTask(null);
     } finally {
       setLoading(false);
@@ -117,12 +120,9 @@ export function EmployeeTaskDetailDrawer({
   useEffect(() => {
     if (open && taskId) {
       loadTask(taskId);
-      setNotice(null);
     } else if (!open) {
       const timer = setTimeout(() => {
         setTask(null);
-        setError(null);
-        setNotice(null);
       }, 250);
       return () => clearTimeout(timer);
     }
@@ -133,16 +133,22 @@ export function EmployeeTaskDetailDrawer({
     options?: { closeOnSuccess?: boolean; successNotice?: string }
   ) {
     setActionBusy(true);
-    setError(null);
-    setNotice(null);
     try {
       const res = await action();
       if (res.error) {
-        setError(res.error);
+        toast.add({
+          title: "Erro na operação",
+          description: res.error,
+          type: "error",
+        });
       } else {
         setDialog(null);
         if (options?.successNotice) {
-          setNotice(options.successNotice);
+          toast.add({
+            title: "Sucesso",
+            description: options.successNotice,
+            type: "success",
+          });
         }
         if (taskId) {
           await loadTask(taskId);
@@ -156,7 +162,11 @@ export function EmployeeTaskDetailDrawer({
         }
       }
     } catch {
-      setError("Erro ao executar ação. Verifique sua conexão e tente novamente.");
+      toast.add({
+        title: "Erro inesperado",
+        description: "Erro ao executar ação. Verifique sua conexão e tente novamente.",
+        type: "error",
+      });
     } finally {
       setActionBusy(false);
     }
@@ -166,6 +176,15 @@ export function EmployeeTaskDetailDrawer({
     ? ["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status)
     : false;
   const isScheduled = !!task?.scheduledDate && new Date(task.scheduledDate) > new Date();
+
+  const deadlines = [task?.deadlineAt, task?.slaDueAt]
+    .filter((v): v is string => !!v)
+    .map((v) => Date.parse(v))
+    .filter(Number.isFinite);
+  const dueAt = deadlines.length > 0 ? Math.min(...deadlines) : null;
+  const toleranceMinutes = task?.toleranceMinutes ?? 20;
+  const toleranceLimitAt = dueAt !== null ? dueAt + toleranceMinutes * 60 * 1000 : null;
+  const isToleranceExceeded = toleranceLimitAt !== null && !isTerminal && Date.now() > toleranceLimitAt;
 
   const evidencePendingCount = task
     ? task.evidenceRequirements.filter(
@@ -240,31 +259,20 @@ export function EmployeeTaskDetailDrawer({
           </DrawerHeader>
 
           <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-4 flex flex-col gap-4">
-            {error && (
-              <Alert variant="destructive" className="py-2.5 shrink-0">
-                <AlertCircle data-icon="inline-start" className="size-4" />
-                <AlertDescription className="flex items-center justify-between gap-2 text-xs">
-                  <span>{error}</span>
-                  {taskId && !task && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs px-2.5"
-                      onClick={() => loadTask(taskId)}
-                      disabled={loading}
-                    >
-                      <RefreshCw data-icon="inline-start" className="size-3" />
-                      Tentar de novo
-                    </Button>
-                  )}
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {notice && (
-              <Alert className="py-2.5 border-emerald-200 bg-emerald-50/80 text-emerald-900 text-xs shrink-0">
-                <AlertDescription>{notice}</AlertDescription>
-              </Alert>
+            {!task && !loading && taskId && (
+              <div className="py-8 text-center text-xs text-muted-foreground flex flex-col items-center gap-2">
+                <p>Não foi possível exibir a tarefa.</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs px-2.5"
+                  onClick={() => loadTask(taskId)}
+                  disabled={loading}
+                >
+                  <RefreshCw data-icon="inline-start" className="size-3" />
+                  Tentar de novo
+                </Button>
+              </div>
             )}
 
             {task?.correctionRequested && !isTerminal && (
@@ -278,9 +286,8 @@ export function EmployeeTaskDetailDrawer({
             )}
 
             {loading ? (
-              <div className="flex flex-col gap-3.5">
-                <Skeleton className="h-32 w-full rounded-xl shrink-0" />
-                <Skeleton className="h-44 w-full rounded-xl shrink-0" />
+              <div className="flex flex-col items-center justify-center p-12 gap-3 min-h-[260px]">
+                <LogoLoader size={60} text="Carregando detalhes..." />
               </div>
             ) : task ? (
               <>
@@ -362,16 +369,23 @@ export function EmployeeTaskDetailDrawer({
                           key={req.id}
                           taskId={task.id}
                           requirement={req}
-                          disabled={isTerminal || task.status === "BLOCKED" || !!task.isUnassigned}
+                          disabled={isTerminal || task.status === "BLOCKED" || !!task.isUnassigned || isToleranceExceeded}
                           onSuccess={async (msg) => {
-                            setNotice(msg || "Comprovação enviada com sucesso!");
-                            setError(null);
+                            toast.add({
+                              title: "Comprovação enviada",
+                              description: msg || "Comprovação enviada com sucesso!",
+                              type: "success",
+                            });
                             if (taskId) await loadTask(taskId);
                             onTaskUpdated?.();
                             router.refresh();
                           }}
                           onError={(err) => {
-                            setError(err);
+                            toast.add({
+                              title: "Erro no envio",
+                              description: err,
+                              type: "error",
+                            });
                           }}
                         />
                       ))
@@ -464,22 +478,6 @@ export function EmployeeTaskDetailDrawer({
                 </div>
               ) : !isTerminal && task.status !== "SUBMITTED" ? (
                 <div className="flex flex-col gap-2">
-                  {task.status === "AVAILABLE" && (
-                    <Button
-                      variant="outline"
-                      className="w-full h-10 text-xs font-semibold rounded-xl cursor-pointer"
-                      disabled={actionBusy}
-                      onClick={() =>
-                        handleAction(() => startTaskAction(task.id), {
-                          successNotice: "Cronômetro iniciado!",
-                        })
-                      }
-                    >
-                      {actionBusy && <Spinner data-icon="inline-start" />}
-                      Iniciar execução
-                    </Button>
-                  )}
-
                   <Button
                     className="w-full h-11 text-xs font-semibold rounded-xl bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)] cursor-pointer"
                     disabled={actionBusy || evidencePendingCount > 0}
@@ -502,31 +500,17 @@ export function EmployeeTaskDetailDrawer({
                       : "Concluir tarefa"}
                   </Button>
 
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      className="flex-1 h-9 rounded-lg text-xs cursor-pointer"
-                      disabled={actionBusy}
-                      onClick={() => {
-                        setReason("");
-                        setDialog("pause");
-                      }}
-                    >
-                      <Pause data-icon="inline-start" className="size-3.5" />
-                      Pausar
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="flex-1 h-9 rounded-lg text-xs text-red-600 hover:text-red-700 hover:bg-red-50 cursor-pointer"
-                      disabled={actionBusy}
-                      onClick={() => {
-                        setReason("");
-                        setDialog("impediment");
-                      }}
-                    >
-                      Não foi possível realizar
-                    </Button>
-                  </div>
+                  <Button
+                    variant="ghost"
+                    className="w-full h-9 rounded-lg text-xs text-red-600 hover:text-red-700 hover:bg-red-50 cursor-pointer"
+                    disabled={actionBusy}
+                    onClick={() => {
+                      setReason("");
+                      setDialog("impediment");
+                    }}
+                  >
+                    Não foi possível realizar
+                  </Button>
                 </div>
               ) : task.status === "SUBMITTED" ? (
                 <div className="p-2.5 text-center rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-900 font-medium">
@@ -542,11 +526,11 @@ export function EmployeeTaskDetailDrawer({
         </DrawerContent>
       </Drawer>
 
-      {/* Modal de Pausa ou Impedimento */}
-      {dialog && task && (
+      {/* Modal de Impedimento Operacional */}
+      {dialog === "impediment" && task && (
         <Modal
           open={true}
-          title={dialog === "pause" ? "Pausar tarefa" : "Registrar impedimento"}
+          title="Registrar impedimento"
           onClose={() => {
             if (!actionBusy) setDialog(null);
           }}
@@ -556,24 +540,16 @@ export function EmployeeTaskDetailDrawer({
             onSubmit={(e) => {
               e.preventDefault();
               handleAction(
-                () =>
-                  dialog === "pause"
-                    ? pauseTaskAction(task.id, category, reason)
-                    : reportImpedimentAction(task.id, category, reason),
+                () => reportImpedimentAction(task.id, category, reason),
                 {
-                  closeOnSuccess: dialog === "impediment",
-                  successNotice:
-                    dialog === "pause"
-                      ? "Tarefa pausada."
-                      : "Impedimento registrado. A gestão foi avisada.",
+                  closeOnSuccess: true,
+                  successNotice: "Impedimento registrado. A gestão foi avisada.",
                 }
               );
             }}
           >
             <p className="text-slate-600 leading-relaxed">
-              {dialog === "pause"
-                ? "O prazo continua correndo normalmente. Registre a justificativa da pausa."
-                : "Utilize caso uma condição física ou operacional impeça a realização da tarefa. A atividade será cancelada como não realizada e a liderança avisada."}
+              Utilize caso uma condição física ou operacional impeça a realização da tarefa. A atividade será cancelada como não realizada e a liderança avisada.
             </p>
 
             <FieldGroup>
@@ -632,11 +608,11 @@ export function EmployeeTaskDetailDrawer({
               <Button
                 disabled={actionBusy}
                 type="submit"
-                variant={dialog === "impediment" ? "destructive" : "default"}
+                variant="destructive"
                 className="text-xs h-9 cursor-pointer"
               >
                 {actionBusy && <Spinner data-icon="inline-start" />}
-                {dialog === "pause" ? "Confirmar pausa" : "Confirmar impedimento"}
+                Confirmar impedimento
               </Button>
             </div>
           </form>
@@ -669,11 +645,69 @@ function DrawerEvidenceItem({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawing = useRef(false);
 
+  // ─── Câmera traseira (PHOTO) ─────────────────────────────────────────
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  async function openCamera() {
+    setCameraError(null);
+    setPhotoPreview(null);
+    setFile(null);
+    setCameraOpen(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch {
+      setCameraError("Não foi possível acessar a câmera. Verifique as permissões do navegador.");
+    }
+  }
+
+  function closeCamera() {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setCameraOpen(false);
+    setCameraError(null);
+  }
+
+  function snapPhoto() {
+    const video = videoRef.current;
+    if (!video) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const ctx = canvas.getContext("2d");
+    ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const timestamp = Date.now();
+      const capturedFile = new File([blob], `foto_evidencia_${timestamp}.jpg`, { type: "image/jpeg" });
+      setFile(capturedFile);
+      setPhotoPreview(URL.createObjectURL(blob));
+      closeCamera();
+    }, "image/jpeg", 0.92);
+  }
+
   const meta = evidenceTypeMeta[req.type] || {
     label: req.type,
     icon: FileText,
   };
   const Icon = meta.icon;
+
+  // Limpa o stream se o componente for desmontado com câmera aberta
+  useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
 
   const valid = req.submissions.filter((s) => s.validationStatus === "VALID");
   const failures = req.submissions.filter((s) => s.validationStatus === "REJECTED").length;
@@ -701,7 +735,11 @@ function DrawerEvidenceItem({
 
       if (["PHOTO", "VIDEO", "FILE", "SIGNATURE"].includes(req.type)) {
         if (!selectedFile) {
-          onError("Selecione um arquivo para enviar.");
+          onError(
+            req.type === "PHOTO"
+              ? "Tire uma foto pela câmera antes de enviar."
+              : "Selecione um arquivo para enviar."
+          );
           setBusy(false);
           return;
         }
@@ -715,6 +753,7 @@ function DrawerEvidenceItem({
         } else {
           setFile(null);
           setValue("");
+          setPhotoPreview(null);
           onSuccess("Arquivo enviado!");
         }
       } else {
@@ -822,18 +861,95 @@ function DrawerEvidenceItem({
 
       {!isDone && !disabled && (
         <form onSubmit={handleSubmit} className="flex flex-col gap-2.5 mt-2">
-          {["PHOTO", "VIDEO", "FILE"].includes(req.type) && (
+          {req.type === "PHOTO" && (
+            <div className="flex flex-col gap-2">
+              {/* Câmera ao vivo */}
+              {cameraOpen && (
+                <div className="flex flex-col gap-2">
+                  {cameraError ? (
+                    <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-800">
+                      {cameraError}
+                    </div>
+                  ) : (
+                    <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-black">
+                      <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="w-full max-h-64 object-cover"
+                      />
+                      <div className="absolute bottom-2 inset-x-0 flex justify-center gap-3">
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-10 w-10 rounded-full bg-white text-slate-800 hover:bg-slate-100 shadow-lg p-0 cursor-pointer"
+                          onClick={snapPhoto}
+                        >
+                          <Camera className="size-4" />
+                          <span className="sr-only">Tirar foto</span>
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full text-xs h-8 text-slate-500 cursor-pointer"
+                    onClick={closeCamera}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              )}
+
+              {/* Preview da foto tirada */}
+              {!cameraOpen && photoPreview && (
+                <div className="flex flex-col gap-1.5">
+                  <div className="relative rounded-xl overflow-hidden border border-emerald-200">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={photoPreview} alt="Foto capturada" className="w-full max-h-52 object-cover" />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full text-xs h-8 text-slate-500 cursor-pointer"
+                    onClick={openCamera}
+                  >
+                    <Camera data-icon="inline-start" className="size-3.5" />
+                    Tirar nova foto
+                  </Button>
+                </div>
+              )}
+
+              {/* Botão inicial — abre câmera traseira */}
+              {!cameraOpen && !photoPreview && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full h-11 text-xs font-semibold rounded-xl cursor-pointer"
+                  onClick={openCamera}
+                >
+                  <Camera data-icon="inline-start" className="size-4" />
+                  Abrir câmera traseira
+                </Button>
+              )}
+
+              <p className="text-[10px] text-muted-foreground leading-snug">
+                A foto deve ser tirada no momento pela câmera do dispositivo. Não é possível anexar arquivos da galeria.
+              </p>
+            </div>
+          )}
+
+          {["VIDEO", "FILE"].includes(req.type) && (
             <div className="flex flex-col gap-1">
               <Input
                 type="file"
                 accept={
-                  req.type === "PHOTO"
-                    ? "image/jpeg,image/png,image/webp"
-                    : req.type === "VIDEO"
-                      ? "video/mp4"
-                      : "image/jpeg,image/png,image/webp,application/pdf,video/mp4"
+                  req.type === "VIDEO"
+                    ? "video/mp4"
+                    : "image/jpeg,image/png,image/webp,application/pdf,video/mp4"
                 }
-                capture={req.type === "PHOTO" ? "environment" : undefined}
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 required
                 className="h-9 text-xs bg-white dark:bg-card file:text-xs file:font-semibold cursor-pointer"

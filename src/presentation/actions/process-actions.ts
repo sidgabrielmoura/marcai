@@ -4,12 +4,165 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma";
 import { getAuthenticatedContext } from "@/application/security/auth-context";
 import { eligibleMember, isManagement, processScope } from "@/application/security/operational-scope";
-import { processDefinitionSchema, readProcessDefinition, scheduleSchema } from "@/domain/rules/process-definition";
+import { processDefinitionSchema, readProcessDefinition, scheduleSchema, type ProcessDefinition } from "@/domain/rules/process-definition";
 import { generateRoutineExecution } from "@/application/processes/generate-execution";
 import { changeExecutionState } from "@/application/processes/execution-lifecycle";
+import { dispatchNotificationAsync } from "@/infrastructure/notifications/notification-service";
 import { revalidatePath } from "next/cache";
 export type ActionResult = { success?: boolean; error?: string; data?: { id: string } };
-function refresh() { for (const path of ["/management/processes", "/management/processes/archived", "/management/routines", "/management/executions", "/management/tasks", "/tasks", "/history", "/overview", "/notifications"]) revalidatePath(path); }
+function refresh() { for (const path of ["/management/processes", "/management/processes/archived", "/management/tasks", "/tasks", "/history", "/overview", "/notifications"]) revalidatePath(path); }
+
+async function createInitialProcessExecution(
+  tx: Prisma.TransactionClient,
+  context: { organizationId: string; memberId: string },
+  process: { id: string; locationId: string | null },
+  definition: ProcessDefinition,
+  routineId: string | null,
+  now = new Date()
+) {
+  const execution = await tx.processExecution.create({
+    data: {
+      organizationId: context.organizationId,
+      processId: process.id,
+      routineId,
+      locationId: process.locationId,
+      scheduledAt: now,
+      availableAt: now,
+      startedAt: now,
+      status: "IN_PROGRESS",
+      definitionSnapshot: definition as unknown as Prisma.InputJsonValue,
+    },
+  });
+
+  const taskIds = new Map<string, string>();
+  for (const t of definition.tasks) {
+    const blocked = t.dependsOn.length > 0 && t.dependencyType !== "INFORMATIVE";
+    const task = await tx.task.create({
+      data: {
+        organizationId: context.organizationId,
+        processId: process.id,
+        executionId: execution.id,
+        locationId: process.locationId,
+        origin: "PROCESS",
+        teamId: t.teamId,
+        title: t.title,
+        instructions: t.instructions,
+        required: t.required,
+        criticality: definition.criticality,
+        priority: definition.criticality,
+        estimatedDuration: t.estimatedDuration,
+        slaDurationMinutes: t.slaMinutes,
+        slaStartEvent: "ON_AVAILABLE",
+        scheduledDate: now,
+        deadlineAt: new Date(now.getTime() + t.slaMinutes * 60000),
+        slaDueAt: !blocked ? new Date(now.getTime() + t.slaMinutes * 60000) : null,
+        status: blocked ? "BLOCKED" : "IN_PROGRESS",
+        startedAt: !blocked ? now : null,
+        ...(t.evidenceType ? { evidenceRequirements: { create: { type: t.evidenceType, required: true, minQuantity: 1, maxQuantity: 1 } } } : {}),
+        ...(t.approverIds.length ? { approvalWorkflow: { create: { mode: t.approvalMode, steps: { create: t.approverIds.map((id, i) => ({ sequence: i + 1, approverMemberId: id })) } } } } : {}),
+      },
+    });
+    taskIds.set(t.id, task.id);
+
+    if (t.primaryMemberId) {
+      const member = await tx.organizationMember.findFirst({
+        where: {
+          id: t.primaryMemberId,
+          organizationId: context.organizationId,
+          status: "ACTIVE",
+          user: { status: "ACTIVE" },
+          teamMemberships: { some: { teamId: t.teamId } },
+          ...(process.locationId ? {
+            locationAccesses: {
+              some: {
+                locationId: process.locationId,
+                AND: [
+                  { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+                  { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+                ],
+              },
+            },
+          } : {}),
+        },
+      });
+
+      if (member) {
+        await tx.taskAssignment.create({
+          data: {
+            taskId: task.id,
+            memberId: member.id,
+            type: "PRIMARY",
+            assignedBy: context.memberId || null,
+          },
+        });
+
+        if (!blocked) {
+          await tx.taskExecutionSession.create({
+            data: {
+              taskId: task.id,
+              memberId: member.id,
+              startedAt: now,
+            },
+          });
+
+          await tx.notification.create({
+            data: {
+              organizationId: context.organizationId,
+              userId: member.userId,
+              type: "TASK_ASSIGNED",
+              priority: definition.criticality,
+              title: "Nova tarefa de processo iniciada",
+              message: t.title,
+              data: { taskId: task.id, executionId: execution.id },
+            },
+          });
+
+          void dispatchNotificationAsync({
+            organizationId: context.organizationId,
+            userIds: [member.userId],
+            type: "TASK_ASSIGNED",
+            priority: definition.criticality,
+            title: "Nova tarefa de processo iniciada",
+            message: t.title,
+            data: { taskId: task.id, executionId: execution.id },
+            clickAction: `/tasks/${task.id}`,
+            forcePush: true,
+          });
+        }
+      }
+    }
+  }
+
+  for (const t of definition.tasks) {
+    for (const id of t.dependsOn) {
+      const parentTaskId = taskIds.get(id);
+      const childTaskId = taskIds.get(t.id);
+      if (parentTaskId && childTaskId) {
+        await tx.taskDependency.create({
+          data: {
+            taskId: childTaskId,
+            dependsOnId: parentTaskId,
+            type: t.dependencyType,
+            logic: t.dependencyLogic,
+          },
+        });
+      }
+    }
+  }
+
+  await tx.activityLog.create({
+    data: {
+      organizationId: context.organizationId,
+      actorId: context.memberId || null,
+      action: "EXECUTION_GENERATED",
+      entityType: "EXECUTION",
+      entityId: execution.id,
+      metadata: { scheduledAt: now.toISOString(), immediateOnProcessCreate: true },
+    },
+  });
+
+  return execution;
+}
 
 export async function createProcessAction(formData: FormData): Promise<ActionResult> {
   const context = await getAuthenticatedContext();
@@ -41,9 +194,14 @@ export async function createProcessAction(formData: FormData): Promise<ActionRes
     const version = await tx.processTemplateVersion.create({ data: { templateId: template.id, version: (latest?.version ?? 0) + 1, definition: definition as unknown as Prisma.InputJsonValue } });
     const data = { name: definition.name, description: definition.description, locationId: location.id, criticality: definition.criticality, validFrom: definition.validFrom ? new Date(definition.validFrom) : null, validUntil: definition.validUntil ? new Date(`${definition.validUntil}T23:59:59Z`) : null, sourceTemplateVersionId: version.id };
     const process = existing ? await tx.process.update({ where: { id: existing.id, organizationId: context.organizationId }, data }) : await tx.process.create({ data: { ...data, organizationId: context.organizationId, createdBy: context.memberId } });
+    const now = new Date();
+    let routine = null;
     if (!existing && definition.schedule) {
       const s = definition.schedule;
-      await tx.routine.create({ data: { processId: process.id, recurrenceRule: JSON.stringify(s), timezone: s.timezone, startsAt: new Date(s.startsAt), endsAt: s.endsAt ? new Date(`${s.endsAt}T23:59:59Z`) : null, generationLeadTime: s.generationLeadTime, pendingPreviousPolicy: s.pendingPreviousPolicy } });
+      routine = await tx.routine.create({ data: { processId: process.id, recurrenceRule: JSON.stringify(s), timezone: s.timezone, startsAt: new Date(s.startsAt), endsAt: s.endsAt ? new Date(`${s.endsAt}T23:59:59Z`) : null, generationLeadTime: s.generationLeadTime, pendingPreviousPolicy: s.pendingPreviousPolicy } });
+    }
+    if (!existing) {
+      await createInitialProcessExecution(tx, context, process, definition, routine ? routine.id : null, now);
     }
     await tx.activityLog.create({ data: { organizationId: context.organizationId, actorId: context.memberId, action: existing ? "PROCESS_UPDATED" : "PROCESS_CREATED", entityType: "PROCESS", entityId: process.id, metadata: { version: version.version, taskCount: definition.tasks.length } } });
     return process;
@@ -176,9 +334,10 @@ export async function instantiateProcessFromTemplateAction(
         },
       });
 
+      let routine = null;
       if (locDefinition.schedule) {
         const s = locDefinition.schedule;
-        await tx.routine.create({
+        routine = await tx.routine.create({
           data: {
             processId: proc.id,
             recurrenceRule: JSON.stringify(s),
@@ -190,6 +349,8 @@ export async function instantiateProcessFromTemplateAction(
           },
         });
       }
+
+      await createInitialProcessExecution(tx, context, proc, locDefinition, routine ? routine.id : null);
 
       await tx.activityLog.create({
         data: {

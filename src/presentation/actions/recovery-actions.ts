@@ -6,6 +6,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/infrastructure/database/prisma";
 import { getAuthenticatedContext } from "@/application/security/auth-context";
 import { Role } from "@/domain/types";
+import { sendPasswordResetEmail, sendMemberInviteEmail } from "@/infrastructure/email";
 
 export type ActionResult<T = unknown> = { success?: boolean; error?: string; data?: T };
 
@@ -36,6 +37,17 @@ export async function requestPasswordResetAction(formData: FormData): Promise<Ac
         token,
         expiresAt,
       },
+    });
+
+    const origin =
+      process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000";
+    const resetUrl = `${origin}/auth/reset-password?token=${token}`;
+
+    // Dispara e-mail de recuperação via Resend
+    void sendPasswordResetEmail(email, {
+      name: user.name,
+      resetUrl,
+      expiresMinutes: 60,
     });
 
     // Registra notificação interna e auditoria de envio de recuperação
@@ -139,6 +151,19 @@ export async function createMemberInviteAction(email: string, role: Role = Role.
       entityId: targetEmail,
       metadata: { role },
     },
+  });
+
+  const origin =
+    process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000";
+  const fullInviteUrl = `${origin}/auth/accept-invite?token=${token}`;
+
+  // Dispara convite por e-mail via Resend
+  void sendMemberInviteEmail(targetEmail, {
+    orgName: context.organizationName,
+    inviterName: context.userName,
+    role: String(role),
+    inviteUrl: fullInviteUrl,
+    expiresDays: 7,
   });
 
   return {

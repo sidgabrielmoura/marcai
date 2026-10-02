@@ -69,7 +69,7 @@ for (const status of ["CANCELLED", "NOT_COMPLETED", "BLOCKED"]) test(`${status} 
 test("atraso SLA usa vencimento do SLA, não prazo geral", () => assert.equal(taskTiming({ ...late, status: "PAUSED" }, now).delayMinutes, 60));
 test("conclusão congela tempo medido", () => assert.equal(taskTiming({ ...late, status: "COMPLETED", completedAt: new Date("2026-09-24T11:15:00Z") }, now).delayMinutes, 15));
 test("data futura produz execução programada", () => assert.equal(resolveExecutionInitialStatus(new Date(now.getTime() + 1), now), "SCHEDULED"));
-test("horário atingido produz execução disponível", () => assert.equal(resolveExecutionInitialStatus(now, now), "AVAILABLE"));
+test("horário atingido produz execução em andamento", () => assert.equal(resolveExecutionInitialStatus(now, now), "IN_PROGRESS"));
 test("política bloqueia execução anterior pendente", () => assert.equal(canGenerateExecutionForRoutine("BLOCK_NEW", { id: "old", status: "PENDING_REVIEW", scheduledAt: now }).shouldGenerate, false));
 test("cancelada não bloqueia próxima execução", () => assert.equal(canGenerateExecutionForRoutine("SKIP_IF_PENDING", { id: "old", status: "CANCELLED", scheduledAt: now }).shouldGenerate, true));
 

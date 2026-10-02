@@ -26,18 +26,18 @@ export function EmployeeHistoryList({ tasks }: { tasks: HistoryTaskItem[] }) {
           <Card key={t.id}>
             <CardContent className="flex flex-wrap justify-between items-center gap-4">
               <div>
-                <StatusBadge status={t.status} />
+                <StatusBadge status={t.status} className="text-xs!" />
                 <button
                   type="button"
                   onClick={() => {
                     setSelectedTaskId(t.id);
                     setSheetOpen(true);
                   }}
-                  className="text-left text-card-title font-semibold mt-2 hover:underline cursor-pointer block"
+                  className="text-left font-semibold mt-2 text-md! hover:underline cursor-pointer block"
                 >
                   {t.title}
                 </button>
-                <p className="text-caption text-muted-foreground mt-1">
+                <p className="text-muted-foreground mt-1 text-xs">
                   {t.locationName ? `${t.locationName} · ` : ""}
                   {t.dateLabel}
                 </p>

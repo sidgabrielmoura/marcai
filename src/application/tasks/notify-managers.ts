@@ -1,4 +1,5 @@
 import type { Prisma, Priority } from "@prisma/client";
+import { dispatchNotificationAsync } from "@/infrastructure/notifications/notification-service";
 
 export interface NotifyOptions {
   type?: string;
@@ -58,16 +59,31 @@ export async function notifyManagers(
   ];
 
   if (recipientUserIds.length > 0) {
+    const type = options?.type ?? "OPERATIONAL_ALERT";
+    const priority = options?.priority ?? "HIGH";
+    const data = (options?.data ?? { taskId: task.id }) as Prisma.InputJsonValue;
+
     await tx.notification.createMany({
       data: recipientUserIds.map((userId) => ({
         organizationId: task.organizationId,
         userId,
-        type: options?.type ?? "OPERATIONAL_ALERT",
-        priority: options?.priority ?? "HIGH",
+        type,
+        priority,
         title,
         message,
-        data: (options?.data ?? { taskId: task.id }) as Prisma.InputJsonValue,
+        data,
       })),
+    });
+
+    void dispatchNotificationAsync({
+      organizationId: task.organizationId,
+      userIds: recipientUserIds,
+      type,
+      priority,
+      title,
+      message,
+      data: (options?.data ?? { taskId: task.id }) as Record<string, unknown>,
+      clickAction: `/tasks/${task.id}`,
     });
   }
 }
@@ -110,16 +126,31 @@ export async function notifyTaskAssignees(
   ];
 
   if (recipientUserIds.length > 0) {
+    const type = options?.type ?? "TASK_NOTIFICATION";
+    const priority = options?.priority ?? task.priority ?? "MEDIUM";
+    const data = (options?.data ?? { taskId: task.id }) as Prisma.InputJsonValue;
+
     await tx.notification.createMany({
       data: recipientUserIds.map((userId) => ({
         organizationId: task.organizationId,
         userId,
-        type: options?.type ?? "TASK_NOTIFICATION",
-        priority: options?.priority ?? task.priority ?? "MEDIUM",
+        type,
+        priority,
         title,
         message,
-        data: (options?.data ?? { taskId: task.id }) as Prisma.InputJsonValue,
+        data,
       })),
+    });
+
+    void dispatchNotificationAsync({
+      organizationId: task.organizationId,
+      userIds: recipientUserIds,
+      type,
+      priority,
+      title,
+      message,
+      data: (options?.data ?? { taskId: task.id }) as Record<string, unknown>,
+      clickAction: `/tasks/${task.id}`,
     });
   }
 }
@@ -200,15 +231,32 @@ export async function notifyApprovers(
     return;
   }
 
+  const approverUserIds = Array.from(recipientUserIds);
+  const type = options?.type ?? "APPROVAL_REQUESTED";
+  const priority = options?.priority ?? "HIGH";
+  const data = (options?.data ?? { taskId: task.id, stepId: step.id }) as Prisma.InputJsonValue;
+
   await tx.notification.createMany({
-    data: Array.from(recipientUserIds).map((userId) => ({
+    data: approverUserIds.map((userId) => ({
       organizationId: task.organizationId,
       userId,
-      type: options?.type ?? "APPROVAL_REQUESTED",
-      priority: options?.priority ?? "HIGH",
+      type,
+      priority,
       title,
       message,
-      data: (options?.data ?? { taskId: task.id, stepId: step.id }) as Prisma.InputJsonValue,
+      data,
     })),
+  });
+
+  void dispatchNotificationAsync({
+    organizationId: task.organizationId,
+    userIds: approverUserIds,
+    type,
+    priority,
+    title,
+    message,
+    data: (options?.data ?? { taskId: task.id, stepId: step.id }) as Record<string, unknown>,
+    clickAction: `/tasks/${task.id}`,
+    forcePush: true, // Aprovação de gestor é prioritária (Web Push garantido)
   });
 }

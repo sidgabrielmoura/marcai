@@ -16,7 +16,7 @@ import { eventBus } from "@/infrastructure/events/event-bus";
 import { inspectEvidenceFile, storeEvidence, removeEvidence } from "@/infrastructure/storage/evidence-storage";
 import { revalidatePath } from "next/cache";
 export type ActionResult = { success?: boolean; error?: string };
-function refresh(id: string) { for (const p of [`/tasks/${id}`, `/management/tasks/${id}`, "/tasks", "/history", "/management/tasks", "/management/executions", "/overview", "/notifications"]) revalidatePath(p); }
+function refresh(id: string) { for (const p of [`/tasks/${id}`, `/management/tasks/${id}`, "/tasks", "/history", "/management/tasks", "/overview", "/notifications"]) revalidatePath(p); }
 
 export async function startTaskAction(taskId: string, justification?: string): Promise<ActionResult> {
   const c = await getAuthenticatedContext(); if (!c) return { error: "Não autenticado." };
@@ -25,7 +25,7 @@ export async function startTaskAction(taskId: string, justification?: string): P
     const task = await tx.task.findFirst({ where: { ...taskScope(c), id: taskId, deletedAt: null }, include: { execution: true, location: true, organization: { select: { settings: true } }, dependencies: { include: { dependsOnTask: { include: { approvalWorkflow: true } } } }, evidenceRequirements: { where: { executionStage: "START", required: true }, include: { submissions: true } } } });
     if (!task) return { error: "Tarefa não encontrada no seu acesso." };
     if (!await eligibleMember(c.organizationId, c.memberId, task.locationId, task.teamId, tx)) return { error: "Seu acesso à equipe ou unidade mudou. Solicite uma nova atribuição à gestão." };
-    
+
     // Avaliação de início antecipado (Item 33)
     const scheduledOrAvailable = task.execution?.availableAt ?? task.scheduledDate ?? new Date(0);
     const settings = (task.organization?.settings as Record<string, any>) || {};
@@ -98,8 +98,23 @@ async function saveEvidence(taskId: string, requirementId: string, value: string
       const req = await tx.taskEvidenceRequirement.findFirst({ where: { id: requirementId, taskId }, include: { submissions: true } });
       if (!req) return { error: "Evidência não encontrada." };
       if (!["AVAILABLE", "IN_PROGRESS", "NEEDS_CORRECTION", "PAUSED"].includes(task.status)) return { error: "Esta tarefa não está disponível para registrar evidências." };
+
+      // Se a tolerância expirou, bloqueia envio de evidências
+      const now = new Date();
+      const deadlines = [task.deadlineAt, task.slaDueAt]
+        .filter((v): v is Date => !!v)
+        .map((d) => d.getTime());
+      if (deadlines.length > 0) {
+        const dueAt = Math.min(...deadlines);
+        const toleranceMinutes = task.toleranceMinutes ?? 20;
+        const toleranceLimitAt = dueAt + toleranceMinutes * 60 * 1000;
+        if (now.getTime() > toleranceLimitAt) {
+          return { error: "O tempo de tolerância desta tarefa expirou. O envio de comprovações foi bloqueado." };
+        }
+      }
+
       if (!task.startedAt) {
-        await tx.task.update({ where: { id: taskId }, data: { startedAt: new Date() } });
+        await tx.task.update({ where: { id: taskId }, data: { startedAt: now } });
       }
       const round = await getEvidenceRound(tx, c.organizationId, taskId);
       const attemptNumber = req.submissions.length + 1;
@@ -149,6 +164,30 @@ export async function completeTaskAction(taskId: string): Promise<ActionResult> 
     if (!task) return { error: "Tarefa não encontrada no seu acesso." };
     if (!await eligibleMember(c.organizationId, c.memberId, task.locationId, task.teamId, tx)) return { error: "Seu acesso à equipe ou unidade mudou. Solicite uma nova atribuição à gestão." };
 
+    const now = new Date();
+
+    // Verificação de bloqueio por limite de tolerância esgotado
+    const deadlines = [task.deadlineAt, task.slaDueAt]
+      .filter((v): v is Date => !!v)
+      .map((d) => d.getTime());
+    if (deadlines.length > 0) {
+      const dueAt = Math.min(...deadlines);
+      const toleranceMinutes = task.toleranceMinutes ?? 20;
+      const toleranceLimitAt = dueAt + toleranceMinutes * 60 * 1000;
+      if (now.getTime() > toleranceLimitAt) {
+        await notifyManagers(
+          tx,
+          task,
+          "Tolerância esgotada: Tarefa bloqueada",
+          `A tarefa “${task.title}” atingiu o limite de tolerância (+${toleranceMinutes}m) e foi bloqueada. Aguarde reabertura ou reatribuição pelo gestor.`,
+          { type: "TASK_TOLERANCE_EXCEEDED", priority: "HIGH" }
+        );
+        return {
+          error: "O tempo limite de tolerância desta tarefa foi atingido. Ela não pode mais ser entregue e a gestão foi notificada. Aguarde a reabertura pelo gestor ou reatribuição.",
+        };
+      }
+    }
+
     const round = await getEvidenceRound(tx, c.organizationId, taskId);
     task.evidenceRequirements.forEach(r => { r.submissions = evidenceInRound(r.submissions, round); });
     const check = canCompleteTask(task.status, task.evidenceRequirements.map(r => ({
@@ -159,24 +198,6 @@ export async function completeTaskAction(taskId: string): Promise<ActionResult> 
       failedAttemptsCount: r.submissions.filter(s => s.validationStatus === "REJECTED").length,
     })));
     if (!check.allowed) return { error: check.reason };
-
-    const now = new Date();
-
-    // Verificação de início antecipado / janela operacional
-    const scheduledOrAvailable = task.execution?.availableAt ?? task.scheduledDate ?? null;
-    const settings = (task.organization?.settings as Record<string, any>) || {};
-    if (scheduledOrAvailable && scheduledOrAvailable > now) {
-      const earlyEval = evaluateEarlyExecution({
-        policy: settings.earlyExecutionPolicy || "NOT_ALLOWED",
-        scheduledOrAvailableAt: scheduledOrAvailable,
-        currentTime: now,
-        windowMinutes: settings.earlyExecutionWindowMinutes ?? 60,
-        justification: null,
-      });
-      if (!earlyEval.allowed) {
-        return { error: earlyEval.reason || "Esta tarefa ainda está programada para um horário futuro." };
-      }
-    }
 
     // Guarda de horário operacional da unidade
     if (task.location) {
@@ -298,6 +319,8 @@ export type TaskDetailResult = {
   status: string;
   priority: string;
   deadlineAt: string | null;
+  slaDueAt: string | null;
+  toleranceMinutes: number;
   scheduledDate: string | null;
   requiresApproval: boolean;
   correctionRequested: boolean;
@@ -380,23 +403,23 @@ export async function getTaskDetailAction(taskId: string): Promise<{ success?: b
         },
       }),
       "taskDependency" in prisma &&
-      typeof (prisma as any).taskDependency?.findMany === "function"
+        typeof (prisma as any).taskDependency?.findMany === "function"
         ? (prisma as any).taskDependency
-            .findMany({
-              where: {
-                taskId,
-                task: {
-                  organizationId: c.organizationId,
-                  deletedAt: null,
-                },
+          .findMany({
+            where: {
+              taskId,
+              task: {
+                organizationId: c.organizationId,
+                deletedAt: null,
               },
-              include: {
-                dependsOnTask: {
-                  select: { id: true, title: true, status: true },
-                },
+            },
+            include: {
+              dependsOnTask: {
+                select: { id: true, title: true, status: true },
               },
-            })
-            .catch(() => [])
+            },
+          })
+          .catch(() => [])
         : Promise.resolve([]),
     ]);
 
@@ -418,6 +441,8 @@ export async function getTaskDetailAction(taskId: string): Promise<{ success?: b
         status: task.status,
         priority: task.priority,
         deadlineAt: task.deadlineAt ? task.deadlineAt.toISOString() : null,
+        slaDueAt: task.slaDueAt ? task.slaDueAt.toISOString() : null,
+        toleranceMinutes: task.toleranceMinutes ?? 20,
         scheduledDate: task.scheduledDate ? task.scheduledDate.toISOString() : null,
         requiresApproval: !!task.approvalWorkflow,
         correctionRequested: !!evidenceRound,

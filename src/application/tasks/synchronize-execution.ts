@@ -28,10 +28,17 @@ export async function synchronizeExecution(tx: Prisma.TransactionClient, organiz
     await tx.task.updateMany({
       where: { id: task.id, organizationId, status: "BLOCKED" },
       data: {
-        status: "AVAILABLE",
+        status: "IN_PROGRESS",
+        startedAt: now,
         slaDueAt: task.slaStartEvent === "ON_AVAILABLE" && task.slaDurationMinutes ? new Date(Math.max(now.getTime(), task.scheduledDate?.getTime() ?? 0) + task.slaDurationMinutes * 60000) : null,
       },
     });
+
+    for (const assignment of task.assignments) {
+      await tx.taskExecutionSession.create({
+        data: { taskId: task.id, memberId: assignment.memberId, startedAt: now },
+      });
+    }
 
     for (const assignment of task.assignments) {
       if (assignment.member?.status === "ACTIVE" && assignment.member.userId) {

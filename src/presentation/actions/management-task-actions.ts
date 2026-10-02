@@ -8,6 +8,7 @@ import { lockTask } from "@/application/tasks/task-lock";
 import { effectiveWorkSeconds } from "@/domain/rules/execution-state";
 import { synchronizeExecution } from "@/application/tasks/synchronize-execution";
 import { notifyManagers, notifyTaskAssignees, notifyApprovers } from "@/application/tasks/notify-managers";
+import { dispatchNotificationAsync } from "@/infrastructure/notifications/notification-service";
 import { prisma } from "@/infrastructure/database/prisma";
 import { getAuthenticatedContext } from "@/application/security/auth-context";
 import {
@@ -43,6 +44,7 @@ const CreateTaskSchema = z.object({
   deadlineAt: z.string().optional().nullable(),
   estimatedDuration: z.number().int().positive().optional().nullable(),
   slaDurationMinutes: z.number().int().positive().optional().nullable(),
+  toleranceMinutes: z.coerce.number().int().min(0).default(20),
   evidenceType: z.enum(["PHOTO", "VIDEO", "FILE", "TEXT", "NUMBER", "SIGNATURE", "LOCATION"]).optional().nullable(),
   evidenceRequired: z.boolean().default(true),
 });
@@ -71,6 +73,7 @@ export async function createAdHocTaskAction(formData: FormData): Promise<ActionR
     deadlineAt: formData.get("deadlineAt") || null,
     estimatedDuration: formData.get("estimatedDuration") ? Number(formData.get("estimatedDuration")) : null,
     slaDurationMinutes: formData.get("slaDurationMinutes") ? Number(formData.get("slaDurationMinutes")) : null,
+    toleranceMinutes: formData.get("toleranceMinutes") !== null ? Number(formData.get("toleranceMinutes")) : 20,
     evidenceType: formData.get("evidenceType") || null,
     evidenceRequired: formData.get("evidenceRequired") !== "false",
   };
@@ -93,6 +96,7 @@ export async function createAdHocTaskAction(formData: FormData): Promise<ActionR
     deadlineAt,
     estimatedDuration,
     slaDurationMinutes,
+    toleranceMinutes,
     evidenceType,
     evidenceRequired,
   } = parsed.data;
@@ -115,6 +119,9 @@ export async function createAdHocTaskAction(formData: FormData): Promise<ActionR
   if (deadlineDate && Number.isNaN(deadlineDate.getTime())) return { error: "Prazo inválido." };
   const slaDueDate = slaDurationMinutes ? new Date(Date.now() + slaDurationMinutes * 60 * 1000) : null;
 
+  const now = new Date();
+  const isAssigned = !!primaryMemberId;
+
   const task = await prisma.$transaction(async (tx) => {
     const newTask = await tx.task.create({
       data: {
@@ -125,18 +132,20 @@ export async function createAdHocTaskAction(formData: FormData): Promise<ActionR
         title,
         description,
         instructions,
-        status: "AVAILABLE",
+        status: isAssigned ? "IN_PROGRESS" : "AVAILABLE",
+        startedAt: isAssigned ? now : null,
         priority: priority as Priority,
         criticality: criticality as Criticality,
         required,
         deadlineAt: deadlineDate,
         slaDurationMinutes: slaDurationMinutes || null,
         slaDueAt: slaDueDate,
+        toleranceMinutes: toleranceMinutes ?? 20,
         estimatedDuration: estimatedDuration || null,
       },
     });
 
-    // Se houver responsável primário indicado
+    // Se houver responsável primário indicado, a tarefa já inicia imediatamente
     if (primaryMemberId) {
       await tx.taskAssignment.create({
         data: {
@@ -144,6 +153,14 @@ export async function createAdHocTaskAction(formData: FormData): Promise<ActionR
           memberId: primaryMemberId,
           type: "PRIMARY",
           assignedBy: context.memberId,
+        },
+      });
+
+      await tx.taskExecutionSession.create({
+        data: {
+          taskId: newTask.id,
+          memberId: primaryMemberId,
+          startedAt: now,
         },
       });
 
@@ -162,6 +179,18 @@ export async function createAdHocTaskAction(formData: FormData): Promise<ActionR
             message: title,
             data: { taskId: newTask.id },
           },
+        });
+
+        void dispatchNotificationAsync({
+          organizationId: context.organizationId,
+          userIds: [assignedMember.userId],
+          type: "TASK_ASSIGNED",
+          priority: priority as Priority,
+          title: "Você recebeu uma nova tarefa",
+          message: title,
+          data: { taskId: newTask.id },
+          clickAction: `/tasks/${newTask.id}`,
+          forcePush: true,
         });
       }
     }
@@ -228,7 +257,7 @@ async function operate(taskId: string, management: boolean, fn: (tx: Prisma.Tran
     if (result.success) await synchronizeExecution(tx, c.organizationId, task.executionId);
     return result;
   }, { timeout: 20000 });
-  for (const path of ["/tasks", "/history", "/management/tasks", "/management/tasks/trash", "/management/executions", "/overview", "/notifications", "/tasks/" + taskId, "/management/tasks/" + taskId]) revalidatePath(path);
+  for (const path of ["/tasks", "/history", "/management/tasks", "/management/tasks/trash", "/overview", "/notifications", "/tasks/" + taskId, "/management/tasks/" + taskId]) revalidatePath(path);
   return result;
 }
 async function audit(tx: Prisma.TransactionClient, task: OperationalTask, c: Context, action: string, metadata: Prisma.InputJsonValue = {}) {
@@ -268,6 +297,15 @@ export async function transferTaskAction(taskId: string, newMemberId: string, re
     if (current) {
       await tx.taskAssignment.updateMany({ where: { taskId, memberId: current.memberId, removedAt: null }, data: { removedAt: new Date() } });
       await tx.notification.create({ data: { organizationId: c.organizationId, userId: current.member.userId, type: "TASK_TRANSFERRED_OUT", title: "Tarefa transferida", message: "A tarefa “" + task.title + "” foi transferida para outro responsável." } });
+      void dispatchNotificationAsync({
+        organizationId: c.organizationId,
+        userIds: [current.member.userId],
+        type: "TASK_TRANSFERRED_OUT",
+        title: "Tarefa transferida",
+        message: "A tarefa “" + task.title + "” foi transferida para outro responsável.",
+        clickAction: "/notifications",
+        forcePush: false,
+      });
     }
     if (["IN_PROGRESS", "PAUSED"].includes(task.status)) {
       const now = new Date();
@@ -278,6 +316,17 @@ export async function transferTaskAction(taskId: string, newMemberId: string, re
     await tx.taskAssignment.updateMany({ where: { taskId, memberId: newMemberId, removedAt: null }, data: { removedAt: new Date() } });
     await tx.taskAssignment.create({ data: { taskId, memberId: newMemberId, type: "PRIMARY", assignedBy: c.memberId } });
     await tx.notification.create({ data: { organizationId: c.organizationId, userId: member.userId, type: "TASK_ASSIGNED", title: "Você recebeu uma tarefa", message: task.title, data: { taskId } } });
+    void dispatchNotificationAsync({
+      organizationId: c.organizationId,
+      userIds: [member.userId],
+      type: "TASK_ASSIGNED",
+      priority: task.priority,
+      title: "Você recebeu uma tarefa",
+      message: task.title,
+      data: { taskId },
+      clickAction: `/tasks/${taskId}`,
+      forcePush: true,
+    });
     await audit(tx, task, c, "TASK_TRANSFERRED", { previousMemberId: current?.memberId ?? null, newMemberId, reason: reason?.slice(0, 1000) ?? "" });
     return { success: true };
   });
@@ -291,7 +340,17 @@ export async function claimTaskAction(taskId: string): Promise<ActionResult> {
     if (!task || terminal(task.status)) return { error: "Tarefa indisponível." };
     if (task.assignments.some(a => a.type === "PRIMARY")) return { error: "Outra pessoa já assumiu esta tarefa." };
     if (!task.teamId || !task.locationId || !await eligibleMember(c.organizationId, c.memberId, task.locationId, task.teamId, tx)) return { error: "Apenas membros da equipe com acesso à unidade podem assumir." };
+    const now = new Date();
     await tx.taskAssignment.create({ data: { taskId, memberId: c.memberId, type: "PRIMARY", assignedBy: c.memberId } });
+    await tx.task.update({
+      where: { id: taskId },
+      data: {
+        status: "IN_PROGRESS",
+        startedAt: task.startedAt ?? now,
+        slaDueAt: task.slaDueAt ?? (task.slaDurationMinutes ? new Date(now.getTime() + task.slaDurationMinutes * 60000) : null),
+      },
+    });
+    await tx.taskExecutionSession.create({ data: { taskId, memberId: c.memberId, startedAt: now } });
     await audit(tx, task, c, "TASK_CLAIMED");
     await notifyManagers(
       tx,
@@ -307,24 +366,7 @@ export async function claimTaskAction(taskId: string): Promise<ActionResult> {
 }
 
 export async function pauseTaskAction(taskId: string, category = "OUTROS", note?: string): Promise<ActionResult> {
-  return operate(taskId, false, async (tx, task, c) => {
-    const check = canPauseTask(task.status);
-    if (!check.allowed) return { error: check.reason };
-    if (!reasonSchema.safeParse(category).success || note && !reasonSchema.safeParse(note).success) return { error: "Informe um motivo válido para a pausa." };
-    const session = task.sessions.find(s => !s.endedAt);
-    if (!session) return { error: "Nenhuma sessão em andamento." };
-    await tx.taskPause.create({ data: { sessionId: session.id, reasonCategoryId: category, note: note || null } });
-    await tx.task.update({ where: { id: task.id }, data: { status: "PAUSED" } });
-    await audit(tx, task, c, "TASK_PAUSED", { category, note: note ?? "" });
-    await notifyManagers(
-      tx,
-      task,
-      "Tarefa pausada",
-      `A tarefa “${task.title}” foi pausada por ${c.userName || "um colaborador"}. Motivo: ${category}${note ? ` (${note})` : ""}.`,
-      { type: "TASK_PAUSED", priority: "MEDIUM", excludeUserId: c.userId }
-    );
-    return { success: true };
-  });
+  return { error: "O sistema não permite pausar tarefas. A tarefa permanece aberta até ser cancelada ou concluída." };
 }
 export async function resumeTaskAction(taskId: string): Promise<ActionResult> {
   return operate(taskId, false, async (tx, task, c) => {
@@ -411,7 +453,20 @@ export async function submitApprovalDecisionAction(stepId: string, decision: "AP
     if (decision === "REJECTED" || allApproved) {
       await tx.task.update({ where: { id: task.id }, data: { status: allApproved ? "COMPLETED" : "NEEDS_CORRECTION", completedAt: allApproved ? new Date() : null } });
       const owner = task.assignments.find(a => a.type === "PRIMARY");
-      if (owner) await tx.notification.create({ data: { organizationId: context.organizationId, userId: owner.member.userId, type: "APPROVAL_UPDATED", priority: allApproved ? "LOW" : "HIGH", title: allApproved ? "Entrega aprovada" : "Correção solicitada", message: task.title + (note ? ": " + note : ""), data: { taskId: task.id } } });
+      if (owner) {
+        await tx.notification.create({ data: { organizationId: context.organizationId, userId: owner.member.userId, type: "APPROVAL_UPDATED", priority: allApproved ? "LOW" : "HIGH", title: allApproved ? "Entrega aprovada" : "Correção solicitada", message: task.title + (note ? ": " + note : ""), data: { taskId: task.id } } });
+        void dispatchNotificationAsync({
+          organizationId: context.organizationId,
+          userIds: [owner.member.userId],
+          type: allApproved ? "APPROVAL_UPDATED" : "TASK_CORRECTION_REQUESTED",
+          priority: allApproved ? "LOW" : "HIGH",
+          title: allApproved ? "Entrega aprovada" : "Correção solicitada",
+          message: task.title + (note ? ": " + note : ""),
+          data: { taskId: task.id },
+          clickAction: `/tasks/${task.id}`,
+          forcePush: !allApproved, // Se necessita de correção, envia Push com alta prioridade!
+        });
+      }
       if (allApproved) {
         await notifyManagers(
           tx,
@@ -485,7 +540,6 @@ export async function getEligibleMembersForTaskAction(taskId: string): Promise<A
   const formatted = members.map((m) => {
     const availability = calculateMemberAvailability({
       memberStatus: m.status,
-      manualSetting: m.manualAvailability,
       inProgressTasksCount: m.taskAssignments.length,
       isWithinOperatingHours: isLocationOpen,
     });
@@ -502,51 +556,288 @@ export async function getEligibleMembersForTaskAction(taskId: string): Promise<A
 }
 
 /**
- * Atualiza o status de disponibilidade do próprio membro (Item 35)
+ * A disponibilidade operacional é 100% automatizada pelo sistema.
+ * Alterações manuais pelo funcionário foram descontinuadas.
  */
-export async function updateMemberAvailabilityAction(manualSetting: "AUTO" | "AVAILABLE" | "UNAVAILABLE"): Promise<ActionResult> {
-  const context = await getAuthenticatedContext();
-  if (!context) return { error: "Não autenticado." };
-  if (!["AUTO", "AVAILABLE", "UNAVAILABLE"].includes(manualSetting)) {
-    return { error: "Opção de disponibilidade inválida." };
-  }
-
-  const member = await prisma.organizationMember.findUnique({
-    where: { id: context.memberId },
-    include: {
-      locationAccesses: { include: { location: true } },
-      taskAssignments: { where: { removedAt: null, task: { status: "IN_PROGRESS", deletedAt: null } } },
-    },
-  });
-  if (!member) return { error: "Membro não encontrado." };
-
-  const primaryLoc = member.locationAccesses.find(l => l.type === "PRIMARY")?.location;
-  const isLocationOpen = primaryLoc ? isLocationOpenAt(primaryLoc, new Date()) : true;
-
-  const availabilityStatus = calculateMemberAvailability({
-    memberStatus: member.status,
-    manualSetting,
-    inProgressTasksCount: member.taskAssignments.length,
-    isWithinOperatingHours: isLocationOpen,
-  });
-
-  await prisma.organizationMember.update({
-    where: { id: context.memberId },
-    data: {
-      manualAvailability: manualSetting,
-      availabilityStatus,
-      lastAvailabilityChange: new Date(),
-    },
-  });
-
-  eventBus.publish("MEMBER_AVAILABILITY_CHANGED", context.organizationId, {
-    memberId: context.memberId,
-    manualSetting,
-    availabilityStatus,
-  });
-
-  revalidatePath("/tasks");
-  revalidatePath("/management/people");
-  return { success: true, data: { availabilityStatus } };
+export async function updateMemberAvailabilityAction(
+  _manualSetting?: "AUTO" | "AVAILABLE" | "UNAVAILABLE"
+): Promise<ActionResult> {
+  return {
+    error:
+      "A disponibilidade operacional é calculada automaticamente pelo sistema com base no expediente da unidade e tarefas em andamento.",
+  };
 }
 
+// ─── Drawer de Detalhe da Tarefa (Gestão) ─────────────────────────────────────
+export type ManagementTaskDrawerResult = {
+  id: string;
+  title: string;
+  description: string | null;
+  instructions: string | null;
+  origin: string;
+  status: string;
+  priority: string;
+  criticality: string;
+  required: boolean;
+  deadlineAt: string | null;
+  slaDueAt: string | null;
+  slaExceeded: boolean;
+  estimatedDuration: number | null;
+  actualDuration: number | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  locationName: string | null;
+  teamName: string | null;
+  assignments: Array<{
+    id: string;
+    memberId: string;
+    memberName: string;
+    type: string;
+  }>;
+  evidenceRequirements: Array<{
+    id: string;
+    type: string;
+    required: boolean;
+    executionStage: string;
+    minQuantity: number;
+    submissions: Array<{
+      id: string;
+      value: string | null;
+      storageKey: string | null;
+      validationStatus: string;
+      attemptNumber: number;
+      createdAt: string;
+    }>;
+  }>;
+  dependencies: Array<{
+    id: string;
+    type: string;
+    logic: string;
+    dependsOnTask: { id: string; title: string; status: string };
+  }>;
+  occurrences: Array<{
+    id: string;
+    type: string;
+    category: string;
+    reason: string;
+    severity: string;
+    createdAt: string;
+  }>;
+  activityLogs: Array<{
+    id: string;
+    action: string;
+    actorName: string | null;
+    createdAt: string;
+  }>;
+  approvalWorkflow: {
+    id: string;
+    mode: string;
+    status: string;
+    steps: Array<{
+      id: string;
+      sequence: number;
+      status: string;
+      canDecide: boolean;
+      decisions: Array<{
+        id: string;
+        decision: string;
+        note: string | null;
+        decidedBy: string;
+        createdAt: string;
+      }>;
+    }>;
+  } | null;
+  canEdit: boolean;
+};
+
+export async function getManagementTaskDrawerAction(
+  taskId: string,
+): Promise<{ success?: boolean; error?: string; task?: ManagementTaskDrawerResult }> {
+  const context = await getAuthenticatedContext();
+  if (!context) return { error: "Não autenticado." };
+  if (!isManagement(context)) return { error: "Acesso não autorizado." };
+  if (!taskId || typeof taskId !== "string") return { error: "Identificador inválido." };
+
+  try {
+    const [task, rawDependencies, activityLogs] = await Promise.all([
+      prisma.task.findFirst({
+        where: { id: taskId, ...taskScope(context), deletedAt: null },
+        include: {
+          location: true,
+          team: true,
+          assignments: {
+            where: { removedAt: null },
+            include: { member: { include: { user: true } } },
+          },
+          evidenceRequirements: {
+            include: { submissions: { orderBy: { createdAt: "desc" } } },
+          },
+          sessions: { include: { pauses: true } },
+          occurrences: { orderBy: { createdAt: "desc" } },
+          approvalWorkflow: {
+            include: {
+              steps: {
+                include: { decisions: true },
+                orderBy: { sequence: "asc" },
+              },
+            },
+          },
+        },
+      }),
+      "taskDependency" in prisma &&
+        typeof (prisma as any).taskDependency?.findMany === "function"
+        ? (prisma as any).taskDependency
+            .findMany({
+              where: { taskId, task: taskScope(context) },
+              include: {
+                dependsOnTask: { select: { id: true, title: true, status: true } },
+              },
+            })
+            .catch(() => [])
+        : Promise.resolve([]),
+      prisma.activityLog.findMany({
+        where: { organizationId: context.organizationId, entityType: "TASK", entityId: taskId },
+        orderBy: { createdAt: "desc" },
+        take: 8,
+      }),
+    ]);
+
+    if (!task) return { error: "Tarefa não encontrada ou sem permissão de acesso." };
+
+    // Scope check for MANAGER
+    if (context.role === "MANAGER" && context.scope) {
+      if (task.locationId && !context.scope.locationIds.includes(task.locationId)) {
+        return { error: "Sem acesso a esta tarefa." };
+      }
+      if (task.teamId && !context.scope.teamIds.includes(task.teamId)) {
+        return { error: "Sem acesso a esta tarefa." };
+      }
+    }
+
+    // Resolve actor names for activity logs
+    const actorIds = activityLogs.flatMap((l) => (l.actorId ? [l.actorId] : []));
+    const [actors, ownTeams] = await Promise.all([
+      actorIds.length > 0
+        ? prisma.organizationMember.findMany({
+            where: { id: { in: actorIds } },
+            include: { user: { select: { name: true } } },
+          })
+        : Promise.resolve([]),
+      prisma.teamMember.findMany({
+        where: { organizationMemberId: context.memberId },
+        select: { teamId: true },
+      }),
+    ]);
+    const actorMap = new Map(actors.map((a) => [a.id, a.user.name]));
+
+    const dependenciesList: any[] = Array.isArray(rawDependencies) ? rawDependencies : [];
+    const now = new Date();
+    const slaExceeded = Boolean(
+      task.slaExceededAt || (task.slaDueAt && task.slaDueAt < now && task.status !== "COMPLETED"),
+    );
+
+    return {
+      success: true,
+      task: {
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        instructions: task.instructions,
+        origin: task.origin,
+        status: task.status,
+        priority: task.priority,
+        criticality: task.criticality,
+        required: task.required,
+        deadlineAt: task.deadlineAt ? task.deadlineAt.toISOString() : null,
+        slaDueAt: task.slaDueAt ? task.slaDueAt.toISOString() : null,
+        slaExceeded,
+        estimatedDuration: task.estimatedDuration,
+        actualDuration: task.actualDuration,
+        startedAt: task.startedAt ? task.startedAt.toISOString() : null,
+        completedAt: task.completedAt ? task.completedAt.toISOString() : null,
+        locationName: task.location?.name || null,
+        teamName: task.team?.name || null,
+        assignments: task.assignments.map((a) => ({
+          id: a.id,
+          memberId: a.memberId,
+          memberName: a.member?.user?.name || "—",
+          type: a.type,
+        })),
+        evidenceRequirements: task.evidenceRequirements.map((req) => ({
+          id: req.id,
+          type: req.type,
+          required: req.required,
+          executionStage: req.executionStage ?? "DURING",
+          minQuantity: req.minQuantity,
+          submissions: req.submissions.map((s) => ({
+            id: s.id,
+            value: s.value,
+            storageKey: s.storageKey,
+            validationStatus: s.validationStatus,
+            attemptNumber: s.attemptNumber,
+            createdAt: s.createdAt.toISOString(),
+          })),
+        })),
+        dependencies: dependenciesList.map((d: any) => ({
+          id: d.id,
+          type: d.type,
+          logic: d.logic,
+          dependsOnTask: {
+            id: d.dependsOnTask?.id || "",
+            title: d.dependsOnTask?.title || "Etapa anterior",
+            status: d.dependsOnTask?.status || "AVAILABLE",
+          },
+        })),
+        occurrences: task.occurrences.map((o) => ({
+          id: o.id,
+          type: o.type,
+          category: o.category,
+          reason: o.reason,
+          severity: o.severity,
+          createdAt: o.createdAt.toISOString(),
+        })),
+        activityLogs: activityLogs.map((l) => ({
+          id: l.id,
+          action: l.action,
+          actorName: actorMap.get(l.actorId ?? "") ?? null,
+          createdAt: l.createdAt.toISOString(),
+        })),
+        approvalWorkflow: task.approvalWorkflow
+          ? {
+              id: task.approvalWorkflow.id,
+              mode: task.approvalWorkflow.mode,
+              status: task.approvalWorkflow.status,
+              steps: task.approvalWorkflow.steps.map((step) => ({
+                id: step.id,
+                sequence: step.sequence,
+                status: step.status,
+                canDecide:
+                  task.status === "SUBMITTED" &&
+                  step.status === "PENDING" &&
+                  (step.approverMemberId === context.memberId ||
+                    ownTeams.some((t) => t.teamId === step.approverTeamId) ||
+                    (step.fallbackMemberId === context.memberId &&
+                      !!step.deadlineAt &&
+                      step.deadlineAt <= new Date())) &&
+                  (task.approvalWorkflow!.mode !== "SEQUENTIAL" ||
+                    task.approvalWorkflow!.steps.every(
+                      (prior) => prior.sequence >= step.sequence || prior.status === "APPROVED",
+                    )),
+                decisions: step.decisions.map((d) => ({
+                  id: d.id,
+                  decision: d.decision,
+                  note: d.note,
+                  decidedBy: d.decidedBy,
+                  createdAt: d.createdAt.toISOString(),
+                })),
+              })),
+            }
+          : null,
+        canEdit: canEditTaskDefinition(task as any),
+      },
+    };
+  } catch (err) {
+    console.error("[getManagementTaskDrawerAction]", err);
+    return { error: "Erro ao consultar a tarefa." };
+  }
+}

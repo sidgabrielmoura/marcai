@@ -1,5 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
+import { FirebaseAnalytics } from "@/presentation/components/shared/firebase-analytics";
+import { PushNotificationRegistrar } from "@/presentation/components/shared/push-notification-registrar";
+import { Toaster } from "@/components/ui/toast";
+import { AppReloadLoader } from "@/components/loader/logo-loader";
 import "./globals.css";
 import "./workspace.css";
 
@@ -12,7 +16,7 @@ const geist = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Marcai — Tarefas, processos e equipes",
+  title: "Marcaí — Tarefas, processos e equipes",
   description:
     "Organize tarefas, conecte equipes e acompanhe os processos da sua operação.",
   manifest: "/manifest.json",
@@ -20,7 +24,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "MarcAI",
+    title: "Marcaí",
   },
 };
 
@@ -41,8 +45,12 @@ export default function RootLayout({
       data-scroll-behavior="smooth"
       className={`${geist.variable} h-full antialiased font-sans`}
     >
-      <body className="min-h-full flex flex-col font-sans text-[var(--text-primary)]">
+      <body className="min-h-full flex flex-col font-sans text-(--text-primary)">
+        <AppReloadLoader size={128} />
+        <FirebaseAnalytics />
+        <PushNotificationRegistrar />
         {children}
+        <Toaster />
       </body>
     </html>
   );

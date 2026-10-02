@@ -71,7 +71,7 @@ export function resolveExecutionInitialStatus(
   now: Date = new Date()
 ): ExecutionStatus {
   if (scheduledAt <= now) {
-    return ExecutionStatus.AVAILABLE;
+    return ExecutionStatus.IN_PROGRESS;
   }
   return ExecutionStatus.SCHEDULED;
 }

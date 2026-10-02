@@ -7,7 +7,7 @@ import {
 } from "@/presentation/components/auth/select-org-client";
 
 export const metadata = {
-  title: "Selecionar Organização | Marcai",
+  title: "Selecionar Organização | Marcaí",
   description: "Escolha o espaço de trabalho em que deseja operar.",
 };
 

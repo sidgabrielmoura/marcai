@@ -28,7 +28,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { InputGroup, InputGroupInput, InputGroupAddon } from "@/components/ui/input-group";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "@/components/ui/toast";
 import { Spinner } from "@/components/ui/spinner";
 
 interface ProcessItem {
@@ -61,8 +61,6 @@ export function ArchivedProcessesClient({
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [target, setTarget] = useState<ProcessItem | null>(null);
 
@@ -76,19 +74,30 @@ export function ArchivedProcessesClient({
   async function handleRestore() {
     if (!target) return;
     setBusy(true);
-    setError("");
     try {
       const res = await toggleProcessStatusAction(target.id, "PAUSED");
       if (res.error) {
-        setError(res.error);
+        toast.add({
+          title: "Erro ao restaurar processo",
+          description: res.error,
+          type: "error",
+        });
       } else {
         const name = target.name;
         setTarget(null);
-        setNotice(`O processo "${name}" foi restaurado como pausado.`);
+        toast.add({
+          title: "Processo restaurado",
+          description: `O processo "${name}" foi restaurado como pausado.`,
+          type: "success",
+        });
         router.refresh();
       }
     } catch {
-      setError("Não foi possível restaurar o processo. Tente novamente.");
+      toast.add({
+        title: "Erro inesperado",
+        description: "Não foi possível restaurar o processo. Tente novamente.",
+        type: "error",
+      });
     } finally {
       setBusy(false);
     }
@@ -100,24 +109,6 @@ export function ArchivedProcessesClient({
         title="Processos arquivados"
         subtitle="Processos desativados ou descontinuados da organização. Podem ser consultados ou restaurados para a lista ativa a qualquer momento."
       />
-
-      {notice && (
-        <Alert className="bg-[var(--brand-soft)] border-[var(--sage-400)]/40 text-[var(--brand-900)]">
-          <AlertDescription className="flex items-center justify-between gap-4 flex-wrap">
-            <span>{notice}</span>
-            <Button
-              size="sm"
-              variant="outline"
-              nativeButton={false}
-              render={<Link href="/management/processes" />}
-              className="text-xs h-7 gap-1 border-[var(--brand-700)]/30 text-[var(--brand-900)]"
-            >
-              Ir para Processos ativos
-              <ArrowRight className="size-3" />
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
 
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <InputGroup className="max-w-md py-5.5!">
@@ -216,18 +207,7 @@ export function ArchivedProcessesClient({
                 )}
               </CardContent>
 
-              <CardFooter className="p-0 pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  nativeButton={false}
-                  render={<Link href={`/management/executions?process=${p.id}`} />}
-                  className="text-xs h-8 text-[var(--text-secondary)] gap-1.5"
-                >
-                  <PlayCircle className="size-3.5" />
-                  Ver histórico de execuções
-                </Button>
-
+              <CardFooter className="p-0 pt-2 border-t border-[var(--border-subtle)] flex items-center justify-end gap-2">
                 {canRestore ? (
                   <Button
                     size="sm"
@@ -257,7 +237,6 @@ export function ArchivedProcessesClient({
           onClose={() => {
             if (!busy) {
               setTarget(null);
-              setError("");
             }
           }}
         >
@@ -271,12 +250,6 @@ export function ArchivedProcessesClient({
               gerar novas execuções.
             </p>
 
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-
             <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
               <Button
                 variant="outline"
@@ -284,7 +257,6 @@ export function ArchivedProcessesClient({
                 disabled={busy}
                 onClick={() => {
                   setTarget(null);
-                  setError("");
                 }}
               >
                 Cancelar

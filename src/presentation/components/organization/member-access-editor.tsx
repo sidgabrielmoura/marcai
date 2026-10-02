@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "@/components/ui/toast";
 
 type Option = { id: string; name: string };
 export type MemberAccessDetails = Omit<MemberAccessInput, "memberId" | "role">;
@@ -27,18 +27,37 @@ export function MemberAccessEditor({ member, teams, locations, userRole, onClose
   const [primaryTeamId, setPrimaryTeamId] = useState(member.access.primaryTeamId);
   const [accesses, setAccesses] = useState(member.access.locations);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
   function updateLocation(id: string, patch: Partial<MemberAccessInput["locations"][number]>) {
     setAccesses(current => current.map(location => location.locationId === id ? { ...location, ...patch } : patch.type === "PRIMARY" && location.type === "PRIMARY" ? { ...location, type: "SECONDARY" } : location));
   }
   async function submit(event: React.FormEvent) {
-    event.preventDefault(); setBusy(true); setError("");
+    event.preventDefault(); setBusy(true);
     try {
       const result = await updateMemberAccessAction({ memberId: member.id, role, teamIds, primaryTeamId, locations: accesses });
-      if (result.error) setError(result.error);
-      else { router.refresh(); onClose(); }
-    } catch { setError("Não foi possível salvar os acessos. Tente novamente."); }
-    finally { setBusy(false); }
+      if (result.error) {
+        toast.add({
+          title: "Erro ao salvar acessos",
+          description: result.error,
+          type: "error",
+        });
+      } else {
+        toast.add({
+          title: "Acessos atualizados",
+          description: `Os acessos de ${member.name} foram salvos com sucesso.`,
+          type: "success",
+        });
+        router.refresh();
+        onClose();
+      }
+    } catch {
+      toast.add({
+        title: "Erro inesperado",
+        description: "Não foi possível salvar os acessos. Tente novamente.",
+        type: "error",
+      });
+    } finally {
+      setBusy(false);
+    }
   }
   return <Modal open title={`Acessos de ${member.name}`} onClose={() => { if (!busy) onClose(); }} className="sm:max-w-2xl max-h-[90dvh] overflow-y-auto">
     <form onSubmit={submit} className="flex flex-col gap-6">
@@ -59,7 +78,6 @@ export function MemberAccessEditor({ member, teams, locations, userRole, onClose
         </div>; })}
         <p className="text-xs text-muted-foreground">Datas e horários no fuso deste dispositivo. Acesso temporário é revogado automaticamente no horário final.</p>
       </fieldset>
-      {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
       <div className="flex flex-wrap justify-end gap-2"><Button type="button" variant="outline" disabled={busy} onClick={onClose}>Voltar</Button><Button type="submit" disabled={busy}>{busy ? "Salvando…" : "Salvar acessos"}</Button></div>
     </form>
   </Modal>;

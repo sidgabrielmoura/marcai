@@ -2,13 +2,13 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Play, Pause, Check, MapPin, Send, ArrowLeft, RotateCcw } from "lucide-react";
-import { startTaskAction, completeTaskAction, submitEvidenceAction, uploadEvidenceAction } from "@/presentation/actions/task-actions";
-import { pauseTaskAction, resumeTaskAction, reportImpedimentAction } from "@/presentation/actions/management-task-actions";
+import { Play, Check, MapPin, Send, ArrowLeft, RotateCcw } from "lucide-react";
+import { completeTaskAction, submitEvidenceAction, uploadEvidenceAction } from "@/presentation/actions/task-actions";
+import { resumeTaskAction, reportImpedimentAction } from "@/presentation/actions/management-task-actions";
 import { PageHeader, StatusBadge, PriorityBadge, Modal } from "../shared";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "@/components/ui/toast";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -51,19 +51,48 @@ function EvidenceForm({ taskId, requirement: req, disabled, onResult }: { taskId
 
 export function TaskDetailClient({ task }: TaskDetailClientProps) {
   const router = useRouter();
-  const [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState(""), [dialog, setDialog] = useState<"pause" | "impediment" | null>(null), [reason, setReason] = useState(""), [category, setCategory] = useState("OUTROS");
+  const [busy, setBusy] = useState(false), [dialog, setDialog] = useState<"pause" | "impediment" | null>(null), [reason, setReason] = useState(""), [category, setCategory] = useState("OUTROS");
   const terminal = ["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status), active = task.status === "IN_PROGRESS", scheduled = !!task.scheduledDate && new Date(task.scheduledDate) > new Date();
-  async function run(action: () => Promise<{ error?: string }>, complete = false) { setBusy(true); setError(""); setNotice(""); try { const r = await action(); if (r.error) setError(r.error); else { setDialog(null); if (complete) router.push("/tasks"); router.refresh(); } } catch { setError("Não foi possível concluir a ação. Tente novamente."); } finally { setBusy(false); } }
+  async function run(action: () => Promise<{ error?: string }>, complete = false) {
+    setBusy(true);
+    try {
+      const r = await action();
+      if (r.error) {
+        toast.add({
+          title: "Erro na operação",
+          description: r.error,
+          type: "error",
+        });
+      } else {
+        toast.add({
+          title: "Sucesso",
+          description: "Ação concluída com sucesso.",
+          type: "success",
+        });
+        setDialog(null);
+        if (complete) router.push("/tasks");
+        router.refresh();
+      }
+    } catch {
+      toast.add({
+        title: "Erro inesperado",
+        description: "Não foi possível concluir a ação. Tente novamente.",
+        type: "error",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
   const evidencePending = task.evidenceRequirements.filter(r => r.required && r.submissions.filter(s => s.validationStatus === "VALID").length < r.minQuantity && r.submissions.filter(s => s.validationStatus === "REJECTED").length < 3).length;
   return <div className="page-stack employee-execution"><PageHeader title={task.title} subtitle={task.locationName || "Siga as orientações para realizar esta tarefa."} backHref="/tasks" actions={<StatusBadge status={scheduled ? "SCHEDULED" : task.status} />} />
-    {task.correctionRequested && !terminal && <Alert><AlertDescription>Esta entrega está em uma nova rodada de correção. Registre novas evidências; os envios anteriores permanecem no histórico da gestão.</AlertDescription></Alert>}{error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}{notice && <Alert><AlertDescription>{notice}</AlertDescription></Alert>}
+    {task.correctionRequested && !terminal && <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-900">Esta entrega está em uma nova rodada de correção. Registre novas evidências; os envios anteriores permanecem no histórico da gestão.</div>}
     <div className="employee-execution-grid"><div className="flex flex-col gap-5"><Card><CardHeader><CardTitle>1. Confira as orientações</CardTitle><CardDescription>Confira as instruções para executar e comprovar a entrega.</CardDescription></CardHeader><CardContent className="flex flex-col gap-4"><div className="flex flex-wrap gap-3 items-center"><PriorityBadge priority={task.priority} />{task.deadlineAt && <span className="text-label">Prazo: {new Date(task.deadlineAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}</span>}</div>{task.description && <p>{task.description}</p>}<p className="whitespace-pre-wrap">{task.instructions || "Realize a atividade descrita no título e registre as evidências solicitadas abaixo."}</p>{task.dependencies.length > 0 && <div className="flex flex-col gap-2"><h3 className="font-semibold">Etapas relacionadas</h3>{task.dependencies.map(d => <div key={d.id} className="flex flex-wrap justify-between gap-2"><span>{d.dependsOnTask.title}</span><StatusBadge status={d.dependsOnTask.status} /></div>)}</div>}</CardContent></Card>
-    <Card><CardHeader><CardTitle>2. Registre a entrega</CardTitle><CardDescription>{task.evidenceRequirements.length ? "Envie cada comprovação solicitada. Cancelar a escolha de um arquivo não conta como tentativa." : "Esta tarefa não exige evidências. Ao terminar o trabalho, selecione Concluir tarefa."}</CardDescription></CardHeader><CardContent className="flex flex-col gap-4">{task.evidenceRequirements.map(r => <EvidenceForm key={r.id} taskId={task.id} requirement={r} disabled={terminal || task.status === "BLOCKED"} onResult={message => { setError(message || ""); if (!message) setNotice("Evidência registrada."); router.refresh(); }} />)}</CardContent></Card>
+    <Card><CardHeader><CardTitle>2. Registre a entrega</CardTitle><CardDescription>{task.evidenceRequirements.length ? "Envie cada comprovação solicitada. Cancelar a escolha de um arquivo não conta como tentativa." : "Esta tarefa não exige evidências. Ao terminar o trabalho, selecione Concluir tarefa."}</CardDescription></CardHeader><CardContent className="flex flex-col gap-4">{task.evidenceRequirements.map(r => <EvidenceForm key={r.id} taskId={task.id} requirement={r} disabled={terminal || task.status === "BLOCKED"} onResult={message => { if (message) toast.add({ title: "Erro no envio", description: message, type: "error" }); else toast.add({ title: "Evidência registrada", description: "Evidência enviada com sucesso.", type: "success" }); router.refresh(); }} />)}</CardContent></Card>
     {!!task.occurrences.length && <Card><CardHeader><CardTitle>Ocorrências registradas</CardTitle></CardHeader><CardContent className="flex flex-col gap-3">{task.occurrences.map(o => <p key={o.id} className="text-label">{o.reason}</p>)}</CardContent></Card>}
     </div><Card className="employee-action-panel"><CardHeader><CardTitle>3. Próxima ação</CardTitle></CardHeader><CardContent className="flex flex-col gap-4">
-      {scheduled ? <p>A tarefa será liberada em {new Date(task.scheduledDate!).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}.</p> : task.status === "BLOCKED" ? <p>Aguarde as etapas anteriores. Esta tarefa será liberada quando as dependências forem atendidas; o SLA não corre enquanto estiver bloqueada.</p> : task.status === "PAUSED" ? <><p>O prazo continua sendo contado durante a pausa.</p><Button disabled={busy} onClick={() => run(() => resumeTaskAction(task.id))}><RotateCcw data-icon="inline-start" />Retomar tarefa</Button></> : !terminal && task.status !== "SUBMITTED" ? <><p>{task.status === "NEEDS_CORRECTION" ? "A gestão solicitou uma correção. Confira as orientações, anexe as novas evidências e finalize a conclusão." : evidencePending ? `${evidencePending} evidência(s) obrigatória(s) pendente(s). Registre antes de finalizar.` : "Tudo pronto para registrar a entrega."}</p><Button disabled={busy || !!evidencePending} onClick={() => run(() => completeTaskAction(task.id), true)}>{busy ? <Spinner data-icon="inline-start" /> : <Check data-icon="inline-start" />}{task.requiresApproval ? "Enviar para aprovação" : "Concluir tarefa"}</Button><Button variant="outline" disabled={busy} onClick={() => { setReason(""); setDialog("pause"); }}><Pause data-icon="inline-start" />Pausar tarefa</Button></> : task.status === "SUBMITTED" ? <p>Sua entrega foi enviada. Aguarde a revisão do aprovador; você será avisado se precisar corrigir algo.</p> : <p>Esta tarefa foi encerrada. As evidências e ocorrências permanecem no histórico.</p>}
+      {scheduled ? <p>A tarefa será liberada em {new Date(task.scheduledDate!).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}.</p> : task.status === "BLOCKED" ? <p>Aguarde as etapas anteriores. Esta tarefa será liberada quando as dependências forem atendidas; o SLA não corre enquanto estiver bloqueada.</p> : task.status === "PAUSED" ? <><p>O prazo continua sendo contado durante a pausa.</p><Button disabled={busy} onClick={() => run(() => resumeTaskAction(task.id))}><RotateCcw data-icon="inline-start" />Retomar tarefa</Button></> : !terminal && task.status !== "SUBMITTED" ? <><p>{task.status === "NEEDS_CORRECTION" ? "A gestão solicitou uma correção. Confira as orientações, anexe as novas evidências e finalize a conclusão." : evidencePending ? `${evidencePending} evidência(s) obrigatória(s) pendente(s). Registre antes de finalizar.` : "Tudo pronto para registrar a entrega."}</p><Button disabled={busy || !!evidencePending} onClick={() => run(() => completeTaskAction(task.id), true)}>{busy ? <Spinner data-icon="inline-start" /> : <Check data-icon="inline-start" />}{task.requiresApproval ? "Enviar para aprovação" : "Concluir tarefa"}</Button></> : task.status === "SUBMITTED" ? <p>Sua entrega foi enviada. Aguarde a revisão do aprovador; você será avisado se precisar corrigir algo.</p> : <p>Esta tarefa foi encerrada. As evidências e ocorrências permanecem no histórico.</p>}
       {!terminal && task.status !== "SUBMITTED" && <Button variant="ghost" disabled={busy} onClick={() => { setReason(""); setDialog("impediment"); }}>Não foi possível realizar</Button>}<Button variant="ghost" nativeButton={false} render={<Link href="/tasks" />}><ArrowLeft data-icon="inline-start" />Voltar às tarefas</Button>
     </CardContent></Card></div>
-    {dialog && <Modal open title={dialog === "pause" ? "Pausar tarefa" : "Registrar impedimento"} onClose={() => { if (!busy) setDialog(null); }}><form className="flex flex-col gap-5" onSubmit={e => { e.preventDefault(); run(() => dialog === "pause" ? pauseTaskAction(task.id, category, reason) : reportImpedimentAction(task.id, category, reason)); }}><p>{dialog === "pause" ? "O prazo continua correndo. Registre o motivo para a gestão acompanhar." : "Use quando uma condição da operação impedir a realização. Isso encerra a tarefa como não realizada e avisa a gestão."}</p><FieldGroup><Field><FieldLabel htmlFor="reason-category">Motivo</FieldLabel><NativeSelect id="reason-category" className="w-full" value={category} onChange={e => setCategory(e.target.value)}>{Object.entries({ OUTROS: "Outro motivo", MATERIAL_FALTANTE: "Falta de material", EQUIPAMENTO_QUEBRADO: "Equipamento com defeito", ACESSO_BLOQUEADO: "Local sem acesso", INTERVALO: "Intervalo" }).map(([v, l]) => <NativeSelectOption key={v} value={v}>{l}</NativeSelectOption>)}</NativeSelect></Field><Field><FieldLabel htmlFor="reason-detail">O que aconteceu?</FieldLabel><Textarea id="reason-detail" required minLength={3} maxLength={1000} value={reason} onChange={e => setReason(e.target.value)} /></Field></FieldGroup>{error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}<div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={busy} onClick={() => setDialog(null)}>Voltar</Button><Button disabled={busy} type="submit">{busy && <Spinner data-icon="inline-start" />}{dialog === "pause" ? "Confirmar pausa" : "Registrar impedimento"}</Button></div></form></Modal>}
+    {dialog && <Modal open title="Registrar impedimento" onClose={() => { if (!busy) setDialog(null); }}><form className="flex flex-col gap-5" onSubmit={e => { e.preventDefault(); run(() => reportImpedimentAction(task.id, category, reason)); }}><p>Use quando uma condição da operação impedir a realização. Isso encerra a tarefa como não realizada e avisa a gestão.</p><FieldGroup><Field><FieldLabel htmlFor="reason-category">Motivo</FieldLabel><NativeSelect id="reason-category" className="w-full" value={category} onChange={e => setCategory(e.target.value)}>{Object.entries({ OUTROS: "Outro motivo", MATERIAL_FALTANTE: "Falta de material", EQUIPAMENTO_QUEBRADO: "Equipamento com defeito", ACESSO_BLOQUEADO: "Local sem acesso", INTERVALO: "Intervalo" }).map(([v, l]) => <NativeSelectOption key={v} value={v}>{l}</NativeSelectOption>)}</NativeSelect></Field><Field><FieldLabel htmlFor="reason-detail">O que aconteceu?</FieldLabel><Textarea id="reason-detail" required minLength={3} maxLength={1000} value={reason} onChange={e => setReason(e.target.value)} /></Field></FieldGroup><div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={busy} onClick={() => setDialog(null)}>Voltar</Button><Button disabled={busy} type="submit">{busy && <Spinner data-icon="inline-start" />}Registrar impedimento</Button></div></form></Modal>}
   </div>;
 }

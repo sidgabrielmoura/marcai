@@ -18,7 +18,7 @@ export default function ErrorPage({
   reset: () => void;
 }) {
   return (
-    <main className="min-h-dvh flex items-center justify-center p-6 bg-[var(--canvas)]">
+    <main className="min-h-dvh flex items-center justify-center p-6 bg-canvas">
       <Card className="w-full max-w-md text-center p-8 bg-[var(--surface)] rounded-[18px] border border-[var(--border-subtle)] shadow-[var(--shadow-card)] ring-0">
         <div className="flex justify-center mb-6">
           <Brand />

@@ -2,6 +2,7 @@ import { getAuthenticatedContext } from "@/application/security/auth-context";
 import { taskScope } from "@/application/security/operational-scope";
 import { prisma } from "@/infrastructure/database/prisma";
 import { effectiveWorkSeconds } from "@/domain/rules/execution-state";
+import type { TaskStatus } from "@/domain/types";
 import { taskTiming } from "@/domain/rules/task-metrics";
 import { EmployeeShell } from "@/presentation/components/mobile/employee-shell";
 import { PageHeader } from "@/presentation/components/shared";
@@ -66,6 +67,8 @@ export default async function EmployeeTasksPage({
     actualDuration: true,
     sessions: { select: { startedAt: true, endedAt: true, pauses: { select: { startedAt: true, endedAt: true } } } },
     slaDueAt: true,
+    toleranceMinutes: true,
+    createdAt: true,
     location: { select: { id: true, name: true, timezone: true } },
     team: { select: { id: true, name: true } },
     process: { select: { name: true } },
@@ -121,21 +124,59 @@ export default async function EmployeeTasksPage({
 
   function formatTask(t: (typeof assigned)[0], isUnassigned: boolean): EmployeeTask {
     const timing = taskTiming(t, now);
+    const terminal = ["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(t.status);
+
+    // Se a tarefa é atribuída ao colaborador, o tempo de execução corre a partir de startedAt ou da criação da tarefa
+    const effectiveStartedDate = t.startedAt
+      ? new Date(t.startedAt)
+      : !isUnassigned
+        ? new Date(t.createdAt)
+        : null;
+
+    const operationalStatus = !isUnassigned && t.status === "AVAILABLE" ? "IN_PROGRESS" : t.status;
+
+    // Verificação de estouro do limite de tolerância
+    const deadlines = [t.deadlineAt, t.slaDueAt]
+      .filter((v): v is Date => !!v)
+      .map((d) => d.getTime());
+    const dueAt = deadlines.length > 0 ? Math.min(...deadlines) : null;
+    const toleranceMinutes = t.toleranceMinutes ?? 20;
+    const toleranceLimitAt = dueAt !== null ? dueAt + toleranceMinutes * 60 * 1000 : null;
+    const toleranceExceeded = toleranceLimitAt !== null && !terminal && snapshotAt.getTime() > toleranceLimitAt;
+
+    // Tempo decorrido corrido e ininterrupto (para de correr quando atinge o limite de tolerância)
+    let elapsedSeconds: number | null = null;
+    if (effectiveStartedDate) {
+      if (terminal && t.completedAt) {
+        elapsedSeconds = Math.max(0, Math.round((new Date(t.completedAt).getTime() - effectiveStartedDate.getTime()) / 1000));
+      } else if (toleranceExceeded && toleranceLimitAt !== null) {
+        // Congela no momento exato do esgotamento da tolerância
+        elapsedSeconds = Math.max(0, Math.round((toleranceLimitAt - effectiveStartedDate.getTime()) / 1000));
+      } else {
+        elapsedSeconds = Math.max(0, Math.round((snapshotAt.getTime() - effectiveStartedDate.getTime()) / 1000));
+      }
+    } else if (t.actualDuration) {
+      elapsedSeconds = t.actualDuration;
+    }
+
+    const timerRunning = !terminal && !toleranceExceeded && (operationalStatus === "IN_PROGRESS" || operationalStatus === "PAUSED") && !!effectiveStartedDate;
+
     return {
       id: t.id,
       title: t.title,
       description: t.description,
-      status: t.status,
+      status: operationalStatus as TaskStatus,
       priority: t.priority,
       criticality: t.criticality,
       origin: t.origin,
       scheduledDate: t.scheduledDate ? t.scheduledDate.toISOString() : null,
       deadlineAt: t.deadlineAt ? t.deadlineAt.toISOString() : null,
       completedAt: t.completedAt ? t.completedAt.toISOString() : null,
-      startedAt: t.startedAt ? t.startedAt.toISOString() : null,
+      startedAt: effectiveStartedDate ? effectiveStartedDate.toISOString() : null,
       slaDueAt: t.slaDueAt?.toISOString() ?? null,
-      elapsedSeconds: t.sessions.length ? effectiveWorkSeconds(t.sessions, snapshotAt) : t.actualDuration,
-      timerRunning: t.status === "IN_PROGRESS" && t.sessions.some(session => !session.endedAt && !session.pauses.some(pause => !pause.endedAt)),
+      toleranceMinutes,
+      elapsedSeconds,
+      timerRunning,
       slaExceeded: timing.slaExceeded,
       delayMinutes: timing.delayMinutes,
       locationName: t.location?.name || null,

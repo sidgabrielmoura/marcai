@@ -26,7 +26,39 @@ export const memberAccessSchema = z.object({
 
 export type MemberAccessInput = z.infer<typeof memberAccessSchema>;
 
-export function canManageMember(actorRole: string, actorId: string, target: { id: string; role: string }, newRole = target.role) {
-  if (!["OWNER", "ADMIN"].includes(actorRole) || actorId === target.id || ["OWNER", "SUPERADMIN"].includes(target.role)) return false;
-  return actorRole === "OWNER" || (target.role !== "ADMIN" && newRole !== "ADMIN");
+export function canManageMember(
+  actorRole: string,
+  actorId: string,
+  target: { id: string; role: string },
+  newRole = target.role
+) {
+  if (actorId === target.id) return false;
+  if (["OWNER", "SUPERADMIN"].includes(target.role)) return false;
+
+  if (actorRole === "OWNER") return true;
+
+  if (actorRole === "ADMIN") {
+    return target.role !== "ADMIN" && newRole !== "ADMIN";
+  }
+
+  if (actorRole === "MANAGER") {
+    // Gestores só podem gerenciar quem for EMPLOYEE e não podem promover a ADMIN
+    return target.role === "EMPLOYEE" && newRole !== "ADMIN" && newRole !== "OWNER";
+  }
+
+  return false;
 }
+
+export function canDeleteMember(
+  actorRole: string,
+  actorId: string,
+  target: { id: string; role: string }
+) {
+  // Apenas OWNER e ADMIN (Gerente Geral) podem excluir permanentemente do banco de dados
+  if (!["OWNER", "ADMIN"].includes(actorRole)) return false;
+  if (actorId === target.id) return false;
+  if (["OWNER", "SUPERADMIN"].includes(target.role)) return false;
+  if (actorRole === "ADMIN" && target.role === "ADMIN") return false;
+  return true;
+}
+

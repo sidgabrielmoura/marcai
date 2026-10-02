@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation";
 import {
   Plus,
   Pencil,
-  CalendarClock,
-  PlayCircle,
+  Calendar,
+  Clock,
   MapPin,
   Archive,
   Pause,
@@ -18,22 +18,16 @@ import {
   AlertCircle,
   ArrowRight,
   ListChecks,
+  ChevronRight,
+  Layers,
 } from "lucide-react";
 import { PageHeader, EmptyState, StatusBadge, Modal } from "../shared";
 import { toggleProcessStatusAction } from "@/presentation/actions/process-actions";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { InputGroup, InputGroupInput, InputGroupAddon } from "@/components/ui/input-group";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "@/components/ui/toast";
 import { Spinner } from "@/components/ui/spinner";
 import {
   DropdownMenu,
@@ -74,8 +68,6 @@ export function ProcessListClient({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState<{ message: string; showArchivedLink?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [target, setTarget] = useState<{
     process: ProcessItem;
@@ -83,8 +75,8 @@ export function ProcessListClient({
   } | null>(null);
 
   const activeCount = processes.filter((p) => p.status === "ACTIVE").length;
-  const totalRoutines = processes.reduce((n, p) => n + p.routinesCount, 0);
-  const needsConfigCount = processes.filter((p) => !p.tasksCount || !p.routinesCount).length;
+  const withScheduleCount = processes.filter((p) => p.routinesCount > 0).length;
+  const pendingConfigCount = processes.filter((p) => !p.tasksCount || !p.routinesCount).length;
 
   const filtered = processes.filter((p) => {
     const text = `${p.name} ${p.locationName ?? ""}`.toLocaleLowerCase("pt-BR");
@@ -103,36 +95,48 @@ export function ProcessListClient({
   async function handleConfirmStatus() {
     if (!target) return;
     setBusy(true);
-    setError("");
 
     try {
       const res = await toggleProcessStatusAction(target.process.id, target.status);
       if (res.error) {
-        setError(res.error);
+        toast.add({
+          title: "Erro ao alterar status",
+          description: res.error,
+          type: "error",
+        });
       } else {
         const processName = target.process.name;
         const actionType = target.status;
         setTarget(null);
 
         if (actionType === "ARCHIVED") {
-          setNotice({
-            message: `O processo "${processName}" foi arquivado e movido para a nova aba de Arquivados.`,
-            showArchivedLink: true,
+          toast.add({
+            title: "Processo arquivado",
+            description: `O processo "${processName}" foi arquivado e movido para Arquivados.`,
+            type: "info",
           });
         } else if (actionType === "PAUSED") {
-          setNotice({
-            message: `O processo "${processName}" foi pausado. Novas execuções não serão geradas.`,
+          toast.add({
+            title: "Processo pausado",
+            description: `O processo "${processName}" foi pausado. Novas execuções no cronograma não serão geradas.`,
+            type: "warning",
           });
         } else {
-          setNotice({
-            message: `O processo "${processName}" foi reativado com sucesso.`,
+          toast.add({
+            title: "Processo reativado",
+            description: `O processo "${processName}" foi reativado com sucesso.`,
+            type: "success",
           });
         }
 
         router.refresh();
       }
     } catch {
-      setError("Não foi possível salvar a alteração. Tente novamente.");
+      toast.add({
+        title: "Erro inesperado",
+        description: "Não foi possível salvar a alteração. Tente novamente.",
+        type: "error",
+      });
     } finally {
       setBusy(false);
     }
@@ -142,7 +146,7 @@ export function ProcessListClient({
     <div className="page-stack">
       <PageHeader
         title="Processos"
-        subtitle="Gerencie e organize os procedimentos da sua equipe. Defina tarefas, vincule rotinas e acompanhe execuções."
+        subtitle="Acompanhe os fluxos da sua operação. Clique em qualquer processo para visualizar e configurar seu calendário e cronograma."
         actions={
           <Button
             nativeButton={false}
@@ -155,34 +159,14 @@ export function ProcessListClient({
         }
       />
 
-      {notice && (
-        <Alert className="bg-[var(--brand-soft)] border-[var(--sage-400)]/40 text-[var(--brand-900)]">
-          <AlertDescription className="flex items-center justify-between gap-4 flex-wrap">
-            <span>{notice.message}</span>
-            {notice.showArchivedLink && (
-              <Button
-                size="sm"
-                variant="outline"
-                nativeButton={false}
-                render={<Link href="/management/processes/archived" />}
-                className="text-xs h-7 gap-1 border-[var(--brand-700)]/30 text-[var(--brand-900)]"
-              >
-                Ver aba de arquivados
-                <ArrowRight className="size-3" />
-              </Button>
-            )}
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* KPI Stats Bar - Minimalist and Clean */}
+      {/* Metrics Summary Strip - Minimalist & Neutral */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="flex items-center gap-3 p-3.5 bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl">
-          <div className="size-10 rounded-lg bg-[var(--brand-soft)] text-[var(--brand-900)] flex items-center justify-center shrink-0">
-            <CheckCircle2 className="size-5" />
+          <div className="size-8 rounded-lg bg-[var(--canvas)] text-[var(--text-primary)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0">
+            <CheckCircle2 className="size-4 text-emerald-700" />
           </div>
           <div className="min-w-0">
-            <span className="text-xl font-bold text-[var(--text-primary)] tabular-nums block leading-tight">
+            <span className="text-lg font-bold text-[var(--text-primary)] tabular-nums block leading-tight">
               {activeCount}
             </span>
             <span className="text-xs text-[var(--text-secondary)]">processos ativos</span>
@@ -190,33 +174,34 @@ export function ProcessListClient({
         </div>
 
         <div className="flex items-center gap-3 p-3.5 bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl">
-          <div className="size-10 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center shrink-0">
-            <CalendarClock className="size-5" />
+          <div className="size-8 rounded-lg bg-[var(--canvas)] text-[var(--text-primary)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0">
+            <Calendar className="size-4 text-muted-foreground" />
           </div>
           <div className="min-w-0">
-            <span className="text-xl font-bold text-[var(--text-primary)] tabular-nums block leading-tight">
-              {totalRoutines}
+            <span className="text-lg font-bold text-[var(--text-primary)] tabular-nums block leading-tight">
+              {withScheduleCount}
             </span>
-            <span className="text-xs text-[var(--text-secondary)]">rotinas configuradas</span>
+            <span className="text-xs text-[var(--text-secondary)]">com repetição ativa</span>
           </div>
         </div>
 
         <div className="flex items-center gap-3 p-3.5 bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl">
-          <div className="size-10 rounded-lg bg-amber-50 text-amber-800 flex items-center justify-center shrink-0">
-            <AlertCircle className="size-5" />
+          <div className="size-8 rounded-lg bg-[var(--canvas)] text-[var(--text-primary)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0">
+            <Layers className="size-4 text-muted-foreground" />
           </div>
           <div className="min-w-0">
-            <span className="text-xl font-bold text-[var(--text-primary)] tabular-nums block leading-tight">
-              {needsConfigCount}
+            <span className="text-lg font-bold text-[var(--text-primary)] tabular-nums block leading-tight">
+              {processes.length}
             </span>
-            <span className="text-xs text-[var(--text-secondary)]">precisam de configuração</span>
+            <span className="text-xs text-[var(--text-secondary)]">total cadastrado</span>
           </div>
         </div>
       </div>
 
+      {/* Search & Filter Bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1 max-w-2xl">
-          <InputGroup className="flex-1 py-5.5!">
+          <InputGroup className="flex-1 py-4.5!">
             <InputGroupAddon>
               <Search className="size-4 text-muted-foreground" />
             </InputGroupAddon>
@@ -225,7 +210,7 @@ export function ProcessListClient({
               placeholder="Buscar por nome ou unidade"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="text-sm!"
+              className="text-xs sm:text-sm!"
             />
           </InputGroup>
 
@@ -233,7 +218,7 @@ export function ProcessListClient({
             aria-label="Filtrar processos por status"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="sm:w-44 text-xs"
+            className="sm:w-44 text-xs h-10"
           >
             <NativeSelectOption value="ALL">Todos os status</NativeSelectOption>
             <NativeSelectOption value="ACTIVE">Apenas ativos</NativeSelectOption>
@@ -246,206 +231,130 @@ export function ProcessListClient({
         </span>
       </div>
 
+      {/* Process List - Minimalist, organized, clean */}
       {!filtered.length ? (
         <EmptyState
-          title={processes.length ? "Nenhum processo neste filtro" : "Comece pelo primeiro processo"}
+          title={processes.length ? "Nenhum processo encontrado" : "Nenhum processo cadastrado"}
           description={
             processes.length
-              ? "Experimente buscar outro nome ou altere o status selecionado."
-              : "Descreva um procedimento recorrente, como a abertura de unidade ou checagem diária, e organize suas tarefas."
+              ? "Tente buscar com outro termo ou ajuste os filtros de status."
+              : "Crie seu primeiro processo operacional para padronizar rotinas e tarefas."
           }
         />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="flex flex-col divide-y divide-[var(--border-subtle)] bg-[var(--surface)] border border-[var(--border-subtle)] rounded-2xl overflow-hidden shadow-none">
           {filtered.map((p) => {
             const isPaused = p.status === "PAUSED";
-            const needsConfig = !p.tasksCount || !p.routinesCount;
 
             return (
-              <Card
+              <div
                 key={p.id}
-                className="bg-surface border border-(--border-subtle) rounded-2xl p-5! hover:border-(--brand-700)/30 transition-all flex flex-col justify-between gap-4 shadow-none"
+                className="group relative p-5 sm:p-6 hover:bg-[var(--canvas)]/40 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4"
               >
-                <CardHeader className="p-0 flex flex-col gap-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <StatusBadge status={p.status} showIcon />
-                      <Badge
-                        variant="outline"
-                        className="text-xs font-normal text-[var(--text-secondary)] bg-[var(--canvas)] border-[var(--border-subtle)]"
-                      >
-                        Criticidade {CRITICALITY_LABELS[p.criticality] ?? p.criticality}
-                      </Badge>
-                      {p.locationName && (
-                        <span className="flex items-center gap-1 text-xs text-[var(--text-secondary)]">
-                          <MapPin className="size-3 text-muted-foreground" />
-                          {p.locationName}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Context Menu for Secondary Actions */}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            className="size-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--canvas)]"
-                            aria-label={`Mais opções para ${p.name}`}
-                          />
-                        }
-                      >
-                        <MoreHorizontal className="size-4" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-48">
-                        <DropdownMenuItem
-                          render={<Link href={`/management/processes/${p.id}/edit`} />}
-                        >
-                          <Pencil className="size-4 mr-2" />
-                          <span>Editar processo</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          render={<Link href={`/management/routines?process=${p.id}`} />}
-                        >
-                          <CalendarClock className="size-4 mr-2" />
-                          <span>Ver rotinas</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          render={<Link href={`/management/executions?process=${p.id}`} />}
-                        >
-                          <PlayCircle className="size-4 mr-2" />
-                          <span>Ver execuções</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() =>
-                            setTarget({
-                              process: p,
-                              status: isPaused ? "ACTIVE" : "PAUSED",
-                            })
-                          }
-                        >
-                          {isPaused ? (
-                            <>
-                              <Play className="size-4 mr-2" />
-                              <span>Reativar processo</span>
-                            </>
-                          ) : (
-                            <>
-                              <Pause className="size-4 mr-2" />
-                              <span>Pausar processo</span>
-                            </>
-                          )}
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => setTarget({ process: p, status: "ARCHIVED" })}
-                        >
-                          <Archive className="size-4 mr-2" />
-                          <span>Arquivar processo</span>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  <div>
-                    <CardTitle className="text-base font-bold text-[var(--text-primary)]">
+                {/* Main Link Wrapper - clicking row takes to show page */}
+                <Link
+                  href={`/management/processes/${p.id}`}
+                  className="flex-1 min-w-0 flex flex-col gap-1.5 focus:outline-none"
+                >
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h3 className="text-base font-semibold text-[var(--text-primary)] group-hover:text-[var(--brand-900)] transition-colors">
                       {p.name}
-                    </CardTitle>
-                    {p.description && (
-                      <CardDescription className="text-xs text-[var(--text-secondary)] line-clamp-2 mt-1">
-                        {p.description}
-                      </CardDescription>
-                    )}
-                  </div>
-                </CardHeader>
-
-                <CardContent className="p-0 flex flex-col gap-3">
-                  {/* Micro-metrics */}
-                  <div className="flex items-center gap-4 py-2 px-3 bg-[var(--canvas)] rounded-xl text-xs text-[var(--text-secondary)]">
-                    <span className="flex items-center gap-1">
-                      <ListChecks className="size-3.5 text-[var(--brand-700)]" />
-                      <strong>{p.tasksCount}</strong> tarefas
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <CalendarClock className="size-3.5 text-[var(--brand-700)]" />
-                      <strong>{p.routinesCount}</strong> rotinas
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <PlayCircle className="size-3.5 text-[var(--brand-700)]" />
-                      <strong>{p.executionsCount}</strong> execuções
-                    </span>
+                    </h3>
+                    <StatusBadge status={p.status} size="sm" />
                   </div>
 
-                  {needsConfig && (
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50/70 border border-amber-200/50 rounded-lg text-xs text-amber-900">
-                      <AlertCircle className="size-3.5 shrink-0 text-amber-600" />
-                      <span>
-                        {!p.tasksCount
-                          ? "Pendente: cadastre as tarefas deste processo."
-                          : "Pendente: programe a rotina para gerar execuções."}
-                      </span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)] flex-wrap">
+                    <span>{p.locationName || "Sem unidade vinculada"}</span>
+                    <span>·</span>
+                    <span>{p.tasksCount} {p.tasksCount === 1 ? "etapa" : "etapas"}</span>
+                    <span>·</span>
+                    <span>{p.routinesCount > 0 ? "Repetição ativa" : "Manual"}</span>
+                  </div>
 
-                  {(p.validFrom || p.validUntil) && (
-                    <p className="text-[11px] text-muted-foreground">
-                      Validade:{" "}
-                      {p.validFrom
-                        ? new Date(p.validFrom).toLocaleDateString("pt-BR", { timeZone: "UTC" })
-                        : "sem início"}{" "}
-                      até{" "}
-                      {p.validUntil
-                        ? new Date(p.validUntil).toLocaleDateString("pt-BR", { timeZone: "UTC" })
-                        : "indeterminada"}
+                  {p.description && (
+                    <p className="text-xs text-[var(--text-secondary)] line-clamp-1 mt-0.5 max-w-2xl">
+                      {p.description}
                     </p>
                   )}
-                </CardContent>
+                </Link>
 
-                <CardFooter className="p-0 pt-2 bg-transparent! flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      nativeButton={false}
-                      render={<Link href={`/management/routines?process=${p.id}`} />}
-                      className="text-xs h-8 gap-1.5 border-[var(--border-subtle)] text-[var(--text-primary)] hover:bg-[var(--canvas)]"
-                    >
-                      <CalendarClock className="size-3.5 text-[var(--brand-700)]" />
-                      Rotinas ({p.routinesCount})
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      nativeButton={false}
-                      render={<Link href={`/management/executions?process=${p.id}`} />}
-                      className="text-xs h-8 gap-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                    >
-                      <PlayCircle className="size-3.5" />
-                      Execuções ({p.executionsCount})
-                    </Button>
-                  </div>
-
+                {/* Right Actions */}
+                <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
                   <Button
                     size="sm"
-                    variant="default"
+                    variant="outline"
                     nativeButton={false}
-                    render={<Link href={`/management/processes/${p.id}/edit`} />}
-                    className="text-xs h-8 gap-1.5 bg-[var(--brand-900)] hover:bg-[var(--brand-700)] text-white shadow-none"
+                    render={<Link href={`/management/processes/${p.id}`} />}
+                    className="text-xs h-8.5 gap-1.5 border-[var(--border-subtle)] text-[var(--text-primary)] hover:border-[var(--brand-900)]/40"
                   >
-                    <Pencil className="size-3.5" />
-                    Editar
+                    Ver processo
+                    <ChevronRight className="size-3.5 text-muted-foreground" />
                   </Button>
-                </CardFooter>
-              </Card>
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          className="size-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--canvas)]"
+                          aria-label={`Mais opções para ${p.name}`}
+                        />
+                      }
+                    >
+                      <MoreHorizontal className="size-4" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuItem
+                        render={<Link href={`/management/processes/${p.id}`} />}
+                      >
+                        <Layers className="size-4 mr-2" />
+                        <span>Abrir processo</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        render={<Link href={`/management/processes/${p.id}/edit`} />}
+                      >
+                        <Pencil className="size-4 mr-2" />
+                        <span>Editar processo</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() =>
+                          setTarget({
+                            process: p,
+                            status: isPaused ? "ACTIVE" : "PAUSED",
+                          })
+                        }
+                      >
+                        {isPaused ? (
+                          <>
+                            <Play className="size-4 mr-2" />
+                            <span>Reativar processo</span>
+                          </>
+                        ) : (
+                          <>
+                            <Pause className="size-4 mr-2" />
+                            <span>Pausar processo</span>
+                          </>
+                        )}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => setTarget({ process: p, status: "ARCHIVED" })}
+                      >
+                        <Archive className="size-4 mr-2" />
+                        <span>Arquivar processo</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
             );
           })}
         </div>
       )}
 
-      {/* Confirmation Modal */}
       {target && (
         <Modal
           open
@@ -453,7 +362,6 @@ export function ProcessListClient({
           onClose={() => {
             if (!busy) {
               setTarget(null);
-              setError("");
             }
           }}
         >
@@ -464,17 +372,11 @@ export function ProcessListClient({
             </p>
             <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
               {target.status === "ARCHIVED"
-                ? "O processo será movido para a nova aba de Arquivados e não aparecerá na lista principal. Suas rotinas serão suspensas, mas o histórico de execuções continuará preservado."
+                ? "O processo será movido para a aba de Arquivados. O calendário e cronograma serão suspensos, mas o histórico permanece preservado."
                 : target.status === "ACTIVE"
-                  ? "O processo voltará a gerar execuções conforme os horários de suas rotinas cadastradas."
-                  : "Novas execuções automáticas deixarão de ser geradas. As tarefas já iniciadas e o histórico serão preservados."}
+                  ? "O processo voltará a gerar execuções conforme os horários do calendário cadastrado."
+                  : "Novas execuções no cronograma deixarão de ser geradas. As tarefas já iniciadas e o histórico serão preservados."}
             </p>
-
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
 
             <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
               <Button
@@ -483,7 +385,6 @@ export function ProcessListClient({
                 disabled={busy}
                 onClick={() => {
                   setTarget(null);
-                  setError("");
                 }}
               >
                 Voltar
@@ -494,8 +395,8 @@ export function ProcessListClient({
                 onClick={handleConfirmStatus}
                 className={
                   target.status === "ARCHIVED"
-                    ? "bg-destructive text-destructive-foreground hover:bg-destructive/90 gap-1.5"
-                    : "bg-[var(--brand-900)] hover:bg-[var(--brand-700)] text-white gap-1.5"
+                    ? "bg-destructive text-destructive-foreground hover:bg-destructive/90 gap-1.5 text-white!"
+                    : "bg-brand-900 hover:bg-brand-700 text-white! gap-1.5"
                 }
               >
                 {busy && <Spinner className="size-3.5" />}

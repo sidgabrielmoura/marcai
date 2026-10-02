@@ -3,11 +3,15 @@ import { getAuthenticatedContext } from "@/application/security/auth-context";
 import { prisma } from "@/infrastructure/database/prisma";
 import { EmployeeShell } from "@/presentation/components/mobile/employee-shell";
 import { PageHeader, EmptyState } from "@/presentation/components/shared";
-import { markNotificationReadAction } from "@/presentation/actions/notification-actions";
+import {
+  markNotificationReadAction,
+  markNotificationReadAndNavigateAction,
+} from "@/presentation/actions/notification-actions";
 import { Bell, CheckCheck } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PushNotificationBanner } from "@/presentation/components/shared/push-notification-banner";
 
 export default async function NotificationsPage({
   searchParams,
@@ -54,24 +58,27 @@ export default async function NotificationsPage({
       userName={c.userName}
       orgName={c.organizationName}
       role={c.role}
+      userId={c.userId}
     >
       <div className="page-stack">
         <PageHeader
           title="Avisos"
           subtitle={
             unread
-              ? `${unread} avisos ainda não lidos. Acompanhe as mudanças da sua operação.`
+              ? `${unread} ${unread === 1 ? "aviso ainda não lido" : "avisos ainda não lidos"}. Acompanhe as mudanças da sua operação.`
               : "Todos os avisos estão em dia. O histórico continua disponível abaixo."
           }
           actions={
             <form action={markNotificationReadAction} className="w-full md:w-fit">
-              <Button variant="outline" disabled={!unread} className={"w-full"}>
+              <Button variant="outline" disabled={!unread} className="w-full">
                 <CheckCheck data-icon="inline-start" />
                 Marcar todos como lidos
               </Button>
             </form>
           }
         />
+
+        <PushNotificationBanner />
 
         <nav className="flex gap-2 max-w-lg" aria-label="Filtrar avisos">
           {[
@@ -83,7 +90,7 @@ export default async function NotificationsPage({
               key={value}
               nativeButton={false}
               variant={status === value ? "default" : "outline"}
-              className={"flex-1"}
+              className="flex-1"
               render={
                 <Link
                   href={`/notifications?status=${value}`}
@@ -125,13 +132,22 @@ export default async function NotificationsPage({
                         {n.type === "APPROVAL_REQUESTED" && (
                           <Badge variant="secondary">Aprovação</Badge>
                         )}
+                        {n.type === "TASK_CORRECTION_REQUESTED" && (
+                          <Badge variant="destructive">Correção</Badge>
+                        )}
                         {n.type === "TASK_UNBLOCKED" && (
                           <Badge variant="outline">Liberada</Badge>
                         )}
                         {n.type === "TASK_OVERDUE" && (
                           <Badge variant="destructive">Prazo SLA</Badge>
                         )}
-                        {n.type === "TASK_PAUSED" && (
+                        {n.type === "TASK_EXPIRING_SOON" && (
+                          <Badge variant="secondary">Vence em breve</Badge>
+                        )}
+                        {n.type === "OPERATIONAL_ALERT" && (
+                          <Badge variant="destructive">Impedimento</Badge>
+                        )}
+                        {n.type === "PAUSE_ALERT" && (
                           <Badge variant="secondary">Pausa</Badge>
                         )}
                         <h2 className="text-card-title font-semibold w-full">
@@ -152,21 +168,30 @@ export default async function NotificationsPage({
 
                     <div className="flex flex-wrap items-center gap-2 w-full md:w-fit">
                       {taskLink && (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          nativeButton={false}
+                        <form
+                          action={markNotificationReadAndNavigateAction}
                           className="flex-1 md:flex-initial"
-                          render={<Link href={taskLink} />}
                         >
-                          Ver tarefa
-                        </Button>
+                          <input type="hidden" name="id" value={n.id} />
+                          <input type="hidden" name="url" value={taskLink} />
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            type="submit"
+                            className="w-full"
+                          >
+                            Ver tarefa
+                          </Button>
+                        </form>
                       )}
 
                       {!n.readAt && (
-                        <form action={markNotificationReadAction} className="flex-1 md:flex-initial">
+                        <form
+                          action={markNotificationReadAction}
+                          className="flex-1 md:flex-initial"
+                        >
                           <input type="hidden" name="id" value={n.id} />
-                          <Button variant="outline" size="sm" className="w-full">
+                          <Button variant="outline" size="sm" type="submit" className="w-full">
                             Marcar como lido
                           </Button>
                         </form>

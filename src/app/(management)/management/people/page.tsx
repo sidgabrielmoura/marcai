@@ -2,6 +2,8 @@ import { getManagementContext } from "@/application/security/auth-context";
 import { prisma } from "@/infrastructure/database/prisma";
 import { ManagementShell } from "@/presentation/components/mobile/management-shell";
 import { PeopleClient } from "@/presentation/components/organization/people-client";
+import { calculateMemberAvailability } from "@/domain/rules/member-availability";
+import { isLocationOpenAt } from "@/domain/rules/operating-hours";
 
 export default async function ManagementPeoplePage() {
   const context = await getManagementContext();
@@ -9,7 +11,7 @@ export default async function ManagementPeoplePage() {
   const now = new Date();
   const validAccess = { AND: [{ OR: [{ startsAt: null }, { startsAt: { lte: now } }] }, { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }] };
 
-  const [members, locations, teams] = await Promise.all([
+  const [members, locations, teams, org] = await Promise.all([
     prisma.organizationMember.findMany({
       where: {
         organizationId: context.organizationId,
@@ -19,6 +21,7 @@ export default async function ManagementPeoplePage() {
         user: true,
         locationAccesses: { ...(context.role === "MANAGER" ? { where: { locationId: { in: context.scope?.locationIds ?? [] }, ...validAccess } } : {}), include: { location: true } },
         teamMemberships: { ...(context.role === "MANAGER" ? { where: { teamId: { in: context.scope?.teamIds ?? [] } } } : {}), include: { team: true } },
+        taskAssignments: { where: { removedAt: null, task: { status: "IN_PROGRESS", deletedAt: null } } },
       },
       orderBy: { createdAt: "desc" },
     }),
@@ -38,25 +41,52 @@ export default async function ManagementPeoplePage() {
       },
       select: { id: true, name: true },
     }),
+    prisma.organization.findUnique({
+      where: { id: context.organizationId },
+      select: { settings: true },
+    }),
   ]);
 
-  const formatted = members.map((m) => ({
-    id: m.id,
-    name: m.user.name,
-    email: m.user.email,
-    role: m.role,
-    status: m.status,
-    employeeCode: m.employeeCode,
-    availabilityStatus: m.availabilityStatus,
-    manualAvailability: m.manualAvailability,
-    locations: m.locationAccesses.map((la) => la.location.name),
-    teams: m.teamMemberships.map((tm) => tm.team.name),
-    access: {
-      teamIds: m.teamMemberships.map(team => team.teamId),
-      primaryTeamId: m.teamMemberships.find(team => team.isPrimary)?.teamId ?? m.teamMemberships[0]?.teamId ?? "",
-      locations: m.locationAccesses.map(location => ({ locationId: location.locationId, type: location.type, startsAt: location.startsAt?.toISOString() ?? null, expiresAt: location.expiresAt?.toISOString() ?? null })),
-    },
-  }));
+  const orgSettings = (org?.settings && typeof org?.settings === "object" ? org.settings : {}) as Record<string, any>;
+  const allowManagersToEditSensitiveData = Boolean(orgSettings.allowManagersToEditSensitiveData);
+
+  const formatted = members.map((m) => {
+    const primaryTeamId = m.teamMemberships.find((team) => team.isPrimary)?.teamId ?? m.teamMemberships[0]?.teamId ?? "";
+    const primaryLocationAccess = m.locationAccesses.find((loc) => loc.type === "PRIMARY") ?? m.locationAccesses[0];
+    const primaryLocationId = primaryLocationAccess?.locationId ?? "";
+    const isLocationOpen = primaryLocationAccess?.location ? isLocationOpenAt(primaryLocationAccess.location, now) : true;
+
+    const dynamicAvailability = calculateMemberAvailability({
+      memberStatus: m.status,
+      inProgressTasksCount: m.taskAssignments?.length ?? 0,
+      isWithinOperatingHours: isLocationOpen,
+    });
+
+    return {
+      id: m.id,
+      name: m.user.name,
+      email: m.user.email,
+      role: m.role,
+      status: m.status,
+      employeeCode: m.employeeCode,
+      availabilityStatus: dynamicAvailability,
+      manualAvailability: m.manualAvailability,
+      locations: m.locationAccesses.map((la) => la.location.name),
+      teams: m.teamMemberships.map((tm) => tm.team.name),
+      primaryLocationId,
+      primaryTeamId,
+      access: {
+        teamIds: m.teamMemberships.map((team) => team.teamId),
+        primaryTeamId,
+        locations: m.locationAccesses.map((location) => ({
+          locationId: location.locationId,
+          type: location.type,
+          startsAt: location.startsAt?.toISOString() ?? null,
+          expiresAt: location.expiresAt?.toISOString() ?? null,
+        })),
+      },
+    };
+  });
 
   return (
     <ManagementShell
@@ -70,6 +100,7 @@ export default async function ManagementPeoplePage() {
         teams={teams}
         userRole={context.role}
         currentMemberId={context.memberId}
+        allowManagersToEditSensitiveData={allowManagersToEditSensitiveData}
       />
     </ManagementShell>
   );

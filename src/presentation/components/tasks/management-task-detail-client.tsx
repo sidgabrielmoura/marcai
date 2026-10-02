@@ -7,17 +7,12 @@ import { useRouter } from "next/navigation";
 import {
   Clock,
   User,
-  Pause,
-  Play,
   Trash2,
   Camera,
   History,
-  AlertCircle,
 } from "lucide-react";
 import {
   transferTaskAction,
-  pauseTaskAction,
-  resumeTaskAction,
   cancelTaskAction,
   trashTaskAction,
   submitApprovalDecisionAction,
@@ -32,7 +27,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "@/components/ui/toast";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -169,16 +164,12 @@ export function ManagementTaskDetailClient({
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Modais de Controle
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState("");
 
   const [showTrashAlert, setShowTrashAlert] = useState(false);
-
-  const [showPauseDialog, setShowPauseDialog] = useState(false);
-  const [pauseReason, setPauseReason] = useState("SUPRIMENTOS");
 
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
@@ -199,40 +190,29 @@ export function ManagementTaskDetailClient({
   async function handleTransfer() {
     if (!selectedMemberId) return;
     setLoading(true);
-    setErrorMsg(null);
     try {
       const res = await transferTaskAction(task.id, selectedMemberId);
-      if (res.error) setErrorMsg(res.error);
-      else {
+      if (res.error) {
+        toast.add({
+          title: "Erro ao transferir tarefa",
+          description: res.error,
+          type: "error",
+        });
+      } else {
+        toast.add({
+          title: "Tarefa transferida",
+          description: "Tarefa transferida com sucesso.",
+          type: "success",
+        });
         setShowTransferModal(false);
         router.refresh();
       }
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleConfirmPause() {
-    if (!pauseReason.trim()) return;
-    setLoading(true);
-    try {
-      const res = await pauseTaskAction(task.id, pauseReason.trim());
-      if (res.error) setErrorMsg(res.error);
-      else {
-        setShowPauseDialog(false);
-        router.refresh();
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleResume() {
-    setLoading(true);
-    try {
-      const res = await resumeTaskAction(task.id);
-      if (res.error) setErrorMsg(res.error);
-      else router.refresh();
+    } catch {
+      toast.add({
+        title: "Erro inesperado",
+        description: "Não foi possível transferir a tarefa.",
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -243,11 +223,27 @@ export function ManagementTaskDetailClient({
     setLoading(true);
     try {
       const res = await cancelTaskAction(task.id, cancelReason.trim());
-      if (res.error) setErrorMsg(res.error);
-      else {
+      if (res.error) {
+        toast.add({
+          title: "Erro ao cancelar tarefa",
+          description: res.error,
+          type: "error",
+        });
+      } else {
+        toast.add({
+          title: "Tarefa cancelada",
+          description: "Tarefa cancelada com sucesso.",
+          type: "info",
+        });
         setShowCancelDialog(false);
         router.refresh();
       }
+    } catch {
+      toast.add({
+        title: "Erro inesperado",
+        description: "Não foi possível cancelar a tarefa.",
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -257,8 +253,26 @@ export function ManagementTaskDetailClient({
     setLoading(true);
     try {
       const res = await trashTaskAction(task.id);
-      if (res.error) setErrorMsg(res.error);
-      else router.push("/management/tasks");
+      if (res.error) {
+        toast.add({
+          title: "Erro ao mover para a lixeira",
+          description: res.error,
+          type: "error",
+        });
+      } else {
+        toast.add({
+          title: "Tarefa na lixeira",
+          description: "Tarefa movida para a lixeira.",
+          type: "info",
+        });
+        router.push("/management/tasks");
+      }
+    } catch {
+      toast.add({
+        title: "Erro inesperado",
+        description: "Não foi possível mover a tarefa para a lixeira.",
+        type: "error",
+      });
     } finally {
       setLoading(false);
       setShowTrashAlert(false);
@@ -274,12 +288,34 @@ export function ManagementTaskDetailClient({
         approvalStep.decision,
         approvalNote.trim() || undefined,
       );
-      if (res.error) setErrorMsg(res.error);
-      else {
+      if (res.error) {
+        toast.add({
+          title: "Erro na aprovação",
+          description: res.error,
+          type: "error",
+        });
+      } else {
+        toast.add({
+          title:
+            approvalStep.decision === "APPROVED"
+              ? "Aprovação registrada"
+              : "Rejeição registrada",
+          description:
+            approvalStep.decision === "APPROVED"
+              ? "Etapa de aprovação deferida com sucesso."
+              : "Etapa de aprovação indeferida.",
+          type: approvalStep.decision === "APPROVED" ? "success" : "warning",
+        });
         setApprovalStep(null);
         setApprovalNote("");
         router.refresh();
       }
+    } catch {
+      toast.add({
+        title: "Erro inesperado",
+        description: "Não foi possível registrar a decisão de aprovação.",
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -295,32 +331,6 @@ export function ManagementTaskDetailClient({
           userRole !== "EMPLOYEE" ? (
             <div className="flex flex-wrap items-center gap-2">
               {canEditTaskDefinition(task) && <Button variant="outline" disabled={loading} onClick={() => setShowEditDialog(true)}>Editar tarefa</Button>}
-              {task.status === "IN_PROGRESS" && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowPauseDialog(true)}
-                  disabled={loading}
-                  className="h-10 px-3.5 rounded-[12px] bg-amber-50 text-amber-900 border-amber-200 text-[length:var(--type-label)] font-semibold hover:bg-amber-100 flex items-center gap-1.5"
-                >
-                  <Pause data-icon="inline-start" className="size-3.5" />
-                  <span>Pausar</span>
-                </Button>
-              )}
-
-              {task.status === "PAUSED" && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleResume}
-                  disabled={loading}
-                  className="h-10 px-3.5 rounded-[12px] bg-emerald-50 text-emerald-900 border-emerald-200 text-[length:var(--type-label)] font-semibold hover:bg-emerald-100 flex items-center gap-1.5"
-                >
-                  <Play data-icon="inline-start" className="size-3.5" />
-                  <span>Retomar</span>
-                </Button>
-              )}
-
               <Button
                 type="button"
                 variant="outline"
@@ -349,13 +359,6 @@ export function ManagementTaskDetailClient({
       />
 
       {showEditDialog && <EditTaskDialog task={task} onClose={() => setShowEditDialog(false)} />}
-
-      {errorMsg && (
-        <Alert variant="destructive" className="rounded-[14px]">
-          <AlertCircle data-icon="inline-start" />
-          <AlertDescription>{errorMsg}</AlertDescription>
-        </Alert>
-      )}
 
       <Card className="bg-[var(--surface)] rounded-[18px] p-5 shadow-none border-[var(--border-subtle)]">
         <div className="flex flex-wrap justify-between  items-center gap-2 mb-3">
@@ -828,49 +831,7 @@ export function ManagementTaskDetailClient({
         </DialogContent>
       </Dialog>
 
-      {/* DIALOG: PAUSAR TAREFA */}
-      <Dialog open={showPauseDialog} onOpenChange={setShowPauseDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Pausar tarefa</DialogTitle>
-            <DialogDescription>
-              Informe o motivo da pausa. Ele ficará registrado no histórico.
-            </DialogDescription>
-          </DialogHeader>
 
-          <div className="space-y-4 py-2">
-            <Field>
-              <FieldLabel className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]">
-                Motivo da pausa
-              </FieldLabel>
-              <Input
-                value={pauseReason}
-                onChange={(e) => setPauseReason(e.target.value)}
-                placeholder="Ex.: aguardando material"
-                className="text-[length:var(--type-label)]"
-              />
-            </Field>
-          </div>
-
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setShowPauseDialog(false)}
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              onClick={handleConfirmPause}
-              disabled={loading || !pauseReason.trim()}
-            >
-              {loading ? <Spinner data-icon="inline-start" /> : null}
-              <span>Pausar tarefa</span>
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* DIALOG: CANCELAR TAREFA */}
       <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>

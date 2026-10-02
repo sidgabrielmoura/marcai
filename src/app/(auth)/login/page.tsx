@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useActionState } from "react";
+import { useState, useActionState, useEffect } from "react";
 import { Brand } from "@/presentation/components/shared/brand";
 import {
   loginWithPasswordAction,
@@ -26,7 +26,7 @@ import {
   InputGroupAddon,
 } from "@/components/ui/input-group";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { toast } from "@/components/ui/toast";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -47,10 +47,32 @@ export default function LoginPage() {
     FormData
   >(loginWithPinAction, {});
 
+  useEffect(() => {
+    if (pinState?.error) {
+      toast.add({
+        title: "Não foi possível entrar",
+        description: pinState.error,
+        type: "error",
+      });
+    }
+  }, [pinState]);
+
+  useEffect(() => {
+    if (passwordState?.error) {
+      toast.add({
+        title: "Não foi possível entrar",
+        description: passwordState.error,
+        type: "error",
+      });
+    }
+  }, [passwordState]);
+
   return (
     <div className="auth-frame">
       <aside className="auth-story">
-        <Brand />
+        <div className="bg-[#ffffff] w-fit px-2 py-1 rounded-md">
+          <Brand />
+        </div>
         <div className="auth-story-copy">
           <span>MENOS RUÍDO. MAIS CLAREZA.</span>
           <h2>
@@ -138,13 +160,6 @@ export default function LoginPage() {
 
           {tab === "pin" && (
             <form action={pinFormAction} className="flex flex-col gap-4">
-              {pinState?.error && (
-                <Alert variant="destructive" className="rounded-[14px]">
-                  <AlertTitle>Não foi possível entrar</AlertTitle>
-                  <AlertDescription>{pinState.error}</AlertDescription>
-                </Alert>
-              )}
-
               <FieldGroup className="gap-4">
                 <Field>
                   <FieldLabel
@@ -250,13 +265,6 @@ export default function LoginPage() {
 
           {tab === "password" && (
             <form action={passwordFormAction} className="flex flex-col gap-4">
-              {passwordState?.error && (
-                <Alert variant="destructive" className="rounded-[14px]">
-                  <AlertTitle>Não foi possível entrar</AlertTitle>
-                  <AlertDescription>{passwordState.error}</AlertDescription>
-                </Alert>
-              )}
-
               <FieldGroup className="gap-4">
                 <Field>
                   <FieldLabel

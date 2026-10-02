@@ -35,6 +35,7 @@ export interface EmployeeTask {
   completedAt: string | null;
   startedAt: string | null;
   slaDueAt: string | null;
+  toleranceMinutes?: number | null;
   elapsedSeconds: number | null;
   timerRunning: boolean;
   slaExceeded: boolean;
@@ -47,6 +48,64 @@ export interface EmployeeTask {
   hasImpediment: boolean;
   impedimentReason?: string;
   isUnassigned: boolean;
+}
+
+export type DeadlineStatus = "ON_TIME" | "TOLERANCE" | "OVERDUE";
+
+export function getTaskDeadlineStatus(
+  task: {
+    deadlineAt: string | null;
+    slaDueAt: string | null;
+    toleranceMinutes?: number | null;
+    completedAt?: string | null;
+    status: string;
+  },
+  now: number,
+): {
+  status: DeadlineStatus;
+  label: string;
+  badgeClass: string;
+} {
+  const terminal = ["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status);
+  const deadlines = [task.deadlineAt, task.slaDueAt]
+    .filter((v): v is string => !!v)
+    .map((v) => Date.parse(v))
+    .filter(Number.isFinite);
+
+  if (!deadlines.length) {
+    return {
+      status: "ON_TIME",
+      label: "Dentro do prazo",
+      badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800",
+    };
+  }
+
+  const dueAt = Math.min(...deadlines);
+  const toleranceMinutes = task.toleranceMinutes ?? 20;
+  const toleranceMs = toleranceMinutes * 60 * 1000;
+  const refTime = terminal && task.completedAt ? Date.parse(task.completedAt) : now;
+
+  if (refTime <= dueAt) {
+    return {
+      status: "ON_TIME",
+      label: "Dentro do prazo",
+      badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800",
+    };
+  }
+
+  if (refTime <= dueAt + toleranceMs) {
+    return {
+      status: "TOLERANCE",
+      label: "Em tolerância",
+      badgeClass: "bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800",
+    };
+  }
+
+  return {
+    status: "OVERDUE",
+    label: "Atrasada",
+    badgeClass: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800",
+  };
 }
 
 export type ColumnId =
@@ -225,8 +284,8 @@ export function EmployeeKanbanBoard({
         continue;
       }
 
-      // Tarefas não concluídas com SLA ou prazo estourado
-      if ((taskClock(task, now, snapshotAt).remaining ?? Infinity) <= 0) {
+      // Tarefas não concluídas com prazo estourado além da tolerância
+      if (getTaskDeadlineStatus(task, now).status === "OVERDUE") {
         groups.overdue.push(task);
         continue;
       }
@@ -480,12 +539,45 @@ function TaskCard({
 }) {
   const clock = taskClock(task, now, snapshotAt);
   const completed = task.status === "COMPLETED";
-  const overdue = clock.remaining !== null && clock.remaining <= 0;
-  const state = ({ PAUSED: "Pausada", NEEDS_CORRECTION: "Correção solicitada", BLOCKED: "Aguardando etapa anterior", SUBMITTED: "Aguardando aprovação" } as Record<string, string>)[task.status];
-  const action = completed ? "Ver entrega" : task.status === "PAUSED" ? "Retomar tarefa" : task.status === "NEEDS_CORRECTION" ? "Corrigir entrega" : task.status === "IN_PROGRESS" ? (task.hasRequiredEvidence ? "Registrar entrega" : "Continuar tarefa") : "Abrir tarefa";
+  const deadlineInfo = getTaskDeadlineStatus(task, now);
+  const state = ({
+    PAUSED: "Pausada",
+    NEEDS_CORRECTION: "Correção solicitada",
+    BLOCKED: "Aguardando etapa anterior",
+    SUBMITTED: "Aguardando aprovação",
+  } as Record<string, string>)[task.status];
+  const action = completed
+    ? "Ver entrega"
+    : task.status === "PAUSED"
+      ? "Retomar tarefa"
+      : task.status === "NEEDS_CORRECTION"
+        ? "Corrigir entrega"
+        : task.status === "IN_PROGRESS"
+          ? task.hasRequiredEvidence
+            ? "Registrar entrega"
+            : "Continuar tarefa"
+          : "Abrir tarefa";
 
   return (
-    <Card className="employee-task-card shrink-0 h-fit gap-3 ring-0 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] p-4 shadow-none">
+    <Card className="employee-task-card shrink-0 h-fit gap-2.5 ring-0 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] p-3.5 shadow-none flex flex-col">
+      {/* Badge de prazo/tolerância acima do título */}
+      <div className="flex items-center justify-between gap-1.5 flex-wrap">
+        <Badge
+          variant="outline"
+          className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${deadlineInfo.badgeClass}`}
+        >
+          {deadlineInfo.label}
+        </Badge>
+        {task.priority === "CRITICAL" && (
+          <Badge
+            variant="outline"
+            className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-red-100 text-red-800 border-red-200"
+          >
+            Urgente
+          </Badge>
+        )}
+      </div>
+
       <button
         type="button"
         onClick={() => onOpenTask(task.id)}
@@ -493,30 +585,49 @@ function TaskCard({
       >
         {task.title}
       </button>
-      {showLocation && task.locationName && <p className="text-xs text-[var(--text-secondary)]">{task.locationName}</p>}
-      {state && <p className="text-xs font-medium text-[var(--text-secondary)]">{state}</p>}
-      {(clock.elapsed !== null || clock.remaining !== null) && (
-        <div className="flex flex-wrap gap-x-5 gap-y-2" role="timer" aria-live="off" aria-label="Tempos da tarefa">
-          {clock.elapsed !== null && (
-            <div className="min-w-0">
-              <p className="text-[11px] text-[var(--text-secondary)]">{completed ? "Tempo total" : "Decorrido"}</p>
-              <span className="font-mono text-sm font-medium tabular-nums text-[var(--text-primary)]">{formatClock(clock.elapsed)}</span>
-            </div>
-          )}
-          {clock.remaining !== null && (
-            <div className={overdue ? "text-red-700 dark:text-red-400" : "text-[var(--text-primary)]"} title={clock.deadlineLabel}>
-              <p className="text-[11px]">{overdue ? "Em atraso" : "Restante"}</p>
-              <span className="font-mono text-sm font-medium tabular-nums">{formatClock(clock.remaining)}</span>
-            </div>
-          )}
-        </div>
+
+      {showLocation && task.locationName && (
+        <p className="text-xs text-[var(--text-secondary)]">{task.locationName}</p>
       )}
+
+      {state && (
+        <p className="text-xs font-medium text-[var(--text-secondary)]">{state}</p>
+      )}
+
+      {/* Somente tempo decorrido da tarefa */}
+      <div className="min-w-0 pt-0.5" role="timer" aria-live="off" aria-label="Tempo decorrido">
+        <p className="text-[11px] text-[var(--text-secondary)]">
+          {completed
+            ? "Tempo total"
+            : clock.toleranceExceeded
+              ? "Tempo decorrido (encerrado na tolerância)"
+              : "Tempo decorrido"}
+        </p>
+        <span className="font-mono text-sm font-bold tabular-nums text-[var(--text-primary)]">
+          {formatClock(clock.elapsed ?? 0)}
+        </span>
+      </div>
+
       <div className="mt-1">
         {task.isUnassigned && task.status === "AVAILABLE" ? (
           <ClaimTaskButton taskId={task.id} onClaimed={(id) => onOpenTask(id)} />
+        ) : clock.toleranceExceeded ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenTask(task.id)}
+            className="h-10 w-full justify-between px-3 text-xs font-semibold text-red-700 bg-red-50/50 border-red-200 hover:bg-red-100/60 cursor-pointer"
+          >
+            <span>Bloqueada (Tolerância esgotada)</span>
+            <ArrowRight className="size-3.5" aria-hidden="true" />
+          </Button>
         ) : task.status === "IN_PROGRESS" && !task.hasRequiredEvidence ? (
           <div className="flex items-center gap-2">
-            <QuickCompleteButton taskId={task.id} taskTitle={task.title} className="flex-1 h-10! bg-[var(--brand-900)]! shadow-none!" />
+            <QuickCompleteButton
+              taskId={task.id}
+              taskTitle={task.title}
+              className="flex-1 h-10! bg-[var(--brand-900)]! shadow-none!"
+            />
             <Button
               type="button"
               variant="outline"
@@ -535,7 +646,8 @@ function TaskCard({
             onClick={() => onOpenTask(task.id)}
             className="h-10 w-full justify-between px-0 text-xs font-semibold text-[var(--brand-900)] hover:bg-transparent hover:underline cursor-pointer"
           >
-            {action}<ArrowRight className="size-3.5" aria-hidden="true" />
+            {action}
+            <ArrowRight className="size-3.5" aria-hidden="true" />
           </Button>
         )}
       </div>

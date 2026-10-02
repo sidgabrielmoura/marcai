@@ -8,6 +8,7 @@ export function EmployeeShell({
   userName: string;
   orgName: string;
   role?: string;
+  userId?: string;
 }) {
   return (
     <AppShell
@@ -17,3 +18,4 @@ export function EmployeeShell({
     />
   );
 }
+

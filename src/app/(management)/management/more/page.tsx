@@ -11,6 +11,7 @@ import {
   ArrowRight,
   ShieldCheck,
   Trash2,
+  Bell,
 } from "lucide-react";
 import Link from "next/link";
 import { prisma } from "@/infrastructure/database/prisma";
@@ -41,6 +42,12 @@ export default async function ManagementMorePage() {
         },
       ]
       : []),
+    {
+      label: "Avisos e Notificações",
+      desc: "Histórico de alertas e configuração de push",
+      icon: Bell,
+      href: "/notifications",
+    },
     {
       label: "Pessoas e acessos",
       desc: "Pessoas, permissões e convites",
@@ -84,6 +91,7 @@ export default async function ManagementMorePage() {
       userName={context.userName}
       orgName={context.organizationName}
       role={context.role}
+      userId={context.userId}
     >
       <div className="mb-5">
         <PageHeader
