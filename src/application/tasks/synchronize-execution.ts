@@ -25,12 +25,17 @@ export async function synchronizeExecution(tx: Prisma.TransactionClient, organiz
     for (const assignment of task.assignments) eligibility.push(await eligibleMember(organizationId, assignment.memberId, task.locationId, assignment.type === "COLLABORATOR" ? null : task.teamId, tx, now));
     if (eligibility.some(member => !member)) continue;
 
+    const hasAssignee = task.assignments.length > 0;
+    const effectiveDeadlineBase = Math.max(now.getTime(), task.scheduledDate?.getTime() ?? 0);
+    const freshDeadline = task.deadlineAt;
+
     await tx.task.updateMany({
       where: { id: task.id, organizationId, status: "BLOCKED" },
       data: {
-        status: "IN_PROGRESS",
-        startedAt: now,
-        slaDueAt: task.slaStartEvent === "ON_AVAILABLE" && task.slaDurationMinutes ? new Date(Math.max(now.getTime(), task.scheduledDate?.getTime() ?? 0) + task.slaDurationMinutes * 60000) : null,
+        status: hasAssignee ? "IN_PROGRESS" : "AVAILABLE",
+        startedAt: hasAssignee ? now : null,
+        slaDueAt: freshDeadline,
+        deadlineAt: freshDeadline,
       },
     });
 

@@ -17,50 +17,66 @@ export interface PreviousExecutionCheck {
   scheduledAt: Date;
 }
 
+export const TERMINAL_EXECUTION_STATUSES: readonly ExecutionStatus[] = [
+  ExecutionStatus.COMPLETED,
+  ExecutionStatus.CANCELLED,
+  ExecutionStatus.NOT_COMPLETED,
+];
+
+export function isExecutionTerminal(status: ExecutionStatus | string): boolean {
+  return TERMINAL_EXECUTION_STATUSES.includes(status as ExecutionStatus);
+}
+
+export function isExecutionPending(status: ExecutionStatus | string): boolean {
+  return !isExecutionTerminal(status);
+}
+
 /**
- * Avalia se uma nova execução deve ser gerada para a rotina baseado na política de pendência anterior.
+ * Avalia se uma nova execução deve ser gerada para a rotina conforme a política de pendências:
+ * - CREATE_NEW: Gera nova execução normalmente, mesmo se a anterior estiver pendente.
+ * - SKIP_IF_PENDING: Pula a geração da ocorrência se a execução anterior ainda estiver pendente (não finalizada).
+ * - BLOCK_NEW: Bloqueia a geração com erro impeditivo até que a anterior seja finalizada.
  */
 export function canGenerateExecutionForRoutine(
-  policy: PendingPreviousPolicy,
-  previousExecution?: PreviousExecutionCheck | null
+  policy?: PendingPreviousPolicy | "CREATE_NEW" | "SKIP_IF_PENDING" | "BLOCK_NEW",
+  previousExecution?: PreviousExecutionCheck | null,
+  now?: Date
 ): { shouldGenerate: boolean; reason?: string; action?: "SKIP" | "BLOCK" | "GENERATE" } {
+  // Se não há execução anterior, é a primeira ocorrência: sempre gera.
   if (!previousExecution) {
     return { shouldGenerate: true, action: "GENERATE" };
   }
 
-  const pendingStatuses: ExecutionStatus[] = [
-    ExecutionStatus.SCHEDULED,
-    ExecutionStatus.AVAILABLE,
-    ExecutionStatus.IN_PROGRESS,
-    ExecutionStatus.PAUSED,
-    ExecutionStatus.NEEDS_CORRECTION,
-    ExecutionStatus.PENDING_REVIEW,
-  ];
-
-  const isPending = pendingStatuses.includes(previousExecution.status);
-
-  if (!isPending) {
+  // Se a execução avaliada for um agendamento futuro em relação ao momento da checagem,
+  // ela é a ocorrência futura já agendada e não uma pendência anterior.
+  if (now && previousExecution.scheduledAt && previousExecution.scheduledAt > now) {
     return { shouldGenerate: true, action: "GENERATE" };
   }
 
-  if (policy === "SKIP_IF_PENDING") {
-    return {
-      shouldGenerate: false,
-      action: "SKIP",
-      reason: `Execução anterior (${previousExecution.id}) ainda está pendente com status ${previousExecution.status}. Ocorrência pulada (SKIP_IF_PENDING).`,
-    };
+  // Se a execução anterior já atingiu estado terminal (concluída, cancelada ou não realizada),
+  // a pendência não existe mais.
+  if (isExecutionTerminal(previousExecution.status)) {
+    return { shouldGenerate: true, action: "GENERATE" };
   }
 
-  if (policy === "BLOCK_NEW") {
-    return {
-      shouldGenerate: false,
-      action: "BLOCK",
-      reason: `Execução anterior (${previousExecution.id}) pendente. Nova execução bloqueada (BLOCK_NEW).`,
-    };
+  // A execução anterior está pendente (ex: SCHEDULED, AVAILABLE, IN_PROGRESS, PAUSED, NEEDS_CORRECTION, PENDING_REVIEW).
+  switch (policy) {
+    case "SKIP_IF_PENDING":
+      return {
+        shouldGenerate: false,
+        action: "SKIP",
+        reason: "A execução anterior ainda está pendente. Esta ocorrência foi pulada conforme a política da rotina.",
+      };
+    case "BLOCK_NEW":
+      return {
+        shouldGenerate: false,
+        action: "BLOCK",
+        reason: "A execução anterior ainda está pendente. Conclua-a ou altere a regra de pendência na rotina para prosseguir.",
+      };
+    case "CREATE_NEW":
+    default:
+      return { shouldGenerate: true, action: "GENERATE" };
   }
-
-  // CREATE_NEW: sempre gera
-  return { shouldGenerate: true, action: "GENERATE" };
 }
 
 /**

@@ -57,8 +57,8 @@ async function main() {
       status: "ACTIVE",
       settings: {
         delayMilestones: [15, 30, 60, 120],
-        operationalRetentionMonths: 12,
-        delayRetentionDays: 90,
+        operationalRetentionMonths: 6,
+        delayRetentionDays: 60,
         earlyExecutionPolicy: "ALLOW_AND_LOG",
       },
     },
@@ -72,8 +72,8 @@ async function main() {
       status: "ACTIVE",
       settings: {
         delayMilestones: [15, 30, 60],
-        operationalRetentionMonths: 12,
-        delayRetentionDays: 90,
+        operationalRetentionMonths: 6,
+        delayRetentionDays: 60,
         earlyExecutionPolicy: "BLOCK",
       },
     },

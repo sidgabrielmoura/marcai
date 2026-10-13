@@ -109,7 +109,7 @@ export function OrganizationSwitcher({
   }
 
   return (
-    <div ref={containerRef} className="relative inline-flex items-center">
+    <div ref={containerRef} className="relative inline-flex min-w-0 items-center">
       {/* Botão Gatilho */}
       {children ? (
         <div
@@ -134,7 +134,7 @@ export function OrganizationSwitcher({
           aria-expanded={open}
           aria-haspopup="true"
           className={cn(
-            "organization-switch h-auto p-0 font-normal hover:bg-transparent cursor-pointer hover:opacity-80 transition-opacity text-left outline-none flex items-center gap-1.5 shadow-none",
+            "organization-switch max-w-full h-auto p-0 font-normal hover:bg-transparent cursor-pointer hover:opacity-80 transition-opacity text-left outline-none flex items-center gap-1.5 shadow-none",
             className,
           )}
           title={currentOrgName}

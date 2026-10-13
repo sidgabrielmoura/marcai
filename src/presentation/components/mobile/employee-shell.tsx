@@ -1,4 +1,5 @@
 import { AppShell } from "../shared/app-shell";
+import type { SubscriptionNotice } from "@/application/superadmin/manual-subscription";
 
 export function EmployeeShell({
   role = "EMPLOYEE",
@@ -9,6 +10,7 @@ export function EmployeeShell({
   orgName: string;
   role?: string;
   userId?: string;
+  initialSubscriptionNotice?: SubscriptionNotice | null;
 }) {
   return (
     <AppShell

@@ -1,0 +1,22 @@
+"use client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Layers } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { templateJobs, type TemplateJob } from "@/domain/rules/reusable-template-definition";
+import { describeSchedule, type ScheduleDefinition } from "@/domain/rules/process-definition";
+import { getProcessTemplateOptionsAction, saveProcessTemplateAction } from "@/presentation/actions/template-actions";
+import { TemplateSheet } from "./template-sheet";
+
+export function SaveProcessTemplateButton({ processId, name }: { processId: string; name: string }) {
+  const router = useRouter(); const [open, setOpen] = useState(false); const [busy, setBusy] = useState(false);
+  const [title, setTitle] = useState(name); const [job, setJob] = useState<TemplateJob>("CUSTOM"); const [routineId, setRoutineId] = useState("");
+  const [routines, setRoutines] = useState<{ id: string; schedule: ScheduleDefinition | null }[] | null>(null); const [error, setError] = useState("");
+  const [discard, setDiscard] = useState(false);
+  const dirty = title !== name || job !== "CUSTOM" || routineId !== (routines?.length === 1 ? routines[0].id : "");
+  async function show() { setOpen(true); setDiscard(false); setTitle(name); setJob("CUSTOM"); setRoutineId(""); setError(""); setRoutines(null); try { const r = await getProcessTemplateOptionsAction(processId); if (r.error) setError(r.error); else { const list = r.data?.routines ?? []; setRoutines(list); setRoutineId(list.length === 1 ? list[0].id : ""); } } catch { setError("Não foi possível carregar. Feche e tente novamente."); } }
+  async function save() { setBusy(true); setError(""); try { const r = await saveProcessTemplateAction({ processId, name: title, jobKey: job, routineId }); if (r.error) setError(r.error); else if (r.data) { setOpen(false); router.push("/management/templates/" + r.data.id + "/edit"); } } catch { setError("Não foi possível salvar. Tente novamente."); } finally { setBusy(false); } }
+  return <><Button variant="outline" onClick={show}><Layers className="size-4" />Salvar como template</Button><TemplateSheet open={open} onOpenChange={v => { if (busy) return; if (!v && discard) { setDiscard(false); return; } if (!v && dirty) { setDiscard(true); return; } setOpen(v); }} title={discard ? "Descartar alterações?" : "Salvar como template"} description={discard ? "O rascunho ainda não foi criado." : "Transforme as etapas deste processo em um fluxo reutilizável."} footer={discard ? <div className="flex flex-col sm:flex-row justify-end gap-2"><Button variant="outline" onClick={() => setDiscard(false)}>Continuar editando</Button><Button variant="destructive" onClick={() => { setDiscard(false); setOpen(false); }}>Descartar e fechar</Button></div> : <div className="flex justify-end"><Button disabled={busy || !routines} onClick={save}>{busy ? "Salvando…" : "Criar rascunho"}</Button></div>}>{discard ? <p className="text-sm text-muted-foreground">As alterações deste formulário serão perdidas.</p> : <div className="space-y-4"><label className="block text-sm font-medium">Nome<Input className="mt-2 py-5!" value={title} maxLength={150} onChange={e => setTitle(e.target.value)} /></label><label className="block text-sm font-medium">Área<NativeSelect className="mt-2" value={job} onChange={e => setJob(e.target.value as TemplateJob)}>{Object.entries(templateJobs).map(([id, label]) => <NativeSelectOption value={id} key={id}>{label}</NativeSelectOption>)}</NativeSelect></label>{routines && routines.length > 0 && <label className="block text-sm font-medium">Programação sugerida<NativeSelect className="mt-2" value={routineId} onChange={e => setRoutineId(e.target.value)}><NativeSelectOption value="">Sem programação</NativeSelectOption>{routines.map(r => <NativeSelectOption key={r.id} value={r.id}>{r.schedule ? describeSchedule(r.schedule) : "Rotina"}</NativeSelectOption>)}</NativeSelect></label>}<p className="text-xs leading-relaxed text-muted-foreground">Equipes e responsáveis serão convertidos em papéis editáveis. Datas, execuções, respostas e evidências enviadas ficam fora do template. Revise as instruções antes de publicar.</p>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}</div>}</TemplateSheet></>;
+}

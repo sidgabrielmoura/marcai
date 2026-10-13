@@ -42,11 +42,11 @@ const CreateTaskSchema = z.object({
   criticality: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).default("MEDIUM"),
   required: z.boolean().default(true),
   deadlineAt: z.string().optional().nullable(),
-  estimatedDuration: z.number().int().positive().optional().nullable(),
-  slaDurationMinutes: z.number().int().positive().optional().nullable(),
   toleranceMinutes: z.coerce.number().int().min(0).default(20),
   evidenceType: z.enum(["PHOTO", "VIDEO", "FILE", "TEXT", "NUMBER", "SIGNATURE", "LOCATION"]).optional().nullable(),
   evidenceRequired: z.boolean().default(true),
+  taskType: z.enum(["STANDARD", "FORM"]).default("STANDARD"),
+  formFields: z.string().optional().nullable(), // JSON stringified FormFieldDefinition[]
 });
 
 /**
@@ -71,11 +71,11 @@ export async function createAdHocTaskAction(formData: FormData): Promise<ActionR
     criticality: formData.get("criticality") || "MEDIUM",
     required: formData.get("required") === "true" || formData.get("required") === "on",
     deadlineAt: formData.get("deadlineAt") || null,
-    estimatedDuration: formData.get("estimatedDuration") ? Number(formData.get("estimatedDuration")) : null,
-    slaDurationMinutes: formData.get("slaDurationMinutes") ? Number(formData.get("slaDurationMinutes")) : null,
     toleranceMinutes: formData.get("toleranceMinutes") !== null ? Number(formData.get("toleranceMinutes")) : 20,
     evidenceType: formData.get("evidenceType") || null,
     evidenceRequired: formData.get("evidenceRequired") !== "false",
+    taskType: formData.get("taskType") || "STANDARD",
+    formFields: formData.get("formFields") || null,
   };
 
   const parsed = CreateTaskSchema.safeParse(rawData);
@@ -94,11 +94,11 @@ export async function createAdHocTaskAction(formData: FormData): Promise<ActionR
     criticality,
     required,
     deadlineAt,
-    estimatedDuration,
-    slaDurationMinutes,
     toleranceMinutes,
     evidenceType,
     evidenceRequired,
+    taskType,
+    formFields,
   } = parsed.data;
 
   // Validação de escopo do MANAGER (Item 6)
@@ -117,7 +117,7 @@ export async function createAdHocTaskAction(formData: FormData): Promise<ActionR
   if (primaryMemberId && !await eligibleMember(context.organizationId, primaryMemberId, locationId, teamId ?? null)) return { error: "O responsável precisa pertencer à equipe e ter acesso à unidade." };
   const deadlineDate = deadlineAt ? new Date(deadlineAt) : null;
   if (deadlineDate && Number.isNaN(deadlineDate.getTime())) return { error: "Prazo inválido." };
-  const slaDueDate = slaDurationMinutes ? new Date(Date.now() + slaDurationMinutes * 60 * 1000) : null;
+  const slaDueDate = deadlineDate;
 
   const now = new Date();
   const isAssigned = !!primaryMemberId;
@@ -138,10 +138,11 @@ export async function createAdHocTaskAction(formData: FormData): Promise<ActionR
         criticality: criticality as Criticality,
         required,
         deadlineAt: deadlineDate,
-        slaDurationMinutes: slaDurationMinutes || null,
+        slaDurationMinutes: null,
         slaDueAt: slaDueDate,
         toleranceMinutes: toleranceMinutes ?? 20,
-        estimatedDuration: estimatedDuration || null,
+        taskType: taskType as any,
+        formFields: taskType === "FORM" && formFields ? JSON.parse(formFields) : undefined,
       },
     });
 
@@ -195,8 +196,8 @@ export async function createAdHocTaskAction(formData: FormData): Promise<ActionR
       }
     }
 
-    // Se houver requisito de evidência configurado
-    if (evidenceType) {
+    // Se houver requisito de evidência configurado (e não for tarefa com perguntas)
+    if (evidenceType && taskType !== "FORM") {
       await tx.taskEvidenceRequirement.create({
         data: {
           taskId: newTask.id,
@@ -282,54 +283,169 @@ export async function editTaskAction(taskId: string, input: unknown): Promise<Ac
       if (execution && ["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(execution.status)) return { error: "Não é possível alterar a obrigatoriedade em uma execução encerrada." };
     }
     await tx.task.update({ where: { id: taskId, organizationId: c.organizationId }, data: { ...data, description: data.description || null, instructions: data.instructions || null, deadlineAt: data.deadlineAt ? new Date(data.deadlineAt) : null } });
-    await audit(tx, task, c, "TASK_UPDATED", { previous: { title: task.title, description: task.description, instructions: task.instructions, priority: task.priority, criticality: task.criticality, required: task.required, deadlineAt: task.deadlineAt?.toISOString() ?? null, estimatedDuration: task.estimatedDuration }, updated: data });
+    await audit(tx, task, c, "TASK_UPDATED", { previous: { title: task.title, description: task.description, instructions: task.instructions, priority: task.priority, criticality: task.criticality, required: task.required, deadlineAt: task.deadlineAt?.toISOString() ?? null }, updated: data });
     return { success: true };
   });
 }
 
-export async function transferTaskAction(taskId: string, newMemberId: string, reason?: string): Promise<ActionResult> {
+const reassignTaskSchema = z.object({
+  taskId: z.string().min(1, "Identificador da tarefa é obrigatório"),
+  memberId: z.string().min(1, "Selecione um colaborador"),
+  deadlineMinutes: z.coerce.number().int().min(1).max(10080).optional().nullable(),
+  customDeadlineAt: z.string().optional().nullable(),
+  reason: z.string().trim().max(1000).optional().nullable(),
+});
+
+export type ReassignTaskInput = z.infer<typeof reassignTaskSchema>;
+
+export async function reassignTaskAction(input: ReassignTaskInput): Promise<ActionResult> {
+  const parsed = reassignTaskSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const { taskId, memberId, deadlineMinutes, customDeadlineAt, reason } = parsed.data;
+
   return operate(taskId, true, async (tx, task, c) => {
-    if (terminal(task.status)) return { error: "Tarefas encerradas não podem ser transferidas." };
-    const member = await eligibleMember(c.organizationId, newMemberId, task.locationId, task.teamId, tx);
+    if (terminal(task.status)) return { error: "Tarefas encerradas não podem ser reatribuídas." };
+    const member = await eligibleMember(c.organizationId, memberId, task.locationId, task.teamId, tx);
     if (!member) return { error: "Escolha uma pessoa ativa da equipe com acesso à unidade." };
-    const current = task.assignments.find(a => a.type === "PRIMARY");
-    if (current?.memberId === newMemberId) return { error: "Esta pessoa já é responsável pela tarefa." };
-    if (current) {
-      await tx.taskAssignment.updateMany({ where: { taskId, memberId: current.memberId, removedAt: null }, data: { removedAt: new Date() } });
-      await tx.notification.create({ data: { organizationId: c.organizationId, userId: current.member.userId, type: "TASK_TRANSFERRED_OUT", title: "Tarefa transferida", message: "A tarefa “" + task.title + "” foi transferida para outro responsável." } });
-      void dispatchNotificationAsync({
-        organizationId: c.organizationId,
-        userIds: [current.member.userId],
-        type: "TASK_TRANSFERRED_OUT",
-        title: "Tarefa transferida",
-        message: "A tarefa “" + task.title + "” foi transferida para outro responsável.",
-        clickAction: "/notifications",
-        forcePush: false,
+
+    const now = new Date();
+    let newDeadline: Date | null = null;
+    if (customDeadlineAt) {
+      const parsedDate = new Date(customDeadlineAt);
+      if (isNaN(parsedDate.getTime()) || parsedDate <= now) {
+        return { error: "O novo prazo limite precisa ser uma data e hora futura." };
+      }
+      newDeadline = parsedDate;
+    } else if (deadlineMinutes && deadlineMinutes > 0) {
+      newDeadline = new Date(now.getTime() + deadlineMinutes * 60000);
+    } else {
+      const currentDeadline = task.deadlineAt ?? task.slaDueAt;
+      if (!currentDeadline || currentDeadline <= now) {
+        const duration = task.slaDurationMinutes ?? 60;
+        newDeadline = new Date(now.getTime() + duration * 60000);
+      }
+    }
+
+    const current = task.assignments.find((a) => a.type === "PRIMARY");
+    const isSameMember = current?.memberId === memberId;
+
+    if (!isSameMember) {
+      if (current) {
+        await tx.taskAssignment.updateMany({
+          where: { taskId, memberId: current.memberId, removedAt: null },
+          data: { removedAt: now },
+        });
+        await tx.notification.create({
+          data: {
+            organizationId: c.organizationId,
+            userId: current.member.userId,
+            type: "TASK_TRANSFERRED_OUT",
+            title: "Tarefa transferida",
+            message: `A tarefa “${task.title}” foi transferida para outro responsável.`,
+          },
+        });
+        void dispatchNotificationAsync({
+          organizationId: c.organizationId,
+          userIds: [current.member.userId],
+          type: "TASK_TRANSFERRED_OUT",
+          title: "Tarefa transferida",
+          message: `A tarefa “${task.title}” foi transferida para outro responsável.`,
+          clickAction: "/notifications",
+          forcePush: false,
+        });
+      }
+
+      await endSessions(tx, task);
+
+      await tx.taskAssignment.updateMany({
+        where: { taskId, memberId, removedAt: null },
+        data: { removedAt: now },
+      });
+      await tx.taskAssignment.create({
+        data: { taskId, memberId, type: "PRIMARY", assignedBy: c.memberId },
       });
     }
-    if (["IN_PROGRESS", "PAUSED"].includes(task.status)) {
-      const now = new Date();
-      await endSessions(tx, task);
-      await tx.task.update({ where: { id: task.id }, data: { status: "AVAILABLE", actualDuration: effectiveWorkSeconds(task.sessions, now) } });
+
+    const nextStatus = task.status === "BLOCKED" ? "IN_PROGRESS" : (task.status === "AVAILABLE" ? "IN_PROGRESS" : task.status);
+
+    await tx.task.update({
+      where: { id: task.id },
+      data: {
+        status: nextStatus,
+        startedAt: task.startedAt ?? now,
+        ...(newDeadline
+          ? {
+              deadlineAt: newDeadline,
+              slaDueAt: newDeadline,
+              slaExceededAt: null,
+            }
+          : {}),
+      },
+    });
+
+    if (nextStatus === "IN_PROGRESS") {
+      const activeSession = await tx.taskExecutionSession.findFirst({
+        where: { taskId: task.id, memberId, endedAt: null },
+      });
+      if (!activeSession) {
+        await tx.taskExecutionSession.create({
+          data: { taskId: task.id, memberId, startedAt: now },
+        });
+      }
     }
-    // Avoid a duplicate collaborator row granting ambiguous ownership.
-    await tx.taskAssignment.updateMany({ where: { taskId, memberId: newMemberId, removedAt: null }, data: { removedAt: new Date() } });
-    await tx.taskAssignment.create({ data: { taskId, memberId: newMemberId, type: "PRIMARY", assignedBy: c.memberId } });
-    await tx.notification.create({ data: { organizationId: c.organizationId, userId: member.userId, type: "TASK_ASSIGNED", title: "Você recebeu uma tarefa", message: task.title, data: { taskId } } });
+
+    const formattedTime = newDeadline
+      ? newDeadline.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+      : null;
+
+    const notifTitle = isSameMember ? "Prazo da tarefa renovado" : "Você recebeu uma tarefa";
+    const notifMessage = isSameMember
+      ? (formattedTime ? `O prazo da tarefa “${task.title}” foi renovado para às ${formattedTime}.` : `A tarefa “${task.title}” foi reatribuída e liberada.`)
+      : (formattedTime ? `A tarefa “${task.title}” foi atribuída a você com prazo até às ${formattedTime}.` : `A tarefa “${task.title}” foi atribuída a você.`);
+
+    await tx.notification.create({
+      data: {
+        organizationId: c.organizationId,
+        userId: member.userId,
+        type: "TASK_ASSIGNED",
+        priority: task.priority,
+        title: notifTitle,
+        message: notifMessage,
+        data: { taskId },
+      },
+    });
+
     void dispatchNotificationAsync({
       organizationId: c.organizationId,
       userIds: [member.userId],
       type: "TASK_ASSIGNED",
       priority: task.priority,
-      title: "Você recebeu uma tarefa",
-      message: task.title,
+      title: notifTitle,
+      message: notifMessage,
       data: { taskId },
       clickAction: `/tasks/${taskId}`,
       forcePush: true,
     });
-    await audit(tx, task, c, "TASK_TRANSFERRED", { previousMemberId: current?.memberId ?? null, newMemberId, reason: reason?.slice(0, 1000) ?? "" });
-    return { success: true };
+
+    await audit(tx, task, c, "TASK_REASSIGNED", {
+      previousMemberId: current?.memberId ?? null,
+      newMemberId: memberId,
+      isSameMember,
+      newDeadlineAt: newDeadline?.toISOString() ?? null,
+      reason: reason?.slice(0, 1000) ?? "",
+    });
+
+    return {
+      success: true,
+      data: {
+        newDeadlineAt: newDeadline?.toISOString() ?? null,
+      },
+    };
   });
+}
+
+export async function transferTaskAction(taskId: string, newMemberId: string, reason?: string): Promise<ActionResult> {
+  return reassignTaskAction({ taskId, memberId: newMemberId, reason });
 }
 
 export async function claimTaskAction(taskId: string): Promise<ActionResult> {
@@ -338,9 +454,14 @@ export async function claimTaskAction(taskId: string): Promise<ActionResult> {
     await lockTask(tx, c.organizationId, taskId);
     const task = await tx.task.findFirst({ where: { id: taskId, organizationId: c.organizationId, deletedAt: null }, include: taskInclude });
     if (!task || terminal(task.status)) return { error: "Tarefa indisponível." };
+    if (task.status === "BLOCKED") return { error: "Aguardando conclusão de etapas anteriores para ser assumida." };
     if (task.assignments.some(a => a.type === "PRIMARY")) return { error: "Outra pessoa já assumiu esta tarefa." };
-    if (!task.teamId || !task.locationId || !await eligibleMember(c.organizationId, c.memberId, task.locationId, task.teamId, tx)) return { error: "Apenas membros da equipe com acesso à unidade podem assumir." };
+    if (!task.teamId || !(await eligibleMember(c.organizationId, c.memberId, task.locationId, task.teamId, tx))) return { error: "Apenas membros da equipe selecionada com acesso à unidade podem assumir esta tarefa." };
     const now = new Date();
+    if (task.scheduledDate && task.scheduledDate > now) {
+      const formattedTime = task.scheduledDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+      return { error: `Esta tarefa está agendada para às ${formattedTime} e só poderá ser assumida a partir do horário agendado.` };
+    }
     await tx.taskAssignment.create({ data: { taskId, memberId: c.memberId, type: "PRIMARY", assignedBy: c.memberId } });
     await tx.task.update({
       where: { id: taskId },
@@ -574,6 +695,9 @@ export type ManagementTaskDrawerResult = {
   title: string;
   description: string | null;
   instructions: string | null;
+  taskType?: string | null;
+  formFields?: any;
+  formAnswers?: any;
   origin: string;
   status: string;
   priority: string;
@@ -582,7 +706,6 @@ export type ManagementTaskDrawerResult = {
   deadlineAt: string | null;
   slaDueAt: string | null;
   slaExceeded: boolean;
-  estimatedDuration: number | null;
   actualDuration: number | null;
   startedAt: string | null;
   completedAt: string | null;
@@ -672,8 +795,13 @@ export async function getManagementTaskDrawerAction(
           evidenceRequirements: {
             include: { submissions: { orderBy: { createdAt: "desc" } } },
           },
-          sessions: { include: { pauses: true } },
-          occurrences: { orderBy: { createdAt: "desc" } },
+          occurrences: {
+            where: {
+              type: { not: "PAUSE_ALERT" },
+              category: { notIn: ["LONG_PAUSE", "INTERVALO"] },
+            },
+            orderBy: { createdAt: "desc" },
+          },
           approvalWorkflow: {
             include: {
               steps: {
@@ -743,6 +871,9 @@ export async function getManagementTaskDrawerAction(
         title: task.title,
         description: task.description,
         instructions: task.instructions,
+        taskType: task.taskType,
+        formFields: task.formFields,
+        formAnswers: task.formAnswers,
         origin: task.origin,
         status: task.status,
         priority: task.priority,
@@ -751,7 +882,6 @@ export async function getManagementTaskDrawerAction(
         deadlineAt: task.deadlineAt ? task.deadlineAt.toISOString() : null,
         slaDueAt: task.slaDueAt ? task.slaDueAt.toISOString() : null,
         slaExceeded,
-        estimatedDuration: task.estimatedDuration,
         actualDuration: task.actualDuration,
         startedAt: task.startedAt ? task.startedAt.toISOString() : null,
         completedAt: task.completedAt ? task.completedAt.toISOString() : null,

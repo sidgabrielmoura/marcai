@@ -1,5 +1,6 @@
 import { getEvidenceRound, evidenceInRound } from "@/application/tasks/evidence-round";
 import { taskScope } from "@/application/security/operational-scope";
+import { taskTiming } from "@/domain/rules/task-metrics";
 import { EmployeeShell } from "@/presentation/components/mobile/employee-shell";
 import { getAuthenticatedContext } from "@/application/security/auth-context";
 import { prisma } from "@/infrastructure/database/prisma";
@@ -22,12 +23,27 @@ export default async function TaskDetailPage({ params }: PageProps) {
     prisma.task.findFirst({
       where: {
         id,
-        ...taskScope(context),
+        organizationId: context.organizationId,
+        OR: [
+          taskScope(context),
+          {
+            status: { notIn: ["COMPLETED", "CANCELLED", "NOT_COMPLETED"] },
+            teamId: { in: context.scope?.teamIds ?? [] },
+            ...(context.scope?.locationIds && context.scope.locationIds.length > 0
+              ? { OR: [{ locationId: null }, { locationId: { in: context.scope.locationIds } }] }
+              : { locationId: null }),
+            assignments: { none: { type: "PRIMARY", removedAt: null } },
+          },
+        ],
         deletedAt: null,
       },
       include: {
         location: true,
         approvalWorkflow: true,
+        assignments: {
+          where: { removedAt: null },
+          select: { id: true, memberId: true, type: true },
+        },
         evidenceRequirements: {
           include: {
             submissions: {
@@ -36,6 +52,10 @@ export default async function TaskDetailPage({ params }: PageProps) {
           },
         },
         occurrences: {
+          where: {
+            type: { not: "PAUSE_ALERT" },
+            category: { notIn: ["LONG_PAUSE", "INTERVALO"] },
+          },
           orderBy: { createdAt: "desc" },
         },
       },
@@ -60,6 +80,8 @@ export default async function TaskDetailPage({ params }: PageProps) {
   }
 
   const evidenceRound = await getEvidenceRound(prisma, context.organizationId, id);
+  const isUnassigned = !task.assignments.some((a) => a.type === "PRIMARY");
+  const timing = taskTiming(task, new Date());
 
   const dependenciesList: any[] = Array.isArray(rawDependencies)
     ? rawDependencies
@@ -80,10 +102,15 @@ export default async function TaskDetailPage({ params }: PageProps) {
           status: task.status,
           priority: task.priority,
           deadlineAt: task.deadlineAt,
+          slaDueAt: task.slaDueAt,
+          toleranceMinutes: task.toleranceMinutes ?? 20,
           scheduledDate: task.scheduledDate,
           requiresApproval: !!task.approvalWorkflow,
           correctionRequested: !!evidenceRound,
           locationName: task.location?.name || null,
+          isUnassigned,
+          slaExceeded: timing.slaExceeded,
+          delayMinutes: timing.delayMinutes,
           dependencies: dependenciesList.map((d: any) => ({
             id: d.id,
             type: d.type,

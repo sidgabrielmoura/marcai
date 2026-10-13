@@ -112,7 +112,7 @@ export function ReportsClient({
       ["Total de Tarefas:", filtered.length],
       ["Tarefas Concluidas:", completed],
       ["Taxa de Conclusao:", `${filtered.length ? Math.round((completed / filtered.length) * 100) : 0}%`],
-      ["Tarefas com Atraso de SLA:", delayed.length],
+      ["Tarefas com Prazo Excedido:", delayed.length],
       ["Tempo Medio de Atraso (min):", averageDelay],
       ["Impedimentos Operacionais:", filtered.filter(t => t.status === "NOT_COMPLETED").length],
       ["Tarefas Canceladas:", filtered.filter(t => t.status === "CANCELLED").length],
@@ -127,7 +127,7 @@ export function ReportsClient({
         "Responsavel",
         "Prazo",
         "Duracao (min)",
-        "Atraso SLA (min)",
+        "Tempo de Atraso (min)",
       ],
       ...filtered.map((task) => [
         task.title,
@@ -310,14 +310,14 @@ export function ReportsClient({
             note: `${filtered.length ? Math.round((completed / filtered.length) * 100) : 0}% das tarefas`,
           },
           {
-            label: "SLA excedido",
+            label: "Prazo excedido",
             value: delayed.length,
             note: "Tarefas com prazo excedido",
           },
           {
             label: "Atraso médio",
             value: `${averageDelay} min`,
-            note: "Nas tarefas com SLA excedido",
+            note: "Nas tarefas com prazo excedido",
           },
         ].map((item, index) => (
           <Card

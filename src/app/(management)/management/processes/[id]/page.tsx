@@ -77,7 +77,7 @@ export default async function ProcessDetailPage({
     title: t.title,
     description: t.instructions || "",
     teamName: teamMap.get(t.teamId) || null,
-    estimatedMinutes: t.estimatedDuration ?? null,
+    toleranceMinutes: t.toleranceMinutes ?? 20,
     required: t.required,
     primaryMemberName: t.primaryMemberId ? memberMap.get(t.primaryMemberId) || null : null,
     approverNames: t.approverIds.map((approverId) => memberMap.get(approverId) || approverId),

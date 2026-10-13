@@ -6,9 +6,21 @@ export type ClockTask = {
   toleranceMinutes?: number | null;
   elapsedSeconds: number | null;
   timerRunning: boolean;
+  scheduledDate?: string | null;
 };
 
 export function taskClock(task: ClockTask, now: number, snapshotAt: number) {
+  const isScheduled = !!task.scheduledDate && Date.parse(task.scheduledDate) > now;
+  if (isScheduled) {
+    return {
+      elapsed: null,
+      toleranceExceeded: false,
+      remaining: null,
+      deadlineLabel: "Horário agendado",
+      isScheduled: true,
+    };
+  }
+
   const terminal = ["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status);
   const deadlines = [task.deadlineAt, task.slaDueAt]
     .filter((value): value is string => !!value)
@@ -21,13 +33,23 @@ export function taskClock(task: ClockTask, now: number, snapshotAt: number) {
   const toleranceExceeded = toleranceLimitAt !== null && !terminal && now > toleranceLimitAt;
 
   let elapsed: number | null = null;
-  if (task.startedAt || task.elapsedSeconds !== null) {
-    const startTimestamp = task.startedAt ? Date.parse(task.startedAt) : null;
+  const scheduledTime = task.scheduledDate ? Date.parse(task.scheduledDate) : null;
+  const rawStartTime = task.startedAt ? Date.parse(task.startedAt) : null;
+  // A tarefa só começa a contar a partir do horário agendado
+  const effectiveStartTimestamp = rawStartTime
+    ? (scheduledTime ? Math.max(rawStartTime, scheduledTime) : rawStartTime)
+    : scheduledTime;
+
+  if (effectiveStartTimestamp !== null || task.elapsedSeconds !== null) {
+    const startTimestamp = effectiveStartTimestamp;
     if (toleranceExceeded && startTimestamp && Number.isFinite(startTimestamp)) {
       // Congela o tempo decorrido no exato instante em que a tolerância esgotou
       elapsed = Math.max(0, Math.floor((toleranceLimitAt - startTimestamp) / 1000));
+    } else if (startTimestamp && Number.isFinite(startTimestamp)) {
+      const isRunning = task.timerRunning && !terminal && !toleranceExceeded;
+      elapsed = Math.max(0, Math.floor((now - startTimestamp) / 1000));
     } else {
-      const baseSeconds = task.elapsedSeconds ?? (startTimestamp ? Math.max(0, Math.floor((snapshotAt - startTimestamp) / 1000)) : 0);
+      const baseSeconds = task.elapsedSeconds ?? 0;
       const isRunning = task.timerRunning && !terminal && !toleranceExceeded;
       elapsed = Math.max(0, baseSeconds + (isRunning ? Math.floor(Math.max(0, now - snapshotAt) / 1000) : 0));
     }
@@ -38,6 +60,7 @@ export function taskClock(task: ClockTask, now: number, snapshotAt: number) {
     toleranceExceeded,
     remaining: dueAt === null ? null : Math.ceil((dueAt - now) / 1000),
     deadlineLabel: dueAt !== null && dueAt === Date.parse(task.slaDueAt ?? "") ? "Limite de SLA" : "Prazo final",
+    isScheduled: false,
   };
 }
 

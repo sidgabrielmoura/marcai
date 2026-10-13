@@ -6,7 +6,12 @@ import {
   loginWithPasswordAction,
   loginWithPinAction,
   AuthState,
+  loginWithMobileSessionAction,
 } from "@/presentation/actions/auth-actions";
+import {
+  generateMobileAuthTokenAction,
+  checkMobileAuthTokenAction,
+} from "@/presentation/actions/mobile-auth-actions";
 import {
   Lock,
   Mail,
@@ -15,11 +20,16 @@ import {
   UserCircle,
   ArrowRight,
   HelpCircle,
-  ChevronDown,
+  ScanFace,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { startAuthentication } from "@simplewebauthn/browser";
+import {
+  generateWebAuthnAuthentication,
+  verifyWebAuthnAuthentication,
+} from "@/presentation/actions/webauthn-actions";
 import {
   InputGroup,
   InputGroupInput,
@@ -34,8 +44,17 @@ import {
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
+import { QRCodeSVG } from "qrcode.react";
+
 export default function LoginPage() {
-  const [tab, setTab] = useState<"pin" | "password">("pin");
+  const [tab, setTab] = useState<"pin" | "password" | "faceid">("pin");
+  const [isFaceIdPending, setIsFaceIdPending] = useState(false);
+  
+  // Mobile QR Auth State
+  const [isMobile, setIsMobile] = useState(true);
+  const [qrToken, setQrToken] = useState<string | null>(null);
+  const [qrUrl, setQrUrl] = useState<string>("");
+  const [isQrLoading, setIsQrLoading] = useState(false);
 
   const [passwordState, passwordFormAction, isPasswordPending] = useActionState<
     AuthState,
@@ -46,6 +65,18 @@ export default function LoginPage() {
     AuthState,
     FormData
   >(loginWithPinAction, {});
+
+  useEffect(() => {
+    // Detect mobile device
+    const checkIsMobile = () => {
+      const userAgent =
+        typeof window !== "undefined" ? window.navigator.userAgent : "";
+      return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        userAgent
+      );
+    };
+    setIsMobile(checkIsMobile());
+  }, []);
 
   useEffect(() => {
     if (pinState?.error) {
@@ -66,6 +97,88 @@ export default function LoginPage() {
       });
     }
   }, [passwordState]);
+
+  // Handle QR code token generation and polling
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+
+    if (tab === "faceid" && !isMobile && !qrToken) {
+      const initQR = async () => {
+        setIsQrLoading(true);
+        try {
+          const res = await generateMobileAuthTokenAction();
+          if (res?.token) {
+            setQrToken(res.token);
+            setQrUrl(`${window.location.origin}/login/qr/${res.token}`);
+          }
+        } catch (err) {
+          console.error(err);
+        } finally {
+          setIsQrLoading(false);
+        }
+      };
+      initQR();
+    }
+
+    if (qrToken) {
+      intervalId = setInterval(async () => {
+        try {
+          const status = await checkMobileAuthTokenAction(qrToken);
+          if (status === "APPROVED") {
+            clearInterval(intervalId);
+            // Execute login
+            const result = await loginWithMobileSessionAction(qrToken);
+            if (result?.error) {
+              toast.add({
+                title: "Falha na autenticação via QR",
+                description: result.error,
+                type: "error",
+              });
+            }
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }, 2000);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [tab, isMobile, qrToken]);
+
+  const handleFaceIdLogin = async () => {
+    setIsFaceIdPending(true);
+    try {
+      const options = await generateWebAuthnAuthentication();
+      const asseResp = await startAuthentication({ optionsJSON: options });
+      const verification = await verifyWebAuthnAuthentication(asseResp);
+
+      if (verification?.error) {
+        toast.add({
+          title: "Falha na autenticação",
+          description: verification.error,
+          type: "error",
+        });
+      }
+    } catch (err: any) {
+      if (err.name === "NotAllowedError") {
+        toast.add({
+          title: "Autenticação cancelada",
+          description: "O processo de biometria foi cancelado.",
+          type: "error",
+        });
+      } else {
+        toast.add({
+          title: "Erro inesperado",
+          description: "Não foi possível iniciar o Face ID.",
+          type: "error",
+        });
+      }
+    } finally {
+      setIsFaceIdPending(false);
+    }
+  };
 
   return (
     <div className="auth-frame">
@@ -126,11 +239,11 @@ export default function LoginPage() {
             value={[tab]}
             onValueChange={(val) => {
               const selected = Array.isArray(val) ? val[val.length - 1] : val;
-              if (selected === "pin" || selected === "password") {
+              if (selected === "pin" || selected === "password" || selected === "faceid") {
                 setTab(selected);
               }
             }}
-            className="grid grid-cols-2 p-1 bg-canvas border border-(--border-subtle) rounded-[14px] mb-6 w-full gap-1"
+            className="grid grid-cols-3 p-1 bg-canvas border border-(--border-subtle) rounded-[14px] mb-6 w-full gap-1"
           >
             <ToggleGroupItem
               value="pin"
@@ -153,8 +266,20 @@ export default function LoginPage() {
                   : "text-[var(--text-secondary)] hover:text-[var(--brand-900)]",
               )}
             >
-              <Mail className="size-4 text-[var(--brand-700)]" />
-              <span>E-mail e senha</span>
+              <Mail className="size-4 text-[var(--brand-700)] hidden sm:block" />
+              <span>Senha</span>
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="faceid"
+              className={cn(
+                "h-[44px] text-[length:var(--type-label)] font-semibold rounded-[10px] transition-all flex items-center justify-center gap-2 cursor-pointer border-0",
+                tab === "faceid"
+                  ? "bg-[var(--surface)] text-[var(--brand-900)] shadow-none border border-[var(--border-subtle)] data-[state=on]:bg-[var(--surface)] data-[state=on]:text-[var(--brand-900)] hover:bg-[var(--surface)]"
+                  : "text-[var(--text-secondary)] hover:text-[var(--brand-900)]",
+              )}
+            >
+              <ScanFace className="size-4 text-[var(--brand-700)] hidden sm:block" />
+              <span>Face ID</span>
             </ToggleGroupItem>
           </ToggleGroup>
 
@@ -339,6 +464,61 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
+          )}
+
+          {tab === "faceid" && (
+            <div className="flex flex-col items-center gap-4 py-8">
+              {!isMobile ? (
+                <>
+                  <div className="text-center mb-2">
+                    <h2 className="text-lg font-semibold text-gray-900">
+                      Acesse com Face ID
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-1 max-w-[280px]">
+                      Escaneie o QR code com a câmera do seu celular para fazer
+                      login.
+                    </p>
+                  </div>
+                  
+                  <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-center min-h-[200px]">
+                    {isQrLoading || !qrUrl ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <Spinner />
+                        <span className="text-sm text-gray-500">Gerando QR Code...</span>
+                      </div>
+                    ) : (
+                      <QRCodeSVG value={qrUrl} size={200} />
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="size-16 rounded-full bg-brand-50 flex items-center justify-center mb-2">
+                    <ScanFace className="size-8 text-brand-700" />
+                  </div>
+                  <p className="text-center text-(--text-secondary) text-(length:--type-body) max-w-[280px]">
+                    Acesse rapidamente usando o Face ID ou a biometria do seu aparelho.
+                  </p>
+                  <Button
+                    onClick={handleFaceIdLogin}
+                    disabled={isFaceIdPending}
+                    className="mt-4 w-full h-[50px] bg-[var(--brand-900)] hover:bg-[var(--brand-700)] text-white font-semibold text-[16px] rounded-[14px] shadow-none"
+                  >
+                    {isFaceIdPending ? (
+                      <>
+                        <Spinner data-icon="inline-start" />
+                        <span>Aguardando biometria...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ScanFace data-icon="inline-start" />
+                        <span>Autenticar agora</span>
+                      </>
+                    )}
+                  </Button>
+                </>
+              )}
+            </div>
           )}
 
           <div className="mt-6 pt-4 border-t border-[var(--border-subtle)] flex items-start gap-2.5 text-[length:var(--type-label)] text-[var(--text-secondary)]">

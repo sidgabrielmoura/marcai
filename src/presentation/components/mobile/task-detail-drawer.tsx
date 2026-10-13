@@ -1,4 +1,5 @@
 "use client";
+import { FormChoiceInput } from "@/presentation/components/shared/form-choice-input";
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -16,6 +17,7 @@ import {
   completeTaskAction,
   submitEvidenceAction,
   uploadEvidenceAction,
+  uploadTaskFormFileAction,
   type TaskDetailResult,
 } from "@/presentation/actions/task-actions";
 import {
@@ -47,6 +49,7 @@ import {
   X,
   Camera,
   Video,
+  Paperclip,
   FileUp,
   FileText,
   Hash,
@@ -54,7 +57,10 @@ import {
   Navigation,
   Clock,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   ListTodo,
+  Lock,
 } from "lucide-react";
 
 interface TaskDetailDrawerProps {
@@ -64,18 +70,30 @@ interface TaskDetailDrawerProps {
   onTaskUpdated?: () => void;
 }
 
-const evidenceTypeMeta: Record<
-  string,
-  { label: string; icon: React.ComponentType<{ className?: string }> }
-> = {
-  PHOTO: { label: "Foto de comprovação", icon: Camera },
-  VIDEO: { label: "Gravação de vídeo", icon: Video },
-  FILE: { label: "Anexo de arquivo", icon: FileUp },
-  TEXT: { label: "Relato escrito", icon: FileText },
-  NUMBER: { label: "Medição / Valor", icon: Hash },
-  SIGNATURE: { label: "Assinatura digital", icon: PenTool },
-  LOCATION: { label: "Localização GPS", icon: Navigation },
-};
+import {
+  TaskEvidenceItem,
+  evidenceTypeMeta,
+  type EvidenceDraft,
+} from "./task-evidence-item";
+
+export type { EvidenceDraft };
+
+function isPauseOccurrence(o: { type?: string; category?: string; reason?: string }): boolean {
+  const type = (o.type || "").toUpperCase();
+  const category = (o.category || "").toUpperCase();
+  const reason = (o.reason || "").toLowerCase();
+  return (
+    type === "PAUSE_ALERT" ||
+    type.includes("PAUSE") ||
+    category === "LONG_PAUSE" ||
+    category === "INTERVALO" ||
+    category.includes("PAUSE") ||
+    category.includes("PAUSA") ||
+    reason.includes("está pausada") ||
+    reason.includes("tarefa pausada") ||
+    reason.includes("pausa de descanso")
+  );
+}
 
 export function EmployeeTaskDetailDrawer({
   taskId,
@@ -90,6 +108,9 @@ export function EmployeeTaskDetailDrawer({
   const [dialog, setDialog] = useState<"impediment" | null>(null);
   const [reason, setReason] = useState("");
   const [category, setCategory] = useState("OUTROS");
+  const [evidenceDrafts, setEvidenceDrafts] = useState<Record<string, EvidenceDraft>>({});
+  const [formAnswers, setFormAnswers] = useState<Record<string, any>>({});
+  const [drawerOccurrencesOpen, setDrawerOccurrencesOpen] = useState(false);
 
   const loadTask = useCallback(async (id: string) => {
     setLoading(true);
@@ -119,10 +140,16 @@ export function EmployeeTaskDetailDrawer({
 
   useEffect(() => {
     if (open && taskId) {
+      setLoading(true);
+      setEvidenceDrafts({});
+      setFormAnswers({});
       loadTask(taskId);
     } else if (!open) {
+      setLoading(false);
       const timer = setTimeout(() => {
         setTask(null);
+        setEvidenceDrafts({});
+        setFormAnswers({});
       }, 250);
       return () => clearTimeout(timer);
     }
@@ -186,6 +213,247 @@ export function EmployeeTaskDetailDrawer({
   const toleranceLimitAt = dueAt !== null ? dueAt + toleranceMinutes * 60 * 1000 : null;
   const isToleranceExceeded = toleranceLimitAt !== null && !isTerminal && Date.now() > toleranceLimitAt;
 
+  /**
+   * Conclui a tarefa enviando automaticamente todas as evidências anexadas sem necessidade de botão avulso
+   */
+  async function handleCompleteWithEvidence() {
+    if (!task) return;
+    if (isScheduled) {
+      toast.add({
+        title: "Aguardando horário",
+        description: `Esta tarefa está agendada para iniciar às ${new Date(task.scheduledDate!).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} e só pode ser concluída a partir deste horário.`,
+        type: "error",
+      });
+      return;
+    }
+    if (isToleranceExceeded) {
+      toast.add({
+        title: "Limite de tolerância atingido",
+        description: `O tempo limite de tolerância desta tarefa foi atingido. Ela está bloqueada para conclusão.`,
+        type: "error",
+      });
+      return;
+    }
+    setActionBusy(true);
+    try {
+      // 1. Identificar requisitos de evidência pendentes
+      const pendingRequirements = task.evidenceRequirements.filter((req) => {
+        const validCount = req.submissions.filter((s) => s.validationStatus === "VALID").length;
+        return validCount < req.minQuantity;
+      });
+
+      // 1.5 Validar perguntas obrigatórias se aplicável
+      if (task.taskType === "FORM" && Array.isArray(task.formFields)) {
+        for (const field of task.formFields) {
+          if (field.required) {
+            const answer = formAnswers[field.id];
+            if (answer === undefined || answer === null || answer === "") {
+              toast.add({
+                title: "Perguntas pendentes",
+                description: `A pergunta "${field.question}" é obrigatória.`,
+                type: "error",
+              });
+              setActionBusy(false);
+              return;
+            }
+          }
+        }
+      }
+
+      // 2. Conferir se todas as exigências obrigatórias foram anexadas/preenchidas
+      for (const req of pendingRequirements) {
+        const draft = evidenceDrafts[req.id];
+        const meta = evidenceTypeMeta[req.type] || { label: req.type };
+        const failures = req.submissions.filter((s) => s.validationStatus === "REJECTED").length;
+
+        // Regra D-05: após 3 falhas de validação, a continuidade operacional com ressalva é permitida
+        if (failures >= 3) continue;
+
+        if (req.required) {
+          if (req.type === "PHOTO") {
+            if (!draft?.file) {
+              toast.add({
+                title: "Evidência obrigatória",
+                description: `Tire a foto de comprovação (${meta.label}) antes de concluir.`,
+                type: "error",
+              });
+              setActionBusy(false);
+              return;
+            }
+          } else if (["VIDEO", "FILE"].includes(req.type)) {
+            if (!draft?.file) {
+              toast.add({
+                title: "Evidência obrigatória",
+                description: `Anexe o arquivo (${meta.label}) antes de concluir.`,
+                type: "error",
+              });
+              setActionBusy(false);
+              return;
+            }
+          } else if (req.type === "SIGNATURE") {
+            if (!draft?.signed) {
+              toast.add({
+                title: "Evidência obrigatória",
+                description: "Desenhe a sua assinatura antes de concluir.",
+                type: "error",
+              });
+              setActionBusy(false);
+              return;
+            }
+          } else if (req.type === "LOCATION") {
+            if (!draft?.value) {
+              toast.add({
+                title: "Evidência obrigatória",
+                description: "Capture a localização GPS antes de concluir.",
+                type: "error",
+              });
+              setActionBusy(false);
+              return;
+            }
+          } else if (req.type === "NUMBER") {
+            if (!draft?.value || !draft.value.trim() || !Number.isFinite(Number(draft.value.replace(",", ".")))) {
+              toast.add({
+                title: "Evidência obrigatória",
+                description: `Informe a medição numérica para "${meta.label}".`,
+                type: "error",
+              });
+              setActionBusy(false);
+              return;
+            }
+          } else if (req.type === "TEXT") {
+            if (!draft?.value || !draft.value.trim()) {
+              toast.add({
+                title: "Evidência obrigatória",
+                description: `Preencha o relato escrito para "${meta.label}".`,
+                type: "error",
+              });
+              setActionBusy(false);
+              return;
+            }
+          }
+        }
+      }
+
+      // 3. Se tudo está conferido e válido, enviar as evidências pendentes fornecidas
+      for (const req of pendingRequirements) {
+        const draft = evidenceDrafts[req.id];
+        if (!draft) continue;
+
+        if (req.type === "SIGNATURE" && draft.signed && draft.getSignatureBlob) {
+          const blob = await draft.getSignatureBlob();
+          if (blob) {
+            const sigFile = new File([blob], "assinatura.png", { type: "image/png" });
+            const form = new FormData();
+            form.set("taskId", task.id);
+            form.set("requirementId", req.id);
+            form.set("file", sigFile);
+            const uploadRes = await uploadEvidenceAction(form);
+            if (uploadRes.error) {
+              toast.add({
+                title: "Erro ao enviar assinatura",
+                description: uploadRes.error,
+                type: "error",
+              });
+              setActionBusy(false);
+              return;
+            }
+          }
+        } else if (["PHOTO", "VIDEO", "FILE"].includes(req.type) && draft.file) {
+          const form = new FormData();
+          form.set("taskId", task.id);
+          form.set("requirementId", req.id);
+          form.set("file", draft.file);
+          const uploadRes = await uploadEvidenceAction(form);
+          if (uploadRes.error) {
+            const meta = evidenceTypeMeta[req.type] || { label: req.type };
+            toast.add({
+              title: `Erro ao enviar ${meta.label}`,
+              description: uploadRes.error,
+              type: "error",
+            });
+            setActionBusy(false);
+            return;
+          }
+        } else if (["TEXT", "NUMBER", "LOCATION"].includes(req.type) && draft.value?.trim()) {
+          const submitRes = await submitEvidenceAction(task.id, req.id, draft.value.trim());
+          if (submitRes.error) {
+            const meta = evidenceTypeMeta[req.type] || { label: req.type };
+            toast.add({
+              title: `Erro ao enviar ${meta.label}`,
+              description: submitRes.error,
+              type: "error",
+            });
+            setActionBusy(false);
+            return;
+          }
+        }
+      }
+
+      // 4. Se o form tiver arquivos (fotos, vídeos ou anexos), fazemos o upload seguro antes de concluir.
+      const finalFormAnswers = { ...formAnswers };
+      if (task.taskType === "FORM" && Array.isArray(task.formFields)) {
+        for (const field of task.formFields) {
+          if (["PHOTO", "VIDEO", "FILE"].includes(field.type) && finalFormAnswers[field.id] instanceof File) {
+            const file = finalFormAnswers[field.id] as File;
+            const form = new FormData();
+            form.set("taskId", task.id);
+            form.set("fieldId", field.id);
+            form.set("file", file);
+            const uploadRes = await uploadTaskFormFileAction(form);
+            if (uploadRes.error) {
+              toast.add({
+                title: `Erro ao enviar ${field.type === "PHOTO" ? "foto" : field.type === "VIDEO" ? "vídeo" : "arquivo"}`,
+                description: uploadRes.error,
+                type: "error",
+              });
+              setActionBusy(false);
+              return;
+            }
+            finalFormAnswers[field.id] = {
+              storageKey: uploadRes.storageKey,
+              fileName: uploadRes.fileName,
+              fileSize: uploadRes.fileSize,
+              mimeType: uploadRes.mimeType,
+              type: field.type,
+            };
+          }
+        }
+      }
+
+      // 5. Todas as comprovações foram enviadas com sucesso -> Concluir tarefa direto
+      const completeRes = await completeTaskAction(task.id, task.taskType === "FORM" ? finalFormAnswers : undefined);
+      if (completeRes.error) {
+        toast.add({
+          title: "Erro ao concluir tarefa",
+          description: completeRes.error,
+          type: "error",
+        });
+        await loadTask(task.id);
+      } else {
+        toast.add({
+          title: "Sucesso",
+          description: task.requiresApproval ? "Enviado para aprovação!" : "Tarefa concluída!",
+          type: "success",
+        });
+        onTaskUpdated?.();
+        router.refresh();
+        setTimeout(() => {
+          onOpenChange(false);
+        }, 400);
+      }
+    } catch {
+      toast.add({
+        title: "Erro inesperado",
+        description: "Não foi possível concluir a tarefa. Verifique sua conexão e tente novamente.",
+        type: "error",
+      });
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+
+
   const evidencePendingCount = task
     ? task.evidenceRequirements.filter(
       (r) =>
@@ -209,8 +477,8 @@ export function EmployeeTaskDetailDrawer({
         showSwipeHandle={true}
         swipeDirection="down"
       >
-        <DrawerContent className="w-full h-[92dvh] max-h-[92dvh] sm:max-w-2xl sm:mx-auto border-t border-(--border-subtle) bg-surface text-(--text-primary) rounded-t-[24px] shadow-2xl flex flex-col focus:outline-none">
-          <DrawerHeader className="relative px-5 pt-2 pb-3.5 border-b border-(--border-subtle) text-left shrink-0">
+        <DrawerContent className="w-full h-[92dvh] max-h-[92dvh] sm:max-w-2xl sm:mx-auto border-t border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--text-primary)] rounded-t-[24px] shadow-2xl flex flex-col focus:outline-none">
+          <DrawerHeader className="relative px-5 pt-2 pb-3.5 border-b border-[var(--border-subtle)] text-left shrink-0">
             <div className="flex items-center justify-between gap-3 pr-8">
               <DrawerClose
                 render={
@@ -286,8 +554,8 @@ export function EmployeeTaskDetailDrawer({
             )}
 
             {loading ? (
-              <div className="flex flex-col items-center justify-center p-12 gap-3 min-h-[260px]">
-                <LogoLoader size={60} text="Carregando detalhes..." />
+              <div className="flex flex-col items-center justify-center p-12 gap-3 min-h-[300px]">
+                <LogoLoader size={64} text="Carregando detalhes..." />
               </div>
             ) : task ? (
               <>
@@ -311,15 +579,230 @@ export function EmployeeTaskDetailDrawer({
                       </div>
                     )}
 
-                    <div className="space-y-1.5">
-                      <span className="font-semibold text-xs text-[var(--text-primary)] block">
-                        Passo a passo:
-                      </span>
-                      <p className="whitespace-pre-wrap text-slate-700 dark:text-slate-300 bg-slate-50/50 dark:bg-muted/10 p-3 rounded-lg border border-[var(--border-subtle)]">
-                        {task.instructions ||
-                          "Execute as ações indicadas no título e confirme com as comprovações abaixo."}
-                      </p>
-                    </div>
+                    {task.taskType === "FORM" && Array.isArray(task.formFields) ? (
+                      <div className="space-y-4 pt-2">
+                        {task.formFields.map((field: any, idx: number) => (
+                          <div key={field.id} className="p-3 bg-white dark:bg-card border border-slate-200 dark:border-border rounded-xl">
+                            <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200 mb-2">
+                              {idx + 1}. {field.question} {field.required && <span className="text-red-500">*</span>}
+                            </label>
+                            {field.type === "MULTIPLE_CHOICE" && <FormChoiceInput options={field.options ?? []} value={formAnswers[field.id]} onChange={value => setFormAnswers(prev => ({ ...prev, [field.id]: value }))} />}
+                            {field.type === "SHORT_TEXT" && (
+                              <Input
+                                value={formAnswers[field.id] || ""}
+                                onChange={(e) => setFormAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                                placeholder="Sua resposta..."
+                                className="text-xs"
+                                disabled={isTerminal || actionBusy}
+                              />
+                            )}
+                            {field.type === "LONG_TEXT" && (
+                              <Textarea
+                                value={formAnswers[field.id] || ""}
+                                onChange={(e) => setFormAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                                placeholder="Descreva sua resposta..."
+                                className="text-xs resize-none"
+                                rows={3}
+                                disabled={isTerminal || actionBusy}
+                              />
+                            )}
+                            {field.type === "RATING" && (
+                              <div className="flex gap-2">
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                  <button
+                                    key={star}
+                                    type="button"
+                                    disabled={isTerminal || actionBusy}
+                                    onClick={() => setFormAnswers((prev) => ({ ...prev, [field.id]: star }))}
+                                    className={`size-8 rounded-full flex items-center justify-center border transition-colors ${formAnswers[field.id] === star
+                                        ? "bg-amber-100 border-amber-400 text-amber-600"
+                                        : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100"
+                                      }`}
+                                  >
+                                    ★
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            {field.type === "BOOLEAN" && (
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  disabled={isTerminal || actionBusy}
+                                  onClick={() => setFormAnswers((prev) => ({ ...prev, [field.id]: true }))}
+                                  className={`flex-1 py-2 text-xs rounded-lg border font-medium transition-colors ${formAnswers[field.id] === true
+                                      ? "bg-emerald-50 border-emerald-300 text-emerald-700"
+                                      : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                                    }`}
+                                >
+                                  Sim
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isTerminal || actionBusy}
+                                  onClick={() => setFormAnswers((prev) => ({ ...prev, [field.id]: false }))}
+                                  className={`flex-1 py-2 text-xs rounded-lg border font-medium transition-colors ${formAnswers[field.id] === false
+                                      ? "bg-red-50 border-red-300 text-red-700"
+                                      : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                                    }`}
+                                >
+                                  Não
+                                </button>
+                              </div>
+                            )}
+                            {field.type === "PHOTO" && (
+                              <div className="flex flex-col gap-2">
+                                {formAnswers[field.id] instanceof File ? (
+                                  <div className="p-2.5 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-300 dark:border-emerald-800 rounded-xl flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <div className="size-8 rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 flex items-center justify-center shrink-0">
+                                        <Camera className="size-4" />
+                                      </div>
+                                      <div className="flex flex-col min-w-0">
+                                        <span className="text-xs font-semibold text-emerald-900 dark:text-emerald-200 truncate">
+                                          {(formAnswers[field.id] as File).name}
+                                        </span>
+                                        <span className="text-[10px] text-emerald-700/80 dark:text-emerald-400">
+                                          {Math.round(((formAnswers[field.id] as File).size || 0) / 1024)} KB · Foto registrada
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      disabled={isTerminal || actionBusy}
+                                      onClick={() => setFormAnswers((prev) => { const next = { ...prev }; delete next[field.id]; return next; })}
+                                      className="text-xs text-red-600 hover:text-red-800 font-semibold px-2 py-1 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer"
+                                    >
+                                      Trocar
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <label className={`flex flex-col items-center justify-center p-3.5 border-2 border-dashed border-[var(--border-subtle)] hover:border-[var(--brand-700)] bg-[var(--surface)] hover:bg-[var(--canvas)] rounded-xl cursor-pointer transition-all ${(isTerminal || actionBusy) ? "opacity-50 pointer-events-none" : ""
+                                    }`}>
+                                    <Camera className="size-5 mb-1 text-[var(--brand-700)] opacity-80" />
+                                    <span className="text-xs font-semibold text-[var(--brand-900)]">Tirar foto na hora</span>
+                                    <span className="text-[10px] text-muted-foreground mt-0.5">Abre a câmera do dispositivo</span>
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      capture="environment"
+                                      className="hidden"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) setFormAnswers((prev) => ({ ...prev, [field.id]: file }));
+                                      }}
+                                    />
+                                  </label>
+                                )}
+                              </div>
+                            )}
+
+                            {field.type === "VIDEO" && (
+                              <div className="flex flex-col gap-2">
+                                {formAnswers[field.id] instanceof File ? (
+                                  <div className="p-2.5 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-300 dark:border-emerald-800 rounded-xl flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <div className="size-8 rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 flex items-center justify-center shrink-0">
+                                        <Video className="size-4" />
+                                      </div>
+                                      <div className="flex flex-col min-w-0">
+                                        <span className="text-xs font-semibold text-emerald-900 dark:text-emerald-200 truncate">
+                                          {(formAnswers[field.id] as File).name}
+                                        </span>
+                                        <span className="text-[10px] text-emerald-700/80 dark:text-emerald-400">
+                                          {Math.round(((formAnswers[field.id] as File).size || 0) / 1024)} KB · Vídeo gravado
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      disabled={isTerminal || actionBusy}
+                                      onClick={() => setFormAnswers((prev) => { const next = { ...prev }; delete next[field.id]; return next; })}
+                                      className="text-xs text-red-600 hover:text-red-800 font-semibold px-2 py-1 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer"
+                                    >
+                                      Trocar
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <label className={`flex flex-col items-center justify-center p-3.5 border-2 border-dashed border-[var(--border-subtle)] hover:border-[var(--brand-700)] bg-[var(--surface)] hover:bg-[var(--canvas)] rounded-xl cursor-pointer transition-all ${(isTerminal || actionBusy) ? "opacity-50 pointer-events-none" : ""
+                                    }`}>
+                                    <Video className="size-5 mb-1 text-[var(--brand-700)] opacity-80" />
+                                    <span className="text-xs font-semibold text-[var(--brand-900)]">Gravar vídeo na hora</span>
+                                    <span className="text-[10px] text-muted-foreground mt-0.5">Abre a câmera para gravação direta</span>
+                                    <input
+                                      type="file"
+                                      accept="video/*"
+                                      capture="environment"
+                                      className="hidden"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) setFormAnswers((prev) => ({ ...prev, [field.id]: file }));
+                                      }}
+                                    />
+                                  </label>
+                                )}
+                              </div>
+                            )}
+
+                            {field.type === "FILE" && (
+                              <div className="flex flex-col gap-2">
+                                {formAnswers[field.id] instanceof File ? (
+                                  <div className="p-2.5 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-300 dark:border-emerald-800 rounded-xl flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <div className="size-8 rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 flex items-center justify-center shrink-0">
+                                        <Paperclip className="size-4" />
+                                      </div>
+                                      <div className="flex flex-col min-w-0">
+                                        <span className="text-xs font-semibold text-emerald-900 dark:text-emerald-200 truncate">
+                                          {(formAnswers[field.id] as File).name}
+                                        </span>
+                                        <span className="text-[10px] text-emerald-700/80 dark:text-emerald-400">
+                                          {Math.round(((formAnswers[field.id] as File).size || 0) / 1024)} KB · Arquivo anexado
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      disabled={isTerminal || actionBusy}
+                                      onClick={() => setFormAnswers((prev) => { const next = { ...prev }; delete next[field.id]; return next; })}
+                                      className="text-xs text-red-600 hover:text-red-800 font-semibold px-2 py-1 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer"
+                                    >
+                                      Trocar
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <label className={`flex flex-col items-center justify-center p-3.5 border-2 border-dashed border-[var(--border-subtle)] hover:border-[var(--brand-700)] bg-[var(--surface)] hover:bg-[var(--canvas)] rounded-xl cursor-pointer transition-all ${(isTerminal || actionBusy) ? "opacity-50 pointer-events-none" : ""
+                                    }`}>
+                                    <Paperclip className="size-5 mb-1 text-[var(--brand-700)] opacity-80" />
+                                    <span className="text-xs font-semibold text-[var(--brand-900)]">Anexar arquivo</span>
+                                    <span className="text-[10px] text-muted-foreground mt-0.5">Imagens, vídeos ou documentos (máx. 10 MB)</span>
+                                    <input
+                                      type="file"
+                                      accept="image/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
+                                      className="hidden"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) setFormAnswers((prev) => ({ ...prev, [field.id]: file }));
+                                      }}
+                                    />
+                                  </label>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <span className="font-semibold text-xs text-[var(--text-primary)] block">
+                          Passo a passo:
+                        </span>
+                        <p className="whitespace-pre-wrap text-slate-700 dark:text-slate-300 bg-slate-50/50 dark:bg-muted/10 p-3 rounded-lg border border-[var(--border-subtle)]">
+                          {task.instructions ||
+                            "Execute as ações indicadas no título e confirme com as comprovações abaixo."}
+                        </p>
+                      </div>
+                    )}
 
                     {task.dependencies && task.dependencies.length > 0 && (
                       <div className="flex flex-col gap-1.5 pt-2 border-t border-[var(--border-subtle)]">
@@ -365,11 +848,15 @@ export function EmployeeTaskDetailDrawer({
                       </div>
                     ) : (
                       task.evidenceRequirements.map((req) => (
-                        <DrawerEvidenceItem
+                        <TaskEvidenceItem
                           key={req.id}
                           taskId={task.id}
                           requirement={req}
                           disabled={isTerminal || task.status === "BLOCKED" || !!task.isUnassigned || isToleranceExceeded}
+                          draft={evidenceDrafts[req.id]}
+                          onDraftChange={(draft) =>
+                            setEvidenceDrafts((prev) => ({ ...prev, [req.id]: draft }))
+                          }
                           onSuccess={async (msg) => {
                             toast.add({
                               title: "Comprovação enviada",
@@ -393,30 +880,50 @@ export function EmployeeTaskDetailDrawer({
                   </CardContent>
                 </Card>
 
-                {task.occurrences && task.occurrences.length > 0 && (
-                  <Card className="shrink-0 rounded-xl border border-red-200 bg-red-50/20 shadow-none overflow-hidden">
-                    <div className="px-4 py-2.5 bg-red-50/60 border-b border-red-200 flex items-center justify-between">
-                      <span className="font-bold text-[11px] uppercase tracking-wide text-red-900">
-                        Ocorrências registradas
-                      </span>
-                    </div>
-                    <CardContent className="p-3.5 flex flex-col gap-2">
-                      {task.occurrences.map((occ) => (
-                        <div
-                          key={occ.id}
-                          className="p-2.5 rounded-lg bg-white dark:bg-card border border-red-200 text-xs flex flex-col gap-0.5"
-                        >
-                          <span className="font-semibold text-red-800">{occ.reason}</span>
-                          <span className="text-[10px] text-muted-foreground">
-                            {new Date(occ.createdAt).toLocaleString("pt-BR", {
-                              timeZone: "America/Sao_Paulo",
-                            })}
+                {(() => {
+                  const validOccurrences = (task.occurrences || []).filter((occ) => !isPauseOccurrence(occ));
+                  if (validOccurrences.length === 0) return null;
+                  return (
+                    <Card className="shrink-0 rounded-xl p-0 border border-slate-200 dark:border-slate-800 bg-surface shadow-none overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setDrawerOccurrencesOpen((prev) => !prev)}
+                        className="w-full px-4 py-2.5 bg-slate-50/80 dark:bg-slate-900/40 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 text-left cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-800/40 transition-colors select-none"
+                      >
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="size-4 text-slate-600 dark:text-slate-400" />
+                          <span className="font-bold text-[11px] uppercase tracking-wide text-slate-900 dark:text-slate-200">
+                            Ocorrências registradas
                           </span>
+                          <Badge variant="outline" className="text-[10px] font-semibold px-1.5 py-0 border-slate-300 text-slate-700 bg-slate-100 dark:bg-slate-800 dark:text-slate-300">
+                            {validOccurrences.length}
+                          </Badge>
                         </div>
-                      ))}
-                    </CardContent>
-                  </Card>
-                )}
+                        <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                          <span>{drawerOccurrencesOpen ? "Recolher" : "Expandir"}</span>
+                          {drawerOccurrencesOpen ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                        </div>
+                      </button>
+                      {drawerOccurrencesOpen && (
+                        <CardContent className="p-3.5 flex flex-col gap-2">
+                          {validOccurrences.map((occ) => (
+                            <div
+                              key={occ.id}
+                              className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 text-xs flex flex-col gap-0.5"
+                            >
+                              <span className="font-semibold text-slate-800 dark:text-slate-200">{occ.reason}</span>
+                              <span className="text-[10px] text-muted-foreground font-mono">
+                                {new Date(occ.createdAt).toLocaleString("pt-BR", {
+                                  timeZone: "America/Sao_Paulo",
+                                })}
+                              </span>
+                            </div>
+                          ))}
+                        </CardContent>
+                      )}
+                    </Card>
+                  );
+                })()}
               </>
             ) : null}
           </div>
@@ -424,11 +931,26 @@ export function EmployeeTaskDetailDrawer({
           {/* Rodapé Fixo / Ações Operacionais */}
           {task && (
             <DrawerFooter className="px-4 sm:px-6 py-3.5 border-t border-[var(--border-subtle)] bg-[var(--surface)] shrink-0 flex flex-col gap-2">
-              {task.isUnassigned ? (
+              {isScheduled ? (
+                <div className="flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-center">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                    <Clock className="size-4 text-slate-500" />
+                    <span>Aguardando horário</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Liberada em{" "}
+                    {new Date(task.scheduledDate!).toLocaleString("pt-BR", {
+                      timeZone: "America/Sao_Paulo",
+                      dateStyle: "short",
+                      timeStyle: "short",
+                    })}
+                  </p>
+                </div>
+              ) : task.isUnassigned ? (
                 <div className="flex flex-col gap-2">
                   <Button
                     className="w-full h-11 text-xs font-semibold rounded-xl bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)] cursor-pointer"
-                    disabled={actionBusy}
+                    disabled={actionBusy || task.status === "BLOCKED"}
                     onClick={() =>
                       handleAction(() => claimTaskAction(task.id), {
                         successNotice: "Tarefa assumida com sucesso!",
@@ -440,64 +962,42 @@ export function EmployeeTaskDetailDrawer({
                     ) : (
                       <Check data-icon="inline-start" />
                     )}
-                    Assumir esta tarefa
+                    {task.status === "BLOCKED" ? "Aguardando etapas anteriores" : "Assumir esta tarefa"}
                   </Button>
                 </div>
-              ) : isScheduled ? (
-                <p className="text-xs text-muted-foreground text-center py-1">
-                  Esta tarefa será liberada em{" "}
-                  {new Date(task.scheduledDate!).toLocaleString("pt-BR", {
-                    timeZone: "America/Sao_Paulo",
-                    dateStyle: "short",
-                    timeStyle: "short",
-                  })}
-                  .
-                </p>
               ) : task.status === "BLOCKED" ? (
                 <p className="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200 text-center font-medium">
                   Aguardando etapas anteriores para ser liberada.
                 </p>
-              ) : task.status === "PAUSED" ? (
-                <div className="flex flex-col gap-2">
-                  <Button
-                    className="w-full h-11 text-xs font-semibold rounded-xl cursor-pointer"
-                    disabled={actionBusy}
-                    onClick={() =>
-                      handleAction(() => resumeTaskAction(task.id), {
-                        successNotice: "Tarefa retomada!",
-                      })
-                    }
-                  >
-                    {actionBusy ? (
-                      <Spinner data-icon="inline-start" />
-                    ) : (
-                      <RotateCcw data-icon="inline-start" />
-                    )}
-                    Retomar tarefa
-                  </Button>
-                </div>
               ) : !isTerminal && task.status !== "SUBMITTED" ? (
                 <div className="flex flex-col gap-2">
+                  {isToleranceExceeded && (
+                    <div className="flex items-center gap-2 p-2.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 font-medium">
+                      <Lock className="size-4 shrink-0 text-red-600" />
+                      <span>Limite de tolerância atingido. Esta tarefa está bloqueada para conclusão.</span>
+                    </div>
+                  )}
+
                   <Button
-                    className="w-full h-11 text-xs font-semibold rounded-xl bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)] cursor-pointer"
-                    disabled={actionBusy || evidencePendingCount > 0}
-                    onClick={() =>
-                      handleAction(() => completeTaskAction(task.id), {
-                        closeOnSuccess: true,
-                        successNotice: task.requiresApproval
-                          ? "Enviado para aprovação!"
-                          : "Tarefa concluída!",
-                      })
-                    }
+                    className={`w-full h-11 text-xs font-semibold rounded-xl ${isToleranceExceeded
+                      ? "bg-slate-200 text-slate-500 border border-slate-300 cursor-not-allowed opacity-70 hover:bg-slate-200 hover:text-slate-500"
+                      : "bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)] cursor-pointer"
+                      }`}
+                    disabled={actionBusy || isToleranceExceeded}
+                    onClick={handleCompleteWithEvidence}
                   >
                     {actionBusy ? (
                       <Spinner data-icon="inline-start" />
+                    ) : isToleranceExceeded ? (
+                      <Lock data-icon="inline-start" className="size-4" />
                     ) : (
                       <Check data-icon="inline-start" />
                     )}
-                    {task.requiresApproval
-                      ? "Enviar para aprovação"
-                      : "Concluir tarefa"}
+                    {isToleranceExceeded
+                      ? "Bloqueada por limite de tolerância"
+                      : task.requiresApproval
+                        ? "Enviar para aprovação"
+                        : "Concluir tarefa"}
                   </Button>
 
                   <Button
@@ -568,7 +1068,6 @@ export function EmployeeTaskDetailDrawer({
                     MATERIAL_FALTANTE: "Falta de materiais / insumos",
                     EQUIPAMENTO_QUEBRADO: "Equipamento com defeito",
                     ACESSO_BLOQUEADO: "Local inacessível / trancado",
-                    INTERVALO: "Intervalo / Pausa de descanso",
                   }).map(([val, label]) => (
                     <NativeSelectOption key={val} value={val}>
                       {label}
@@ -619,475 +1118,5 @@ export function EmployeeTaskDetailDrawer({
         </Modal>
       )}
     </>
-  );
-}
-
-/**
- * Item individual de comprovação / evidência no Drawer
- */
-function DrawerEvidenceItem({
-  taskId,
-  requirement: req,
-  disabled,
-  onSuccess,
-  onError,
-}: {
-  taskId: string;
-  requirement: TaskDetailResult["evidenceRequirements"][0];
-  disabled: boolean;
-  onSuccess: (msg?: string) => void;
-  onError: (err: string) => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [value, setValue] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [signed, setSigned] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const isDrawing = useRef(false);
-
-  // ─── Câmera traseira (PHOTO) ─────────────────────────────────────────
-  const [cameraOpen, setCameraOpen] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-
-  async function openCamera() {
-    setCameraError(null);
-    setPhotoPreview(null);
-    setFile(null);
-    setCameraOpen(true);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-        audio: false,
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-    } catch {
-      setCameraError("Não foi possível acessar a câmera. Verifique as permissões do navegador.");
-    }
-  }
-
-  function closeCamera() {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-    setCameraOpen(false);
-    setCameraError(null);
-  }
-
-  function snapPhoto() {
-    const video = videoRef.current;
-    if (!video) return;
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
-    const ctx = canvas.getContext("2d");
-    ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-      const timestamp = Date.now();
-      const capturedFile = new File([blob], `foto_evidencia_${timestamp}.jpg`, { type: "image/jpeg" });
-      setFile(capturedFile);
-      setPhotoPreview(URL.createObjectURL(blob));
-      closeCamera();
-    }, "image/jpeg", 0.92);
-  }
-
-  const meta = evidenceTypeMeta[req.type] || {
-    label: req.type,
-    icon: FileText,
-  };
-  const Icon = meta.icon;
-
-  // Limpa o stream se o componente for desmontado com câmera aberta
-  useEffect(() => {
-    return () => {
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-    };
-  }, []);
-
-  const valid = req.submissions.filter((s) => s.validationStatus === "VALID");
-  const failures = req.submissions.filter((s) => s.validationStatus === "REJECTED").length;
-  const isDone = valid.length >= req.minQuantity;
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      let selectedFile = file;
-
-      if (req.type === "SIGNATURE") {
-        if (!signed || !canvasRef.current) {
-          onError("Desenhe a assinatura no campo antes de enviar.");
-          setBusy(false);
-          return;
-        }
-        const blob = await new Promise<Blob | null>((resolve) =>
-          canvasRef.current!.toBlob(resolve, "image/png")
-        );
-        if (blob) {
-          selectedFile = new File([blob], "assinatura.png", { type: "image/png" });
-        }
-      }
-
-      if (["PHOTO", "VIDEO", "FILE", "SIGNATURE"].includes(req.type)) {
-        if (!selectedFile) {
-          onError(
-            req.type === "PHOTO"
-              ? "Tire uma foto pela câmera antes de enviar."
-              : "Selecione um arquivo para enviar."
-          );
-          setBusy(false);
-          return;
-        }
-        const formData = new FormData();
-        formData.set("taskId", taskId);
-        formData.set("requirementId", req.id);
-        formData.set("file", selectedFile);
-        const result = await uploadEvidenceAction(formData);
-        if (result.error) {
-          onError(result.error);
-        } else {
-          setFile(null);
-          setValue("");
-          setPhotoPreview(null);
-          onSuccess("Arquivo enviado!");
-        }
-      } else {
-        const result = await submitEvidenceAction(taskId, req.id, value);
-        if (result.error) {
-          onError(result.error);
-        } else {
-          setValue("");
-          onSuccess("Comprovação registrada!");
-        }
-      }
-    } catch {
-      onError("Não foi possível enviar a comprovação.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleCaptureGps() {
-    if (!navigator.geolocation) {
-      onError("Este navegador não suporta geolocalização.");
-      return;
-    }
-    setBusy(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setValue(
-          JSON.stringify({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy,
-          })
-        );
-        setBusy(false);
-      },
-      () => {
-        onError("Não foi possível obter localização. Verifique as permissões de GPS.");
-        setBusy(false);
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
-  }
-
-  return (
-    <div
-      className={`p-3.5 rounded-xl border transition-colors ${isDone
-        ? "bg-emerald-50/40 border-emerald-200 dark:bg-emerald-950/10 dark:border-emerald-900/40"
-        : "bg-slate-50/60 dark:bg-muted/15 border-[var(--border-subtle)]"
-        }`}
-    >
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2">
-          <div
-            className={`size-7 rounded-lg flex items-center justify-center shrink-0 ${isDone
-              ? "bg-emerald-100 text-emerald-700"
-              : "bg-slate-100 text-slate-700 dark:bg-muted dark:text-foreground"
-              }`}
-          >
-            <Icon className="size-3.5" />
-          </div>
-          <div>
-            <h4 className="font-semibold text-xs text-[var(--text-primary)]">
-              {meta.label}
-            </h4>
-            <span className="text-[10px] text-muted-foreground">
-              {req.minQuantity > 1 ? `Exige ${req.minQuantity} envios` : "Envio único"}
-            </span>
-          </div>
-        </div>
-
-        <Badge
-          variant={isDone ? "secondary" : "outline"}
-          className={`text-[10px] font-semibold ${isDone
-            ? "bg-emerald-100 text-emerald-800 border-emerald-200"
-            : req.required
-              ? "border-amber-300 text-amber-800 bg-amber-50"
-              : "text-slate-500"
-            }`}
-        >
-          {isDone ? "Concluída" : req.required ? "Obrigatória" : "Opcional"}
-        </Badge>
-      </div>
-
-      {valid.map((s) => (
-        <p key={s.id} className="text-xs text-muted-foreground break-all my-1.5 flex items-center gap-1.5">
-          <Check className="size-3 text-emerald-600 shrink-0" />
-          {s.storageKey ? (
-            <a
-              className="underline text-blue-600 hover:text-blue-800 font-medium"
-              href={`/api/evidence/${s.id}`}
-            >
-              Visualizar {s.value || "comprovação"}
-            </a>
-          ) : (
-            <span>{s.value}</span>
-          )}
-        </p>
-      ))}
-
-      {failures > 0 && !isDone && (
-        <p className="text-[11px] text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200 my-1.5">
-          {failures} envio(s) não atendido(s). Anexe uma nova comprovação.
-        </p>
-      )}
-
-      {!isDone && !disabled && (
-        <form onSubmit={handleSubmit} className="flex flex-col gap-2.5 mt-2">
-          {req.type === "PHOTO" && (
-            <div className="flex flex-col gap-2">
-              {/* Câmera ao vivo */}
-              {cameraOpen && (
-                <div className="flex flex-col gap-2">
-                  {cameraError ? (
-                    <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-800">
-                      {cameraError}
-                    </div>
-                  ) : (
-                    <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-black">
-                      <video
-                        ref={videoRef}
-                        autoPlay
-                        playsInline
-                        muted
-                        className="w-full max-h-64 object-cover"
-                      />
-                      <div className="absolute bottom-2 inset-x-0 flex justify-center gap-3">
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="h-10 w-10 rounded-full bg-white text-slate-800 hover:bg-slate-100 shadow-lg p-0 cursor-pointer"
-                          onClick={snapPhoto}
-                        >
-                          <Camera className="size-4" />
-                          <span className="sr-only">Tirar foto</span>
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="w-full text-xs h-8 text-slate-500 cursor-pointer"
-                    onClick={closeCamera}
-                  >
-                    Cancelar
-                  </Button>
-                </div>
-              )}
-
-              {/* Preview da foto tirada */}
-              {!cameraOpen && photoPreview && (
-                <div className="flex flex-col gap-1.5">
-                  <div className="relative rounded-xl overflow-hidden border border-emerald-200">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={photoPreview} alt="Foto capturada" className="w-full max-h-52 object-cover" />
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="w-full text-xs h-8 text-slate-500 cursor-pointer"
-                    onClick={openCamera}
-                  >
-                    <Camera data-icon="inline-start" className="size-3.5" />
-                    Tirar nova foto
-                  </Button>
-                </div>
-              )}
-
-              {/* Botão inicial — abre câmera traseira */}
-              {!cameraOpen && !photoPreview && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full h-11 text-xs font-semibold rounded-xl cursor-pointer"
-                  onClick={openCamera}
-                >
-                  <Camera data-icon="inline-start" className="size-4" />
-                  Abrir câmera traseira
-                </Button>
-              )}
-
-              <p className="text-[10px] text-muted-foreground leading-snug">
-                A foto deve ser tirada no momento pela câmera do dispositivo. Não é possível anexar arquivos da galeria.
-              </p>
-            </div>
-          )}
-
-          {["VIDEO", "FILE"].includes(req.type) && (
-            <div className="flex flex-col gap-1">
-              <Input
-                type="file"
-                accept={
-                  req.type === "VIDEO"
-                    ? "video/mp4"
-                    : "image/jpeg,image/png,image/webp,application/pdf,video/mp4"
-                }
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                required
-                className="h-9 text-xs bg-white dark:bg-card file:text-xs file:font-semibold cursor-pointer"
-              />
-              <span className="text-[10px] text-muted-foreground">
-                Formatos permitidos: {req.type === "VIDEO" ? "MP4" : "JPG, PNG, WebP ou PDF"} (máx. 10 MB)
-              </span>
-            </div>
-          )}
-
-          {["TEXT", "NUMBER"].includes(req.type) && (
-            <div className="flex flex-col gap-1">
-              {req.type === "TEXT" ? (
-                <Textarea
-                  value={value}
-                  onChange={(e) => setValue(e.target.value)}
-                  required
-                  rows={2}
-                  className="text-xs bg-white dark:bg-card"
-                  placeholder="Escreva a resposta ou observação aqui..."
-                />
-              ) : (
-                <Input
-                  type="number"
-                  step="any"
-                  value={value}
-                  onChange={(e) => setValue(e.target.value)}
-                  required
-                  placeholder="Digite a medição numérica..."
-                  className="h-9 text-xs! bg-white dark:bg-card"
-                />
-              )}
-            </div>
-          )}
-
-          {req.type === "LOCATION" && (
-            <div className="flex flex-col gap-1.5">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={busy}
-                onClick={handleCaptureGps}
-                className="w-full text-xs h-9 cursor-pointer"
-              >
-                <Navigation data-icon="inline-start" className="size-3.5" />
-                {value ? "Atualizar coordenadas GPS" : "Obter localização atual"}
-              </Button>
-              {value && (
-                <span className="text-[11px] text-emerald-700 bg-emerald-50 p-1.5 rounded border border-emerald-200">
-                  Localização capturada. Envie para confirmar.
-                </span>
-              )}
-            </div>
-          )}
-
-          {req.type === "SIGNATURE" && (
-            <div className="flex flex-col gap-1.5">
-              <div className="border border-slate-300 dark:border-border rounded-lg overflow-hidden bg-white">
-                <canvas
-                  ref={canvasRef}
-                  width={500}
-                  height={130}
-                  aria-label="Área de assinatura"
-                  className="touch-none w-full h-[110px] bg-white cursor-crosshair block"
-                  onPointerDown={(e) => {
-                    isDrawing.current = true;
-                    e.currentTarget.setPointerCapture(e.pointerId);
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const ctx = e.currentTarget.getContext("2d");
-                    if (ctx) {
-                      ctx.beginPath();
-                      ctx.moveTo(
-                        ((e.clientX - rect.left) * 500) / rect.width,
-                        ((e.clientY - rect.top) * 130) / rect.height
-                      );
-                    }
-                  }}
-                  onPointerMove={(e) => {
-                    if (!isDrawing.current) return;
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const ctx = e.currentTarget.getContext("2d");
-                    if (ctx) {
-                      ctx.lineWidth = 2.5;
-                      ctx.strokeStyle = "#0f172a";
-                      ctx.lineCap = "round";
-                      ctx.lineJoin = "round";
-                      ctx.lineTo(
-                        ((e.clientX - rect.left) * 500) / rect.width,
-                        ((e.clientY - rect.top) * 130) / rect.height
-                      );
-                      ctx.stroke();
-                      setSigned(true);
-                    }
-                  }}
-                  onPointerUp={() => {
-                    isDrawing.current = false;
-                  }}
-                  onPointerCancel={() => {
-                    isDrawing.current = false;
-                  }}
-                />
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] text-muted-foreground">
-                  Desenhe com o dedo ou ponteiro
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs h-7 px-2 text-slate-500 cursor-pointer"
-                  onClick={() => {
-                    const ctx = canvasRef.current?.getContext("2d");
-                    ctx?.clearRect(0, 0, 500, 130);
-                    setSigned(false);
-                  }}
-                >
-                  Limpar
-                </Button>
-              </div>
-            </div>
-          )}
-
-          <Button
-            type="submit"
-            variant="outline"
-            disabled={busy || (req.type === "LOCATION" && !value)}
-            className="w-full text-xs h-9 font-semibold cursor-pointer"
-          >
-            {busy ? (
-              <Spinner data-icon="inline-start" />
-            ) : (
-              <Send data-icon="inline-start" className="size-3.5" />
-            )}
-            Registrar envio
-          </Button>
-        </form>
-      )}
-    </div>
   );
 }

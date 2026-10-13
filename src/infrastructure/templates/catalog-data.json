@@ -1,0 +1,2965 @@
+[
+  {
+    "id": "V01",
+    "version": 1,
+    "definition": {
+      "schemaVersion": 1,
+      "name": "Abertura de loja",
+      "description": "deixar a unidade preparada para receber clientes.",
+      "jobKey": "RETAIL",
+      "criticality": "MEDIUM",
+      "teamSlots": [
+        {
+          "id": "team-1",
+          "label": "Operação"
+        }
+      ],
+      "memberSlots": [
+        {
+          "id": "approver-1",
+          "label": "Gestor",
+          "kind": "APPROVER"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task-1",
+          "title": "Inspecionar a entrada",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Verifique acessos, iluminação e obstáculos; registre qualquer impedimento para a liderança.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "PHOTO",
+          "dependsOn": [],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-2",
+          "title": "Preparar o salão",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Organize balcão, exposição e itens de uso; confira limpeza e sinalização de preço.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "PHOTO",
+          "dependsOn": [
+            "task-1"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-3",
+          "title": "Conferir recursos de atendimento",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Ligue os equipamentos utilizados; teste o acesso aos sistemas e comunique falhas.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "BOOLEAN",
+              "question": "Equipamentos funcionam?",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Pendências encontradas",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-2"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-4",
+          "title": "Conferir o caixa inicial",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Compare o valor inicial com o controle interno e informe divergências.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "NUMBER",
+          "dependsOn": [
+            "task-3"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-5",
+          "title": "Confirmar a abertura",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Revise os registros anteriores; sinalize se há impedimento para iniciar o atendimento.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "BOOLEAN",
+              "question": "Unidade pronta?",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Observações",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-4"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [
+            "approver-1"
+          ],
+          "approvalMode": "SEQUENTIAL"
+        }
+      ],
+      "schedule": {
+        "frequency": "DAILY",
+        "interval": 1,
+        "weekdays": [
+          "MO",
+          "TU",
+          "WE",
+          "TH",
+          "FR"
+        ],
+        "monthDay": 1,
+        "times": [
+          "07:00"
+        ],
+        "generationLeadTime": 1440
+      }
+    }
+  },
+  {
+    "id": "V02",
+    "version": 1,
+    "definition": {
+      "schemaVersion": 1,
+      "name": "Fechamento e passagem de turno",
+      "description": "encerrar o atendimento e registrar pendências para o próximo turno.",
+      "jobKey": "RETAIL",
+      "criticality": "MEDIUM",
+      "teamSlots": [
+        {
+          "id": "team-1",
+          "label": "Operação"
+        }
+      ],
+      "memberSlots": [
+        {
+          "id": "approver-1",
+          "label": "Gestor",
+          "kind": "APPROVER"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task-1",
+          "title": "Encerrar os atendimentos",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Confirme que solicitações em curso têm responsável e que nenhum cliente aguarda retorno.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "BOOLEAN",
+              "question": "Há atendimento pendente?",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Pendência e encaminhamento",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-2",
+          "title": "Conferir o caixa final",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Compare os valores do sistema com o controle interno; explique divergências ao responsável.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "NUMBER",
+          "dependsOn": [
+            "task-1"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-3",
+          "title": "Organizar o ambiente",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Reponha os materiais essenciais e organize o salão para o próximo turno.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "PHOTO",
+          "dependsOn": [
+            "task-2"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-4",
+          "title": "Verificar equipamentos e acessos",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Siga o procedimento interno de desligamento e fechamento; comunique qualquer item que deva continuar ligado ou acessível.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "BOOLEAN",
+              "question": "Verificação concluída?",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Exceções",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-3"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-5",
+          "title": "Registrar a passagem de turno",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Informe pendências, itens prioritários e o encaminhamento acordado.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "LONG_TEXT",
+              "question": "Resumo do turno",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "BOOLEAN",
+              "question": "Há prioridade para o próximo turno?",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-4"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [
+            "approver-1"
+          ],
+          "approvalMode": "SEQUENTIAL"
+        }
+      ],
+      "schedule": {
+        "frequency": "DAILY",
+        "interval": 1,
+        "weekdays": [
+          "MO",
+          "TU",
+          "WE",
+          "TH",
+          "FR"
+        ],
+        "monthDay": 1,
+        "times": [
+          "07:00"
+        ],
+        "generationLeadTime": 1440
+      }
+    }
+  },
+  {
+    "id": "V03",
+    "version": 1,
+    "definition": {
+      "schemaVersion": 1,
+      "name": "Reposição e conferência de exposição",
+      "description": "corrigir faltas e inconsistências da exposição.",
+      "jobKey": "RETAIL",
+      "criticality": "MEDIUM",
+      "teamSlots": [
+        {
+          "id": "team-1",
+          "label": "Reposição"
+        }
+      ],
+      "memberSlots": [],
+      "tasks": [
+        {
+          "id": "task-1",
+          "title": "Identificar faltas",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Percorra as áreas definidas e liste produtos ou materiais que precisam de reposição.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "LONG_TEXT",
+              "question": "Itens a repor",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-2",
+          "title": "Separar os itens",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Compare a lista com a disponibilidade no estoque e indique o que não foi encontrado.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "BOOLEAN",
+              "question": "Separação concluída?",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Itens indisponíveis",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-1"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-3",
+          "title": "Repor a exposição",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Organize os itens conforme o padrão da unidade e mantenha acessos desobstruídos.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "PHOTO",
+          "dependsOn": [
+            "task-2"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-4",
+          "title": "Conferir identificação",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Compare etiquetas e materiais de informação com os dados internos; comunique inconsistências.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "BOOLEAN",
+              "question": "Identificação conferida?",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Divergências",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-3"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-5",
+          "title": "Registrar o resultado",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Resuma as faltas restantes e atribua seu acompanhamento no fluxo operacional.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "TEXT",
+          "dependsOn": [
+            "task-4"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        }
+      ],
+      "schedule": {
+        "frequency": "WEEKLY",
+        "interval": 1,
+        "weekdays": [
+          "MO",
+          "TU",
+          "WE",
+          "TH",
+          "FR"
+        ],
+        "monthDay": 1,
+        "times": [
+          "07:00"
+        ],
+        "generationLeadTime": 1440
+      }
+    }
+  },
+  {
+    "id": "A01",
+    "version": 1,
+    "definition": {
+      "schemaVersion": 1,
+      "name": "Preparação do turno",
+      "description": "preparar ambiente, materiais e equipe conforme o procedimento da operação.",
+      "jobKey": "FOOD",
+      "criticality": "MEDIUM",
+      "teamSlots": [
+        {
+          "id": "team-1",
+          "label": "Produção"
+        }
+      ],
+      "memberSlots": [
+        {
+          "id": "approver-1",
+          "label": "Gestor",
+          "kind": "APPROVER"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task-1",
+          "title": "Conferir a área de trabalho",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Verifique organização, condições visíveis e disponibilidade dos materiais exigidos pelo procedimento interno.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "BOOLEAN",
+              "question": "Área preparada?",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Pendências",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-2",
+          "title": "Verificar equipamentos",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Confira funcionamento aparente e controles exigidos pela unidade; encaminhe falhas ao responsável.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "MULTIPLE_CHOICE",
+              "question": "Condição dos equipamentos",
+              "required": true,
+              "options": [
+                "Prontos",
+                "Com pendência",
+                "Indisponíveis"
+              ]
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Detalhes",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-1"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-3",
+          "title": "Conferir insumos do turno",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Compare a previsão de produção com os itens disponíveis; registre faltas e encaminhamentos.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "LONG_TEXT",
+              "question": "Insumos faltantes",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-2"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-4",
+          "title": "Preparar as estações",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Organize utensílios, materiais e identificação conforme o padrão interno.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "PHOTO",
+          "dependsOn": [
+            "task-3"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-5",
+          "title": "Liberar o turno",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Revise as pendências e confirme as condições para começar.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "BOOLEAN",
+              "question": "Pronto para começar?",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Observações",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-4"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [
+            "approver-1"
+          ],
+          "approvalMode": "SEQUENTIAL"
+        }
+      ],
+      "schedule": {
+        "frequency": "DAILY",
+        "interval": 1,
+        "weekdays": [
+          "MO",
+          "TU",
+          "WE",
+          "TH",
+          "FR"
+        ],
+        "monthDay": 1,
+        "times": [
+          "07:00"
+        ],
+        "generationLeadTime": 1440
+      }
+    }
+  },
+  {
+    "id": "A02",
+    "version": 1,
+    "definition": {
+      "schemaVersion": 1,
+      "name": "Recebimento de insumos",
+      "description": "registrar conferência e destino do recebimento.",
+      "jobKey": "FOOD",
+      "criticality": "MEDIUM",
+      "teamSlots": [
+        {
+          "id": "team-1",
+          "label": "Recebimento"
+        }
+      ],
+      "memberSlots": [
+        {
+          "id": "approver-1",
+          "label": "Gestor",
+          "kind": "APPROVER"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task-1",
+          "title": "Identificar a entrega",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Confira fornecedor e documento de referência com o pedido esperado.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "SHORT_TEXT",
+              "question": "Fornecedor",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "SHORT_TEXT",
+              "question": "Referência da entrega",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-2",
+          "title": "Conferir quantidade e condição",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Compare os itens com o pedido; registre faltas ou condições inadequadas conforme o procedimento da unidade.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "MULTIPLE_CHOICE",
+              "question": "Conferência",
+              "required": true,
+              "options": [
+                "Conforme",
+                "Com divergência"
+              ]
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Divergências",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-1"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-3",
+          "title": "Registrar controles previstos",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Anote os controles específicos requeridos pela operação, sem limites setoriais predefinidos.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "TEXT",
+          "dependsOn": [
+            "task-2"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-4",
+          "title": "Confirmar o destino",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Identifique o local de armazenamento ou segregação e registre a decisão de recebimento.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "MULTIPLE_CHOICE",
+              "question": "Decisão",
+              "required": true,
+              "options": [
+                "Receber",
+                "Receber parcialmente",
+                "Encaminhar para avaliação"
+              ]
+            },
+            {
+              "id": "field-2",
+              "type": "SHORT_TEXT",
+              "question": "Destino",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-3"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [
+            "approver-1"
+          ],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-5",
+          "title": "Organizar e identificar",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Após a decisão do responsável, armazene os itens recebidos e identifique os que aguardam avaliação.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "PHOTO",
+          "dependsOn": [
+            "task-4"
+          ],
+          "dependencyType": "APPROVAL_CONDITION",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        }
+      ],
+      "schedule": null
+    }
+  },
+  {
+    "id": "A03",
+    "version": 1,
+    "definition": {
+      "schemaVersion": 1,
+      "name": "Encerramento de produção",
+      "description": "encerrar o turno e deixar a área organizada.",
+      "jobKey": "FOOD",
+      "criticality": "MEDIUM",
+      "teamSlots": [
+        {
+          "id": "team-1",
+          "label": "Produção"
+        }
+      ],
+      "memberSlots": [
+        {
+          "id": "approver-1",
+          "label": "Gestor",
+          "kind": "APPROVER"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task-1",
+          "title": "Registrar o que ficou pendente",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Relacione ordens, itens ou preparos que precisam de acompanhamento.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "LONG_TEXT",
+              "question": "Pendências",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-2",
+          "title": "Destinar insumos remanescentes",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Siga as instruções internas de identificação, armazenamento ou descarte e registre exceções.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "TEXT",
+          "dependsOn": [
+            "task-1"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-3",
+          "title": "Organizar utensílios e superfícies",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Execute o procedimento interno para cada área e deixe os materiais em seu lugar.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "PHOTO",
+          "dependsOn": [
+            "task-2"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-4",
+          "title": "Verificar equipamentos",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Faça o encerramento conforme as orientações dos equipamentos e da unidade.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "BOOLEAN",
+              "question": "Verificação concluída?",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Equipamentos que permanecem ativos",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-3"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-5",
+          "title": "Concluir a passagem de turno",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Registre o estado da área e confirme que as pendências foram encaminhadas.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "LONG_TEXT",
+              "question": "Resumo final",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "BOOLEAN",
+              "question": "Área liberada?",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-4"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [
+            "approver-1"
+          ],
+          "approvalMode": "SEQUENTIAL"
+        }
+      ],
+      "schedule": {
+        "frequency": "DAILY",
+        "interval": 1,
+        "weekdays": [
+          "MO",
+          "TU",
+          "WE",
+          "TH",
+          "FR"
+        ],
+        "monthDay": 1,
+        "times": [
+          "07:00"
+        ],
+        "generationLeadTime": 1440
+      }
+    }
+  },
+  {
+    "id": "L01",
+    "version": 1,
+    "definition": {
+      "schemaVersion": 1,
+      "name": "Limpeza de abertura",
+      "description": "preparar os ambientes para uso.",
+      "jobKey": "FACILITIES",
+      "criticality": "MEDIUM",
+      "teamSlots": [
+        {
+          "id": "team-1",
+          "label": "Limpeza"
+        }
+      ],
+      "memberSlots": [
+        {
+          "id": "approver-1",
+          "label": "Supervisor",
+          "kind": "APPROVER"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task-1",
+          "title": "Preparar os materiais",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Separe os materiais conforme o procedimento interno e sinalize as áreas de trabalho.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-2",
+          "title": "Limpar áreas comuns",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Execute a limpeza das superfícies e do piso previstos no roteiro da unidade; comunique condições inadequadas.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "PHOTO",
+          "dependsOn": [],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-3",
+          "title": "Preparar sanitários e vestiários",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Execute o roteiro interno e confira itens de uso.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "BOOLEAN",
+              "question": "Ambiente pronto?",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Itens faltantes",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-4",
+          "title": "Recolher resíduos e organizar",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Encaminhe os resíduos aos locais indicados pela operação e guarde materiais de trabalho.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-5",
+          "title": "Conferir a liberação",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Revise as áreas atendidas e registre as pendências restantes.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "BOOLEAN",
+              "question": "Áreas liberadas?",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Pendências",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-1",
+            "task-2",
+            "task-3",
+            "task-4"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [
+            "approver-1"
+          ],
+          "approvalMode": "SEQUENTIAL"
+        }
+      ],
+      "schedule": {
+        "frequency": "DAILY",
+        "interval": 1,
+        "weekdays": [
+          "MO",
+          "TU",
+          "WE",
+          "TH",
+          "FR"
+        ],
+        "monthDay": 1,
+        "times": [
+          "07:00"
+        ],
+        "generationLeadTime": 1440
+      }
+    }
+  },
+  {
+    "id": "L02",
+    "version": 1,
+    "definition": {
+      "schemaVersion": 1,
+      "name": "Inspeção de sanitários e vestiários",
+      "description": "registrar as condições e a reposição ao longo do dia.",
+      "jobKey": "FACILITIES",
+      "criticality": "MEDIUM",
+      "teamSlots": [
+        {
+          "id": "team-1",
+          "label": "Limpeza"
+        }
+      ],
+      "memberSlots": [],
+      "tasks": [
+        {
+          "id": "task-1",
+          "title": "Inspecionar as condições",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Verifique limpeza, acesso e funcionamento aparente dos itens do ambiente.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "MULTIPLE_CHOICE",
+              "question": "Condição geral",
+              "required": true,
+              "options": [
+                "Adequada",
+                "Precisa de atenção",
+                "Indisponível"
+              ]
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Problema encontrado",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-2",
+          "title": "Repor os consumíveis",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Confira os itens previstos para o local e reponha o que estiver faltando.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-1"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-3",
+          "title": "Executar a manutenção de limpeza",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Siga o roteiro interno para os pontos que precisam de atendimento.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-2"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-4",
+          "title": "Registrar impedimentos",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Informe vazamentos, falhas ou danos e encaminhe ao responsável da unidade.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "BOOLEAN",
+              "question": "Há impedimento?",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Encaminhamento",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-3"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-5",
+          "title": "Registrar o resultado",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Confirme o estado final do ambiente, evitando capturar pessoas em fotos.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "BOOLEAN",
+              "question": "Ambiente disponível?",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Observações finais",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-4"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        }
+      ],
+      "schedule": {
+        "frequency": "DAILY",
+        "interval": 1,
+        "weekdays": [
+          "MO",
+          "TU",
+          "WE",
+          "TH",
+          "FR"
+        ],
+        "monthDay": 1,
+        "times": [
+          "07:00"
+        ],
+        "generationLeadTime": 1440
+      }
+    }
+  },
+  {
+    "id": "L03",
+    "version": 1,
+    "definition": {
+      "schemaVersion": 1,
+      "name": "Limpeza periódica de ambientes",
+      "description": "organizar uma intervenção programada em uma área.",
+      "jobKey": "FACILITIES",
+      "criticality": "MEDIUM",
+      "teamSlots": [
+        {
+          "id": "team-1",
+          "label": "Limpeza"
+        }
+      ],
+      "memberSlots": [
+        {
+          "id": "approver-1",
+          "label": "Supervisor",
+          "kind": "APPROVER"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task-1",
+          "title": "Confirmar a área e o roteiro",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Identifique a área prevista e revise o procedimento antes da intervenção.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "SHORT_TEXT",
+              "question": "Área atendida",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "BOOLEAN",
+              "question": "Roteiro confirmado?",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-2",
+          "title": "Preparar o acesso",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Sinalize e organize o local conforme a orientação da unidade.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-1"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-3",
+          "title": "Executar o roteiro",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Realize as etapas descritas pelo admin para a área.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "PHOTO",
+          "dependsOn": [
+            "task-2"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-4",
+          "title": "Conferir materiais e resíduos",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Organize o local após o trabalho e encaminhe materiais/resíduos aos destinos internos.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-3"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-5",
+          "title": "Solicitar a liberação",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Informe o que foi feito e o que ficou pendente.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "LONG_TEXT",
+              "question": "Resumo da execução",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "BOOLEAN",
+              "question": "Há pendências?",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-4"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [
+            "approver-1"
+          ],
+          "approvalMode": "SEQUENTIAL"
+        }
+      ],
+      "schedule": {
+        "frequency": "WEEKLY",
+        "interval": 1,
+        "weekdays": [
+          "MO",
+          "TU",
+          "WE",
+          "TH",
+          "FR"
+        ],
+        "monthDay": 1,
+        "times": [
+          "07:00"
+        ],
+        "generationLeadTime": 1440
+      }
+    }
+  },
+  {
+    "id": "E01",
+    "version": 1,
+    "definition": {
+      "schemaVersion": 1,
+      "name": "Recebimento de mercadorias",
+      "description": "conferir uma entrega e registrar seu destino.",
+      "jobKey": "LOGISTICS",
+      "criticality": "MEDIUM",
+      "teamSlots": [
+        {
+          "id": "team-1",
+          "label": "Recebimento"
+        }
+      ],
+      "memberSlots": [
+        {
+          "id": "approver-1",
+          "label": "Conferente",
+          "kind": "APPROVER"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task-1",
+          "title": "Identificar o recebimento",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Compare a entrega com sua referência interna.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "SHORT_TEXT",
+              "question": "Fornecedor/origem",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "SHORT_TEXT",
+              "question": "Pedido/documento",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-2",
+          "title": "Conferir volumes",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Compare a quantidade de volumes com a informação esperada e registre divergências.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "NUMBER",
+          "dependsOn": [
+            "task-1"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-3",
+          "title": "Inspecionar a condição",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Verifique condições visíveis e anote avarias ou diferenças.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "MULTIPLE_CHOICE",
+              "question": "Condição",
+              "required": true,
+              "options": [
+                "Conforme",
+                "Com divergência"
+              ]
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Detalhes",
+              "required": false,
+              "options": []
+            },
+            {
+              "id": "field-3",
+              "type": "PHOTO",
+              "question": "Registro da condição",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-2"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-4",
+          "title": "Confirmar aceite e destino",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Registre os itens aceitos, os segregados e a área de destino.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "LONG_TEXT",
+              "question": "Decisão e destino",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-3"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [
+            "approver-1"
+          ],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-5",
+          "title": "Organizar o armazenamento",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Encaminhe os itens conforme o aceite e registre a organização final.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "PHOTO",
+          "dependsOn": [
+            "task-4"
+          ],
+          "dependencyType": "APPROVAL_CONDITION",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        }
+      ],
+      "schedule": null
+    }
+  },
+  {
+    "id": "E02",
+    "version": 1,
+    "definition": {
+      "schemaVersion": 1,
+      "name": "Separação e expedição",
+      "description": "separar e conferir uma saída com rastreabilidade.",
+      "jobKey": "LOGISTICS",
+      "criticality": "MEDIUM",
+      "teamSlots": [
+        {
+          "id": "team-1",
+          "label": "Separação"
+        }
+      ],
+      "memberSlots": [
+        {
+          "id": "approver-1",
+          "label": "Conferente",
+          "kind": "APPROVER"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task-1",
+          "title": "Identificar o pedido",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Confira a referência e o destino na informação interna.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "SHORT_TEXT",
+              "question": "Pedido",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "SHORT_TEXT",
+              "question": "Destino",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-2",
+          "title": "Separar os itens",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Compare cada item separado com a relação do pedido e registre indisponibilidades.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "BOOLEAN",
+              "question": "Separação concluída?",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Itens indisponíveis",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-1"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-3",
+          "title": "Conferir a separação",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Revise quantidade e identificação; registre divergências e encaminhe a decisão.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "MULTIPLE_CHOICE",
+              "question": "Conferência",
+              "required": true,
+              "options": [
+                "Conforme",
+                "Com divergência"
+              ]
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Detalhes",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-2"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [
+            "approver-1"
+          ],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-4",
+          "title": "Preparar os volumes",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Organize e identifique os volumes conforme o procedimento da operação.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "PHOTO",
+          "dependsOn": [
+            "task-3"
+          ],
+          "dependencyType": "APPROVAL_CONDITION",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-5",
+          "title": "Registrar a saída",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Informe quantidade de volumes e referência de coleta/retirada.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "SHORT_TEXT",
+              "question": "Volumes expedidos",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "SHORT_TEXT",
+              "question": "Referência da saída",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-4"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        }
+      ],
+      "schedule": null
+    }
+  },
+  {
+    "id": "E03",
+    "version": 1,
+    "definition": {
+      "schemaVersion": 1,
+      "name": "Inventário cíclico",
+      "description": "comparar a contagem física de um recorte com o controle interno.",
+      "jobKey": "LOGISTICS",
+      "criticality": "MEDIUM",
+      "teamSlots": [
+        {
+          "id": "team-1",
+          "label": "Estoque"
+        }
+      ],
+      "memberSlots": [
+        {
+          "id": "approver-1",
+          "label": "Conferente",
+          "kind": "APPROVER"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task-1",
+          "title": "Definir o recorte",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Identifique área, grupo ou item previsto e registre a referência utilizada.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "SHORT_TEXT",
+              "question": "Recorte da contagem",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "SHORT_TEXT",
+              "question": "Referência do controle",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-2",
+          "title": "Realizar a primeira contagem",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Conte os itens do recorte conforme o roteiro interno, sem registrar dados de outros itens.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "NUMBER",
+          "dependsOn": [
+            "task-1"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-3",
+          "title": "Comparar o resultado",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Confronte a contagem com a referência e indique diferenças.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "MULTIPLE_CHOICE",
+              "question": "Resultado",
+              "required": true,
+              "options": [
+                "Sem diferença",
+                "Com diferença"
+              ]
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Diferença encontrada",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-2"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-4",
+          "title": "Conferir as divergências",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Revise o recorte e registre recontagem ou justificativa; se não houver diferença, registre “Não se aplica”.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "LONG_TEXT",
+              "question": "Resultado da conferência",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-3"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [
+            "approver-1"
+          ],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-5",
+          "title": "Registrar o encaminhamento",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Informe a decisão sobre ajustes e acompanhamento.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "TEXT",
+          "dependsOn": [
+            "task-4"
+          ],
+          "dependencyType": "APPROVAL_CONDITION",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        }
+      ],
+      "schedule": {
+        "frequency": "WEEKLY",
+        "interval": 1,
+        "weekdays": [
+          "MO",
+          "TU",
+          "WE",
+          "TH",
+          "FR"
+        ],
+        "monthDay": 1,
+        "times": [
+          "07:00"
+        ],
+        "generationLeadTime": 1440
+      }
+    }
+  },
+  {
+    "id": "M01",
+    "version": 1,
+    "definition": {
+      "schemaVersion": 1,
+      "name": "Inspeção periódica de equipamento",
+      "description": "registrar a condição de um equipamento conforme seu roteiro interno.",
+      "jobKey": "MAINTENANCE",
+      "criticality": "MEDIUM",
+      "teamSlots": [
+        {
+          "id": "team-1",
+          "label": "Manutenção"
+        }
+      ],
+      "memberSlots": [
+        {
+          "id": "approver-1",
+          "label": "Responsável técnico",
+          "kind": "APPROVER"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task-1",
+          "title": "Identificar o equipamento",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Registre a identificação interna e a área atendida.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "SHORT_TEXT",
+              "question": "Equipamento",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "SHORT_TEXT",
+              "question": "Área",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-2",
+          "title": "Executar a inspeção prevista",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Siga o procedimento aprovado para o equipamento; não inclua intervenções que não estejam no roteiro.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "MULTIPLE_CHOICE",
+              "question": "Condição encontrada",
+              "required": true,
+              "options": [
+                "Conforme",
+                "Com pendência",
+                "Indisponível"
+              ]
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Observações",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-1"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-3",
+          "title": "Registrar a condição",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Documente o ponto inspecionado conforme o procedimento interno.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "PHOTO",
+          "dependsOn": [
+            "task-2"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-4",
+          "title": "Encaminhar pendências",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Descreva a pendência e a orientação recebida; se não houver, registre “Nenhuma”.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "TEXT",
+          "dependsOn": [
+            "task-3"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-5",
+          "title": "Conferir o resultado",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Revise o registro e indique o encaminhamento final.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "LONG_TEXT",
+              "question": "Resultado da inspeção",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-4"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [
+            "approver-1"
+          ],
+          "approvalMode": "SEQUENTIAL"
+        }
+      ],
+      "schedule": {
+        "frequency": "WEEKLY",
+        "interval": 1,
+        "weekdays": [
+          "MO",
+          "TU",
+          "WE",
+          "TH",
+          "FR"
+        ],
+        "monthDay": 1,
+        "times": [
+          "07:00"
+        ],
+        "generationLeadTime": 1440
+      }
+    }
+  },
+  {
+    "id": "M02",
+    "version": 1,
+    "definition": {
+      "schemaVersion": 1,
+      "name": "Atendimento a chamado",
+      "description": "acompanhar um atendimento desde a identificação até a conferência.",
+      "jobKey": "MAINTENANCE",
+      "criticality": "MEDIUM",
+      "teamSlots": [
+        {
+          "id": "team-1",
+          "label": "Técnico"
+        }
+      ],
+      "memberSlots": [
+        {
+          "id": "approver-1",
+          "label": "Responsável técnico",
+          "kind": "APPROVER"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task-1",
+          "title": "Identificar a solicitação",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Registre a referência e o problema relatado.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "SHORT_TEXT",
+              "question": "Chamado",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Problema relatado",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-2",
+          "title": "Avaliar o atendimento",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Verifique o cenário dentro das orientações e da competência do técnico; registre o diagnóstico e o encaminhamento.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "LONG_TEXT",
+              "question": "Avaliação",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "BOOLEAN",
+              "question": "Pode executar o procedimento previsto?",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-1"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-3",
+          "title": "Registrar o serviço realizado",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Execute somente o procedimento autorizado e descreva a intervenção ou o impedimento.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "LONG_TEXT",
+              "question": "Serviço/encaminhamento",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "PHOTO",
+              "question": "Registro do resultado",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-2"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-4",
+          "title": "Verificar o resultado",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Faça a verificação prevista para o atendimento e registre a condição final.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "MULTIPLE_CHOICE",
+              "question": "Resultado",
+              "required": true,
+              "options": [
+                "Resolvido",
+                "Parcialmente resolvido",
+                "Aguardando ação"
+              ]
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Observações",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-3"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-5",
+          "title": "Conferir o encerramento",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Revise o atendimento e as pendências para acompanhamento.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "LONG_TEXT",
+              "question": "Resumo final",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "BOOLEAN",
+              "question": "Há pendência?",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-4"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [
+            "approver-1"
+          ],
+          "approvalMode": "SEQUENTIAL"
+        }
+      ],
+      "schedule": null
+    }
+  },
+  {
+    "id": "M03",
+    "version": 1,
+    "definition": {
+      "schemaVersion": 1,
+      "name": "Preparação e entrega de serviço",
+      "description": "organizar materiais, execução e conferência de um serviço agendado.",
+      "jobKey": "MAINTENANCE",
+      "criticality": "MEDIUM",
+      "teamSlots": [
+        {
+          "id": "team-1",
+          "label": "Equipe de serviço"
+        }
+      ],
+      "memberSlots": [
+        {
+          "id": "approver-1",
+          "label": "Gestor",
+          "kind": "APPROVER"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task-1",
+          "title": "Confirmar o escopo",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Revise a referência do serviço e os requisitos acordados.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "SHORT_TEXT",
+              "question": "Referência do serviço",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Escopo confirmado",
+              "required": true,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-2",
+          "title": "Conferir os recursos",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Compare materiais e equipamentos com o roteiro; encaminhe faltas antes do trabalho.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "BOOLEAN",
+              "question": "Recursos disponíveis?",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Faltas e encaminhamento",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-1"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-3",
+          "title": "Executar o roteiro aprovado",
+          "taskType": "STANDARD",
+          "objective": "",
+          "instructions": "Siga as instruções que o admin personalizou para o serviço e registre o resultado.",
+          "formFields": [],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "PHOTO",
+          "dependsOn": [
+            "task-2"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-4",
+          "title": "Conferir a entrega",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Compare o resultado com o escopo e registre eventuais diferenças.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "BOOLEAN",
+              "question": "Entrega conforme o escopo?",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Diferenças",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-3"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [],
+          "approvalMode": "SEQUENTIAL"
+        },
+        {
+          "id": "task-5",
+          "title": "Registrar a conclusão",
+          "taskType": "FORM",
+          "objective": "",
+          "instructions": "Descreva o que foi entregue e as pendências encaminhadas.",
+          "formFields": [
+            {
+              "id": "field-1",
+              "type": "LONG_TEXT",
+              "question": "Resumo da entrega",
+              "required": true,
+              "options": []
+            },
+            {
+              "id": "field-2",
+              "type": "LONG_TEXT",
+              "question": "Pendências",
+              "required": false,
+              "options": []
+            }
+          ],
+          "teamSlotId": "team-1",
+          "assigneeSlotId": "",
+          "priority": "MEDIUM",
+          "criticality": "MEDIUM",
+          "slaMinutes": 60,
+          "toleranceMinutes": 20,
+          "required": true,
+          "evidenceType": "",
+          "dependsOn": [
+            "task-4"
+          ],
+          "dependencyType": "BLOCKING",
+          "dependencyLogic": "AND",
+          "approverSlotIds": [
+            "approver-1"
+          ],
+          "approvalMode": "SEQUENTIAL"
+        }
+      ],
+      "schedule": null
+    }
+  }
+]

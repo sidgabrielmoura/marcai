@@ -8,8 +8,9 @@ export function generateTotpSecret() {
   return bits.match(/.{5}/g)!.map(part => alphabet[parseInt(part, 2)]).join("");
 }
 function decodeSecret(secret: string) {
-  if (!/^[A-Z2-7]{16,128}$/.test(secret)) throw new Error("Segredo TOTP inválido.");
-  const bits = [...secret].map(char => alphabet.indexOf(char).toString(2).padStart(5, "0")).join("");
+  const clean = secret.trim().toUpperCase().replace(/[\s=-]+/g, "");
+  if (!/^[A-Z2-7]{16,128}$/.test(clean)) throw new Error("Segredo TOTP inválido.");
+  const bits = [...clean].map(char => alphabet.indexOf(char).toString(2).padStart(5, "0")).join("");
   return Buffer.from(bits.match(/.{8}/g)!.map(part => parseInt(part, 2)));
 }
 // RFC 6238: HMAC-SHA1, intervalo de 30 segundos, seis dígitos.
@@ -21,12 +22,21 @@ export function totpAt(secret: string, time = Date.now(), digits = 6) {
   return String((digest.readUInt32BE(offset) & 0x7fffffff) % 10 ** digits).padStart(digits, "0");
 }
 export function verifyTotp(secret: string, code: string, lastCounter = -1, now = Date.now()) {
-  if (!/^\d{6}$/.test(code)) return null;
-  for (const drift of [-1, 0, 1]) {
+  const cleanCode = String(code || "").replace(/[\s-]+/g, "").trim();
+  if (!/^\d{6}$/.test(cleanCode)) return null;
+  // Drift window: 0 (atual), -1, +1, -2, +2 intervalos (+/- 60s de tolerância contra desvio de relógio)
+  for (const drift of [0, -1, 1, -2, 2]) {
     const time = now + drift * 30000, counter = Math.floor(time / 30000);
-    if (counter > lastCounter && timingSafeEqual(Buffer.from(totpAt(secret, time)), Buffer.from(code))) return counter;
+    if (counter > lastCounter && timingSafeEqual(Buffer.from(totpAt(secret, time)), Buffer.from(cleanCode))) return counter;
   }
   return null;
+}
+export function buildTotpUri(params: { secret: string; accountName: string; issuer?: string }) {
+  const issuer = params.issuer || "Marcai";
+  const account = params.accountName || "usuario";
+  const label = `${encodeURIComponent(issuer)}:${encodeURIComponent(account)}`;
+  const cleanSecret = params.secret.trim().toUpperCase().replace(/[\s=-]+/g, "");
+  return `otpauth://totp/${label}?secret=${cleanSecret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
 }
 export function securityKey() {
   if (!process.env.AUTH_SECRET || process.env.AUTH_SECRET.length < 32) throw new Error("AUTH_SECRET não configurado.");

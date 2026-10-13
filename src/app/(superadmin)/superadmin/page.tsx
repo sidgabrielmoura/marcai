@@ -1,10 +1,21 @@
 import { Prisma } from "@prisma/client";
 import { getSuperadminContext } from "@/application/security/auth-context";
 import { prisma } from "@/infrastructure/database/prisma";
-import { readManualSubscription } from "@/application/superadmin/manual-subscription";
-import { SuperadminDashboardClient, type GlobalLog, type GlobalOrg, type GlobalUser, type PlatformView } from "@/presentation/components/superadmin/superadmin-dashboard-client";
+import {
+  readManualSubscription,
+  DEFAULT_PLATFORM_PLANS,
+  type PlatformPlanModel,
+} from "@/application/superadmin/manual-subscription";
+import {
+  SuperadminDashboardClient,
+  type GlobalLog,
+  type GlobalOrg,
+  type GlobalUser,
+  type PlatformView,
+} from "@/presentation/components/superadmin/superadmin-dashboard-client";
 
 const views: PlatformView[] = ["overview", "organizations", "users", "subscriptions", "usage", "audit", "support"];
+
 const pageSize = 20;
 
 export default async function SuperadminPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -60,5 +71,62 @@ export default async function SuperadminPage({ searchParams }: { searchParams: P
     const rows = await prisma.organization.findMany({ where: orgWhere, ...paging, orderBy: [{ createdAt: "desc" }, { id: "asc" }], include: { _count: { select: { members: { where: { status: "ACTIVE", user: { status: "ACTIVE" } } }, locations: { where: { status: "ACTIVE" } }, processes: true, tasks: { where: { deletedAt: null } }, executions: true } } } });
     organizations = rows.map((org) => ({ id: org.id, name: org.name, slug: org.slug, status: org.status, createdAt: org.createdAt.toISOString(), membersCount: org._count.members, locationsCount: org._count.locations, processesCount: org._count.processes, tasksCount: org._count.tasks, executionsCount: org._count.executions, subscription: readManualSubscription(org.settings) }));
   }
-  return <SuperadminDashboardClient userName={actor.userName} currentUserId={actor.userId} view={view} query={query} status={status} selectedOrganization={selectedOrganization} organizationFilter={organizationId} metrics={{ totalOrgs, activeOrgs, suspendedOrgs, totalUsers, totalProcesses, totalTasks }} organizations={organizations} users={users} logs={logs} pagination={{ page, pages, total, pageSize }} />;
+
+  const allOrganizations = await prisma.organization.findMany({
+    select: { id: true, name: true, slug: true, status: true },
+    orderBy: { name: "asc" },
+  });
+
+  let rawPlans: Array<any> = [];
+  if (prisma.platformPlan) {
+    try {
+      rawPlans = await prisma.platformPlan.findMany({
+        orderBy: [{ createdAt: "asc" }],
+      });
+
+      if (rawPlans.length === 0) {
+        for (const plan of DEFAULT_PLATFORM_PLANS) {
+          await prisma.platformPlan.create({ data: plan });
+        }
+        rawPlans = await prisma.platformPlan.findMany({
+          orderBy: [{ createdAt: "asc" }],
+        });
+      }
+    } catch {
+      rawPlans = [];
+    }
+  }
+
+  const platformPlans: PlatformPlanModel[] = rawPlans.map((p) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    cycle: p.cycle,
+    amountCents: p.amountCents,
+    memberLimit: p.memberLimit,
+    locationLimit: p.locationLimit,
+    features: p.features,
+    status: p.status,
+    createdAt: p.createdAt.toISOString(),
+    updatedAt: p.updatedAt.toISOString(),
+  }));
+
+  return (
+    <SuperadminDashboardClient
+      userName={actor.userName}
+      currentUserId={actor.userId}
+      view={view}
+      query={query}
+      status={status}
+      selectedOrganization={selectedOrganization}
+      organizationFilter={organizationId}
+      metrics={{ totalOrgs, activeOrgs, suspendedOrgs, totalUsers, totalProcesses, totalTasks }}
+      organizations={organizations}
+      users={users}
+      logs={logs}
+      allOrganizations={allOrganizations}
+      platformPlans={platformPlans}
+      pagination={{ page, pages, total, pageSize }}
+    />
+  );
 }

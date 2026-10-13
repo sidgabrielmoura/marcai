@@ -280,3 +280,49 @@ export async function logoutAction() {
   await clearLoginChallenge();
   redirect("/login");
 }
+
+export async function loginWithMobileSessionAction(token: string) {
+  const mobileSession = await prisma.mobileAuthSession.findUnique({
+    where: { token },
+  });
+
+  if (!mobileSession || mobileSession.status !== "APPROVED" || !mobileSession.userId || !mobileSession.memberId) {
+    return { error: "Sess�o inv�lida ou n�o aprovada." };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: mobileSession.userId },
+    include: {
+      memberships: {
+        where: { id: mobileSession.memberId },
+      }
+    }
+  });
+
+  if (!user || user.memberships.length === 0) {
+    return { error: "Usu�rio ou v�nculo n�o encontrado." };
+  }
+
+  const member = user.memberships[0];
+
+  if (user.platformRole === "SUPERADMIN" || user.twoFactorEnabled) {
+    await clearSession();
+    await beginLoginChallenge(user, null);
+    redirect("/verify-access");
+  }
+
+  await createSession({
+    userId: user.id,
+    name: user.name,
+    email: user.email,
+    activeOrgId: member.organizationId,
+    activeMemberId: member.id,
+    role: member.role as Role,
+    employeeCode: member.employeeCode,
+  });
+
+  await prisma.mobileAuthSession.delete({ where: { id: mobileSession.id } });
+
+  if (member.role === "EMPLOYEE") redirect("/tasks");
+  else redirect("/overview");
+}

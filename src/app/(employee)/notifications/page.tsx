@@ -4,6 +4,7 @@ import { prisma } from "@/infrastructure/database/prisma";
 import { EmployeeShell } from "@/presentation/components/mobile/employee-shell";
 import { PageHeader, EmptyState } from "@/presentation/components/shared";
 import {
+  markAllNotificationsReadAction,
   markNotificationReadAction,
   markNotificationReadAndNavigateAction,
 } from "@/presentation/actions/notification-actions";
@@ -69,8 +70,8 @@ export default async function NotificationsPage({
               : "Todos os avisos estão em dia. O histórico continua disponível abaixo."
           }
           actions={
-            <form action={markNotificationReadAction} className="w-full md:w-fit">
-              <Button variant="outline" disabled={!unread} className="w-full">
+            <form action={markAllNotificationsReadAction} className="w-full md:w-fit">
+              <Button type="submit" variant="outline" disabled={!unread} className="w-full">
                 <CheckCheck data-icon="inline-start" />
                 Marcar todos como lidos
               </Button>
@@ -139,16 +140,13 @@ export default async function NotificationsPage({
                           <Badge variant="outline">Liberada</Badge>
                         )}
                         {n.type === "TASK_OVERDUE" && (
-                          <Badge variant="destructive">Prazo SLA</Badge>
+                          <Badge variant="destructive">Prazo Excedido</Badge>
                         )}
                         {n.type === "TASK_EXPIRING_SOON" && (
                           <Badge variant="secondary">Vence em breve</Badge>
                         )}
                         {n.type === "OPERATIONAL_ALERT" && (
                           <Badge variant="destructive">Impedimento</Badge>
-                        )}
-                        {n.type === "PAUSE_ALERT" && (
-                          <Badge variant="secondary">Pausa</Badge>
                         )}
                         <h2 className="text-card-title font-semibold w-full">
                           {n.title}

@@ -3,7 +3,7 @@ import { taskScope } from "@/application/security/operational-scope";
 import { prisma } from "@/infrastructure/database/prisma";
 import { effectiveWorkSeconds } from "@/domain/rules/execution-state";
 import type { TaskStatus } from "@/domain/types";
-import { taskTiming } from "@/domain/rules/task-metrics";
+import { taskTiming, getTaskDeadlineStatus } from "@/domain/rules/task-metrics";
 import { EmployeeShell } from "@/presentation/components/mobile/employee-shell";
 import { PageHeader } from "@/presentation/components/shared";
 import {
@@ -36,9 +36,13 @@ export default async function EmployeeTasksPage({
   const member = await prisma.organizationMember.findUniqueOrThrow({
     where: { id: context.memberId },
     select: {
-      teamMemberships: { select: { teamId: true } },
+      teamMemberships: {
+        where: { team: { organizationId: context.organizationId, status: "ACTIVE" } },
+        select: { teamId: true },
+      },
       locationAccesses: {
         where: {
+          location: { organizationId: context.organizationId, status: "ACTIVE" },
           AND: [
             { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
             { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
@@ -54,12 +58,14 @@ export default async function EmployeeTasksPage({
 
   const selectFields = {
     id: true,
+    executionId: true,
     title: true,
     description: true,
     status: true,
     priority: true,
     criticality: true,
     origin: true,
+    taskType: true,
     scheduledDate: true,
     deadlineAt: true,
     completedAt: true,
@@ -102,14 +108,16 @@ export default async function EmployeeTasksPage({
     ],
   });
 
-  // 2. Tarefas disponíveis para assumir (sem responsável atribuído)
-  const unassigned = await prisma.task.findMany({
+  // 2. Tarefas disponíveis para assumir (sem responsável atribuído na equipe do colaborador)
+  const unassigned = memberTeamIds.length === 0 ? [] : await prisma.task.findMany({
     where: {
       organizationId: context.organizationId,
       deletedAt: null,
-      status: { in: ["AVAILABLE", "BLOCKED"] },
+      status: { notIn: ["COMPLETED", "CANCELLED", "NOT_COMPLETED"] },
       teamId: { in: memberTeamIds },
-      locationId: { in: memberLocationIds },
+      ...(memberLocationIds.length > 0
+        ? { OR: [{ locationId: null }, { locationId: { in: memberLocationIds } }] }
+        : { locationId: null }),
       assignments: { none: { type: "PRIMARY", removedAt: null } },
     },
     select: selectFields,
@@ -126,14 +134,21 @@ export default async function EmployeeTasksPage({
     const timing = taskTiming(t, now);
     const terminal = ["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(t.status);
 
-    // Se a tarefa é atribuída ao colaborador, o tempo de execução corre a partir de startedAt ou da criação da tarefa
-    const effectiveStartedDate = t.startedAt
-      ? new Date(t.startedAt)
-      : !isUnassigned
-        ? new Date(t.createdAt)
-        : null;
+    // Se a tarefa possui agendamento futuro no dia, ela não deve correr timer nem iniciar antecipadamente
+    const isFutureScheduled = !!t.scheduledDate && new Date(t.scheduledDate) > now;
 
-    const operationalStatus = !isUnassigned && t.status === "AVAILABLE" ? "IN_PROGRESS" : t.status;
+    // A tarefa só começa a contar a partir do horário agendado (ou startedAt se posterior)
+    const effectiveStartedDate = isFutureScheduled
+      ? null
+      : t.startedAt
+        ? new Date(t.startedAt)
+        : (!isUnassigned)
+          ? (t.scheduledDate ? new Date(t.scheduledDate) : new Date(t.createdAt))
+          : null;
+
+    const operationalStatus = isUnassigned
+      ? (t.status === "BLOCKED" ? "BLOCKED" : "AVAILABLE")
+      : (!isFutureScheduled && t.status === "AVAILABLE" ? "IN_PROGRESS" : t.status);
 
     // Verificação de estouro do limite de tolerância
     const deadlines = [t.deadlineAt, t.slaDueAt]
@@ -146,7 +161,7 @@ export default async function EmployeeTasksPage({
 
     // Tempo decorrido corrido e ininterrupto (para de correr quando atinge o limite de tolerância)
     let elapsedSeconds: number | null = null;
-    if (effectiveStartedDate) {
+    if (effectiveStartedDate && !isFutureScheduled) {
       if (terminal && t.completedAt) {
         elapsedSeconds = Math.max(0, Math.round((new Date(t.completedAt).getTime() - effectiveStartedDate.getTime()) / 1000));
       } else if (toleranceExceeded && toleranceLimitAt !== null) {
@@ -155,20 +170,22 @@ export default async function EmployeeTasksPage({
       } else {
         elapsedSeconds = Math.max(0, Math.round((snapshotAt.getTime() - effectiveStartedDate.getTime()) / 1000));
       }
-    } else if (t.actualDuration) {
+    } else if (t.actualDuration && !isFutureScheduled) {
       elapsedSeconds = t.actualDuration;
     }
 
-    const timerRunning = !terminal && !toleranceExceeded && (operationalStatus === "IN_PROGRESS" || operationalStatus === "PAUSED") && !!effectiveStartedDate;
+    const timerRunning = !terminal && !toleranceExceeded && (operationalStatus === "IN_PROGRESS" || operationalStatus === "PAUSED") && !!effectiveStartedDate && !isFutureScheduled;
 
     return {
       id: t.id,
+      executionId: t.executionId,
       title: t.title,
       description: t.description,
       status: operationalStatus as TaskStatus,
       priority: t.priority,
       criticality: t.criticality,
       origin: t.origin,
+      taskType: t.taskType,
       scheduledDate: t.scheduledDate ? t.scheduledDate.toISOString() : null,
       deadlineAt: t.deadlineAt ? t.deadlineAt.toISOString() : null,
       completedAt: t.completedAt ? t.completedAt.toISOString() : null,
@@ -195,16 +212,44 @@ export default async function EmployeeTasksPage({
     ...unassigned.map((t) => formatTask(t, true)),
   ];
 
-  // Identificar coluna inicial conforme parâmetros ou prioridade
+  const todayTasks = allTasks.filter((t) => {
+    if (t.isUnassigned) return false;
+    if (t.status === "COMPLETED") return false;
+    if (getTaskDeadlineStatus(t, snapshotAt.getTime()).status === "OVERDUE" || t.slaExceeded) return false;
+    const targetDate = t.scheduledDate || t.deadlineAt;
+    if (targetDate) {
+      const d = new Date(targetDate);
+      const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      if (d > todayEnd) return false;
+    }
+    return true;
+  });
+
+  const overdueTasks = allTasks.filter((t) => {
+    if (t.isUnassigned) return false;
+    if (t.status === "COMPLETED") return false;
+    return getTaskDeadlineStatus(t, snapshotAt.getTime()).status === "OVERDUE" || t.slaExceeded;
+  });
+
+  // Identificar coluna inicial conforme parâmetros ou regras de navegação
   let initialCol: ColumnId = "today";
   if (params.tab === "unassigned") initialCol = "unassigned";
   else if (params.tab === "overdue") initialCol = "overdue";
   else if (params.tab === "completed") initialCol = "completed";
   else if (params.tab === "upcoming") initialCol = "upcoming";
+  else if (params.tab === "today") initialCol = "today";
   else {
-    // Se houver tarefas com SLA ou prazo estourado, priorizar foco nelas
-    const hasOverdue = allTasks.some((t) => !t.isUnassigned && t.slaExceeded);
-    if (hasOverdue) initialCol = "overdue";
+    // Regra: Sempre manter o funcionário na aba "A Fazer (Hoje)".
+    // Somente se não houver NENHUMA tarefa a fazer hoje, joga para pendentes/atrasadas.
+    if (todayTasks.length > 0) {
+      initialCol = "today";
+    } else if (overdueTasks.length > 0) {
+      initialCol = "overdue";
+    } else if (allTasks.some((t) => t.isUnassigned)) {
+      initialCol = "unassigned";
+    } else {
+      initialCol = "today";
+    }
   }
 
   return (

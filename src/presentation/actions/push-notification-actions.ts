@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { prisma } from "@/infrastructure/database/prisma";
-import { getAuthenticatedContext } from "@/application/security/auth-context";
+import { getSession } from "@/infrastructure/security/session";
 
 const saveTokenSchema = z.object({
   token: z.string().min(10).max(500),
@@ -18,8 +18,16 @@ export async function saveDeviceTokenAction(
   token: string,
   userAgent?: string
 ): Promise<PushActionResult> {
-  const context = await getAuthenticatedContext();
-  if (!context) {
+  const session = await getSession();
+  if (!session?.userId) {
+    return { error: "Não autenticado." };
+  }
+
+  const user = await prisma.user.findFirst({
+    where: { id: session.userId, status: "ACTIVE" },
+    select: { id: true },
+  });
+  if (!user) {
     return { error: "Não autenticado." };
   }
 
@@ -32,13 +40,13 @@ export async function saveDeviceTokenAction(
     await prisma.userDeviceToken.upsert({
       where: { token: parsed.data.token },
       create: {
-        userId: context.userId,
+        userId: user.id,
         token: parsed.data.token,
         userAgent: parsed.data.userAgent || null,
         lastUsedAt: new Date(),
       },
       update: {
-        userId: context.userId,
+        userId: user.id,
         lastUsedAt: new Date(),
         userAgent: parsed.data.userAgent || undefined,
       },
@@ -55,8 +63,8 @@ export async function saveDeviceTokenAction(
  * Remove o token do dispositivo ao deslogar ou revogar permissão.
  */
 export async function removeDeviceTokenAction(token: string): Promise<PushActionResult> {
-  const context = await getAuthenticatedContext();
-  if (!context) {
+  const session = await getSession();
+  if (!session?.userId) {
     return { error: "Não autenticado." };
   }
 
@@ -64,7 +72,7 @@ export async function removeDeviceTokenAction(token: string): Promise<PushAction
     await prisma.userDeviceToken.deleteMany({
       where: {
         token,
-        userId: context.userId,
+        userId: session.userId,
       },
     });
 

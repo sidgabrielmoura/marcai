@@ -2,6 +2,7 @@ import { taskTiming } from "@/domain/rules/task-metrics";
 import { getManagementContext } from "@/application/security/auth-context";
 import { prisma } from "@/infrastructure/database/prisma";
 import { ManagementShell } from "@/presentation/components/mobile/management-shell";
+import { getSubscriptionNotice } from "@/application/superadmin/manual-subscription";
 import {
   OverviewDashboardClient,
   OverviewTask,
@@ -36,13 +37,6 @@ export default async function ManagementOverviewPage() {
           where: { type: "IMPEDIMENT" },
           orderBy: { createdAt: "desc" },
           take: 1,
-        },
-        sessions: {
-          include: {
-            pauses: {
-              where: { endedAt: null },
-            },
-          },
         },
         approvalWorkflow: true,
         assignments: { where: { type: "PRIMARY", removedAt: null }, include: { member: { select: { user: { select: { name: true } } } } } },
@@ -84,9 +78,7 @@ export default async function ManagementOverviewPage() {
     const { isOverdue, slaExceeded, delayMinutes } = taskTiming(t, now);
 
     const hasActiveImpediment = t.occurrences.length > 0;
-    const isPaused =
-      t.status === TaskStatus.PAUSED ||
-      t.sessions.some((s) => s.pauses.length > 0);
+    const isPaused = false;
 
     return {
       id: t.id,
@@ -106,7 +98,7 @@ export default async function ManagementOverviewPage() {
       createdAt: t.createdAt.toISOString(),
       isOverdue, slaExceeded,
       assigneeName: t.assignments[0]?.member.user.name ?? "Sem responsável",
-      estimatedDuration: t.estimatedDuration, actualDuration: t.actualDuration,
+      actualDuration: t.actualDuration,
       delayMinutes,
       hasActiveImpediment,
       impedimentReason: hasActiveImpediment
@@ -122,6 +114,7 @@ export default async function ManagementOverviewPage() {
       userName={context.userName}
       orgName={context.organizationName}
       role={context.role}
+      initialSubscriptionNotice={getSubscriptionNotice(context.subscription ?? null)}
     >
       <OverviewDashboardClient
         tasks={mappedTasks}

@@ -1,4 +1,5 @@
 "use server";
+import { validateFormAnswers } from "@/domain/rules/form-answers";
 import { z } from "zod";
 import { prisma } from "@/infrastructure/database/prisma";
 import { getAuthenticatedContext } from "@/application/security/auth-context";
@@ -65,7 +66,7 @@ export async function startTaskAction(taskId: string, justification?: string): P
       }
     }
 
-    await tx.task.update({ where: { id: task.id }, data: { status: "IN_PROGRESS", startedAt: task.startedAt ?? now, slaDueAt: task.slaDueAt ?? (task.slaDurationMinutes ? new Date(now.getTime() + task.slaDurationMinutes * 60000) : null) } });
+    await tx.task.update({ where: { id: task.id }, data: { status: "IN_PROGRESS", startedAt: task.startedAt ?? now, slaDueAt: task.slaDueAt ?? task.deadlineAt } });
     await tx.taskExecutionSession.create({ data: { taskId, memberId: c.memberId } });
     await tx.activityLog.create({ data: { organizationId: c.organizationId, actorId: c.memberId, action: "TASK_STARTED", entityType: "TASK", entityId: taskId, metadata: { startedBy: c.userName, isEarly: earlyEval.isEarly } } });
     await synchronizeExecution(tx, c.organizationId, task.executionId);
@@ -101,6 +102,10 @@ async function saveEvidence(taskId: string, requirementId: string, value: string
 
       // Se a tolerância expirou, bloqueia envio de evidências
       const now = new Date();
+      if (task.scheduledDate && task.scheduledDate > now) {
+        const timeFormatted = task.scheduledDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+        return { error: `Esta tarefa está agendada para às ${timeFormatted} e só permite registro de evidências a partir do seu horário de início.` };
+      }
       const deadlines = [task.deadlineAt, task.slaDueAt]
         .filter((v): v is Date => !!v)
         .map((d) => d.getTime());
@@ -146,7 +151,48 @@ async function saveEvidence(taskId: string, requirementId: string, value: string
   } catch { if (storedKey) await removeEvidence(storedKey); return { error: "Não foi possível salvar a evidência. Tente novamente." }; }
 }
 
-export async function completeTaskAction(taskId: string): Promise<ActionResult> {
+export async function uploadTaskFormFileAction(formData: FormData): Promise<{
+  success?: boolean;
+  storageKey?: string;
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
+  error?: string;
+}> {
+  const c = await getAuthenticatedContext(false);
+  if (!c) return { error: "Não autenticado." };
+  const taskId = formData.get("taskId") as string;
+  const file = formData.get("file") as File;
+  if (!taskId || !file) return { error: "Arquivo ou tarefa não informados." };
+
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, ...taskScope(c), deletedAt: null },
+    select: { id: true, status: true },
+  });
+  if (!task) return { error: "Tarefa não encontrada ou acesso negado." };
+
+  if (file.size > 12 * 1024 * 1024) {
+    return { error: "O arquivo deve ter no máximo 12 MB." };
+  }
+
+  let storedKey: string | null = null;
+  try {
+    const bytes = Buffer.from(await file.arrayBuffer());
+    storedKey = await storeEvidence(bytes);
+    return {
+      success: true,
+      storageKey: storedKey,
+      fileName: file.name,
+      fileSize: file.size,
+      mimeType: file.type || "application/octet-stream",
+    };
+  } catch {
+    if (storedKey) await removeEvidence(storedKey);
+    return { error: "Falha ao salvar o arquivo anexo. Tente novamente." };
+  }
+}
+
+export async function completeTaskAction(taskId: string, formAnswers?: Record<string, any>): Promise<ActionResult> {
   const c = await getAuthenticatedContext(); if (!c) return { error: "Não autenticado." };
   const result = await prisma.$transaction(async tx => {
     await lockTask(tx, c.organizationId, taskId);
@@ -165,6 +211,14 @@ export async function completeTaskAction(taskId: string): Promise<ActionResult> 
     if (!await eligibleMember(c.organizationId, c.memberId, task.locationId, task.teamId, tx)) return { error: "Seu acesso à equipe ou unidade mudou. Solicite uma nova atribuição à gestão." };
 
     const now = new Date();
+
+    // Verificação de tarefa com agendamento futuro
+    if (task.scheduledDate && task.scheduledDate > now) {
+      const timeFormatted = task.scheduledDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+      return {
+        error: `Esta tarefa está agendada para às ${timeFormatted} e só pode ser concluída a partir do horário agendado.`,
+      };
+    }
 
     // Verificação de bloqueio por limite de tolerância esgotado
     const deadlines = [task.deadlineAt, task.slaDueAt]
@@ -198,6 +252,11 @@ export async function completeTaskAction(taskId: string): Promise<ActionResult> 
       failedAttemptsCount: r.submissions.filter(s => s.validationStatus === "REJECTED").length,
     })));
     if (!check.allowed) return { error: check.reason };
+
+    if (task.taskType === "FORM" && Array.isArray(task.formFields)) {
+      const error = validateFormAnswers(task.formFields as Parameters<typeof validateFormAnswers>[0], formAnswers);
+      if (error) return { error };
+    }
 
     // Guarda de horário operacional da unidade
     if (task.location) {
@@ -238,6 +297,7 @@ export async function completeTaskAction(taskId: string): Promise<ActionResult> 
         startedAt: task.startedAt ?? startedAt,
         completedAt: review ? null : now,
         actualDuration,
+        ...(formAnswers ? { formAnswers: formAnswers as any } : {}),
       },
     });
 
@@ -316,6 +376,8 @@ export type TaskDetailResult = {
   title: string;
   description: string | null;
   instructions: string | null;
+  taskType: string;
+  formFields: any;
   status: string;
   priority: string;
   deadlineAt: string | null;
@@ -376,9 +438,18 @@ export async function getTaskDetailAction(taskId: string): Promise<{ success?: b
           OR: [
             taskScope(c),
             {
-              status: { in: ["AVAILABLE", "BLOCKED"] },
-              ...(c.scope?.teamIds ? { teamId: { in: c.scope.teamIds } } : {}),
-              ...(c.scope?.locationIds ? { locationId: { in: c.scope.locationIds } } : {}),
+              status: { notIn: ["COMPLETED", "CANCELLED", "NOT_COMPLETED"] },
+              ...(c.role === "EMPLOYEE"
+                ? {
+                    teamId: { in: c.scope?.teamIds ?? [] },
+                    ...(c.scope?.locationIds && c.scope.locationIds.length > 0
+                      ? { OR: [{ locationId: null }, { locationId: { in: c.scope.locationIds } }] }
+                      : { locationId: null }),
+                  }
+                : {
+                    ...(c.scope?.teamIds ? { teamId: { in: c.scope.teamIds } } : {}),
+                    ...(c.scope?.locationIds ? { locationId: { in: c.scope.locationIds } } : {}),
+                  }),
               assignments: { none: { type: "PRIMARY", removedAt: null } },
             },
           ],
@@ -398,6 +469,10 @@ export async function getTaskDetailAction(taskId: string): Promise<{ success?: b
             },
           },
           occurrences: {
+            where: {
+              type: { not: "PAUSE_ALERT" },
+              category: { notIn: ["LONG_PAUSE", "INTERVALO"] },
+            },
             orderBy: { createdAt: "desc" },
           },
         },
@@ -438,6 +513,8 @@ export async function getTaskDetailAction(taskId: string): Promise<{ success?: b
         title: task.title,
         description: task.description,
         instructions: task.instructions,
+        taskType: task.taskType || "STANDARD",
+        formFields: task.formFields,
         status: task.status,
         priority: task.priority,
         deadlineAt: task.deadlineAt ? task.deadlineAt.toISOString() : null,

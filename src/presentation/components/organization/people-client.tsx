@@ -402,8 +402,8 @@ export function PeopleClient({
 
       {/* Barra de Busca e Filtros Minimalista */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1 max-w-2xl">
-          <InputGroup className="flex-1 py-5!">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1 max-w-3xl">
+          <InputGroup className="h-11">
             <InputGroupAddon>
               <Search className="size-4 text-muted-foreground" />
             </InputGroupAddon>
@@ -430,7 +430,7 @@ export function PeopleClient({
             aria-label="Filtrar por cargo"
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
-            className="sm:w-40 text-xs"
+            className="w-full text-xs"
           >
             <NativeSelectOption value="ALL">Todos os cargos</NativeSelectOption>
             <NativeSelectOption value="OWNER">Proprietário</NativeSelectOption>
@@ -443,7 +443,7 @@ export function PeopleClient({
             aria-label="Filtrar por status"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="sm:w-36 text-xs"
+            className="w-full text-xs"
           >
             <NativeSelectOption value="ALL">Todos os status</NativeSelectOption>
             <NativeSelectOption value="ACTIVE">Ativos</NativeSelectOption>

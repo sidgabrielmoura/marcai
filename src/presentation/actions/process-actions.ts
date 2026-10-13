@@ -1,5 +1,7 @@
 "use server";
 import { z } from "zod";
+import { saveProcessInTransaction } from "@/application/processes/save-process";
+import { TemplateInputError } from "@/application/templates/template-library";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma";
 import { getAuthenticatedContext } from "@/application/security/auth-context";
@@ -9,204 +11,34 @@ import { generateRoutineExecution } from "@/application/processes/generate-execu
 import { changeExecutionState } from "@/application/processes/execution-lifecycle";
 import { dispatchNotificationAsync } from "@/infrastructure/notifications/notification-service";
 import { revalidatePath } from "next/cache";
-export type ActionResult = { success?: boolean; error?: string; data?: { id: string } };
+export type ActionResult = {
+  success?: boolean;
+  error?: string;
+  data?: { id: string };
+  skipped?: boolean;
+  blocked?: boolean;
+  reason?: string;
+  generated?: boolean;
+};
 function refresh() { for (const path of ["/management/processes", "/management/processes/archived", "/management/tasks", "/tasks", "/history", "/overview", "/notifications"]) revalidatePath(path); }
 
-async function createInitialProcessExecution(
-  tx: Prisma.TransactionClient,
-  context: { organizationId: string; memberId: string },
-  process: { id: string; locationId: string | null },
-  definition: ProcessDefinition,
-  routineId: string | null,
-  now = new Date()
-) {
-  const execution = await tx.processExecution.create({
-    data: {
-      organizationId: context.organizationId,
-      processId: process.id,
-      routineId,
-      locationId: process.locationId,
-      scheduledAt: now,
-      availableAt: now,
-      startedAt: now,
-      status: "IN_PROGRESS",
-      definitionSnapshot: definition as unknown as Prisma.InputJsonValue,
-    },
-  });
-
-  const taskIds = new Map<string, string>();
-  for (const t of definition.tasks) {
-    const blocked = t.dependsOn.length > 0 && t.dependencyType !== "INFORMATIVE";
-    const task = await tx.task.create({
-      data: {
-        organizationId: context.organizationId,
-        processId: process.id,
-        executionId: execution.id,
-        locationId: process.locationId,
-        origin: "PROCESS",
-        teamId: t.teamId,
-        title: t.title,
-        instructions: t.instructions,
-        required: t.required,
-        criticality: definition.criticality,
-        priority: definition.criticality,
-        estimatedDuration: t.estimatedDuration,
-        slaDurationMinutes: t.slaMinutes,
-        slaStartEvent: "ON_AVAILABLE",
-        scheduledDate: now,
-        deadlineAt: new Date(now.getTime() + t.slaMinutes * 60000),
-        slaDueAt: !blocked ? new Date(now.getTime() + t.slaMinutes * 60000) : null,
-        status: blocked ? "BLOCKED" : "IN_PROGRESS",
-        startedAt: !blocked ? now : null,
-        ...(t.evidenceType ? { evidenceRequirements: { create: { type: t.evidenceType, required: true, minQuantity: 1, maxQuantity: 1 } } } : {}),
-        ...(t.approverIds.length ? { approvalWorkflow: { create: { mode: t.approvalMode, steps: { create: t.approverIds.map((id, i) => ({ sequence: i + 1, approverMemberId: id })) } } } } : {}),
-      },
-    });
-    taskIds.set(t.id, task.id);
-
-    if (t.primaryMemberId) {
-      const member = await tx.organizationMember.findFirst({
-        where: {
-          id: t.primaryMemberId,
-          organizationId: context.organizationId,
-          status: "ACTIVE",
-          user: { status: "ACTIVE" },
-          teamMemberships: { some: { teamId: t.teamId } },
-          ...(process.locationId ? {
-            locationAccesses: {
-              some: {
-                locationId: process.locationId,
-                AND: [
-                  { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
-                  { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
-                ],
-              },
-            },
-          } : {}),
-        },
-      });
-
-      if (member) {
-        await tx.taskAssignment.create({
-          data: {
-            taskId: task.id,
-            memberId: member.id,
-            type: "PRIMARY",
-            assignedBy: context.memberId || null,
-          },
-        });
-
-        if (!blocked) {
-          await tx.taskExecutionSession.create({
-            data: {
-              taskId: task.id,
-              memberId: member.id,
-              startedAt: now,
-            },
-          });
-
-          await tx.notification.create({
-            data: {
-              organizationId: context.organizationId,
-              userId: member.userId,
-              type: "TASK_ASSIGNED",
-              priority: definition.criticality,
-              title: "Nova tarefa de processo iniciada",
-              message: t.title,
-              data: { taskId: task.id, executionId: execution.id },
-            },
-          });
-
-          void dispatchNotificationAsync({
-            organizationId: context.organizationId,
-            userIds: [member.userId],
-            type: "TASK_ASSIGNED",
-            priority: definition.criticality,
-            title: "Nova tarefa de processo iniciada",
-            message: t.title,
-            data: { taskId: task.id, executionId: execution.id },
-            clickAction: `/tasks/${task.id}`,
-            forcePush: true,
-          });
-        }
-      }
-    }
-  }
-
-  for (const t of definition.tasks) {
-    for (const id of t.dependsOn) {
-      const parentTaskId = taskIds.get(id);
-      const childTaskId = taskIds.get(t.id);
-      if (parentTaskId && childTaskId) {
-        await tx.taskDependency.create({
-          data: {
-            taskId: childTaskId,
-            dependsOnId: parentTaskId,
-            type: t.dependencyType,
-            logic: t.dependencyLogic,
-          },
-        });
-      }
-    }
-  }
-
-  await tx.activityLog.create({
-    data: {
-      organizationId: context.organizationId,
-      actorId: context.memberId || null,
-      action: "EXECUTION_GENERATED",
-      entityType: "EXECUTION",
-      entityId: execution.id,
-      metadata: { scheduledAt: now.toISOString(), immediateOnProcessCreate: true },
-    },
-  });
-
-  return execution;
-}
-
 export async function createProcessAction(formData: FormData): Promise<ActionResult> {
-  const context = await getAuthenticatedContext();
+  const context = await getAuthenticatedContext(false);
   if (!context || !isManagement(context)) return { error: "Apenas gestores podem salvar processos." };
-  let input: unknown;
-  try { input = JSON.parse(String(formData.get("definition"))); } catch { return { error: "Revise os dados do processo." }; }
-  const parsed = processDefinitionSchema.safeParse(input);
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
-  const definition = parsed.data;
-  const existingId = String(formData.get("processId") || "");
-  const existing = existingId ? await prisma.process.findFirst({ where: { ...processScope(context), id: existingId }, include: { sourceTemplateVersion: true } }) : null;
-  if (existingId && (!existing || existing.status === "ARCHIVED")) return { error: "Processo indisponível para edição. Restaure-o antes de editar." };
-  if (existing && context.role === "MANAGER" && readProcessDefinition(existing.sourceTemplateVersion?.definition)?.tasks.some(t => !context.scope?.teamIds.includes(t.teamId))) return { error: "Este processo contém equipes fora do seu escopo." };
-  const location = await prisma.location.findFirst({ where: { id: definition.locationId, organizationId: context.organizationId, status: "ACTIVE" } });
-  if (!location || context.role === "MANAGER" && !context.scope?.locationIds.includes(location.id)) return { error: "Unidade fora do seu acesso." };
-  const teams = await prisma.team.findMany({ where: { organizationId: context.organizationId, status: "ACTIVE", id: { in: definition.tasks.map(t => t.teamId) } }, select: { id: true } });
-  for (const task of definition.tasks) {
-    if (!teams.some(t => t.id === task.teamId) || context.role === "MANAGER" && !context.scope?.teamIds.includes(task.teamId)) return { error: `Escolha uma equipe permitida para “${task.title}”.` };
-    if (task.primaryMemberId && !await eligibleMember(context.organizationId, task.primaryMemberId, location.id, task.teamId)) return { error: `O responsável por “${task.title}” precisa pertencer à equipe e ter acesso à unidade.` };
-    for (const id of task.approverIds) {
-      const approver = await prisma.organizationMember.findFirst({ where: { id, organizationId: context.organizationId, status: "ACTIVE", role: { in: ["OWNER", "ADMIN", "MANAGER"] } } });
-      if (!approver || approver.role === "MANAGER" && !await eligibleMember(context.organizationId, id, location.id, task.teamId)) return { error: `Aprovador sem acesso à tarefa “${task.title}”.` };
-    }
+  try {
+    const input = JSON.parse(String(formData.get("definition")));
+    const result = await prisma.$transaction(tx => saveProcessInTransaction(tx, context, input, {
+      processId: String(formData.get("processId") || "") || undefined,
+      requestId: String(formData.get("requestId") || "") || undefined,
+      templateReference: String(formData.get("templateReference") || "") || undefined,
+      routineId: String(formData.get("routineId") || "") || undefined,
+    }), { timeout: 30000 });
+    for (const notification of result.notifications) void dispatchNotificationAsync(notification);
+    if (result.routineId) await generateRoutineExecution(result.routineId, context, new Date(), true).catch(() => undefined);
+    refresh(); return { success: true, data: { id: result.id } };
+  } catch (error) {
+    return { error: error instanceof TemplateInputError ? error.message : "Não foi possível salvar. Seus dados continuam nesta tela; tente novamente." };
   }
-  const result = await prisma.$transaction(async tx => {
-    if (existing) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${existing.id}))`;
-    const template = existing?.sourceTemplateVersion ? { id: existing.sourceTemplateVersion.templateId } : await tx.processTemplate.create({ data: { organizationId: context.organizationId, name: definition.name } });
-    const latest = await tx.processTemplateVersion.findFirst({ where: { templateId: template.id }, orderBy: { version: "desc" } });
-    const version = await tx.processTemplateVersion.create({ data: { templateId: template.id, version: (latest?.version ?? 0) + 1, definition: definition as unknown as Prisma.InputJsonValue } });
-    const data = { name: definition.name, description: definition.description, locationId: location.id, criticality: definition.criticality, validFrom: definition.validFrom ? new Date(definition.validFrom) : null, validUntil: definition.validUntil ? new Date(`${definition.validUntil}T23:59:59Z`) : null, sourceTemplateVersionId: version.id };
-    const process = existing ? await tx.process.update({ where: { id: existing.id, organizationId: context.organizationId }, data }) : await tx.process.create({ data: { ...data, organizationId: context.organizationId, createdBy: context.memberId } });
-    const now = new Date();
-    let routine = null;
-    if (!existing && definition.schedule) {
-      const s = definition.schedule;
-      routine = await tx.routine.create({ data: { processId: process.id, recurrenceRule: JSON.stringify(s), timezone: s.timezone, startsAt: new Date(s.startsAt), endsAt: s.endsAt ? new Date(`${s.endsAt}T23:59:59Z`) : null, generationLeadTime: s.generationLeadTime, pendingPreviousPolicy: s.pendingPreviousPolicy } });
-    }
-    if (!existing) {
-      await createInitialProcessExecution(tx, context, process, definition, routine ? routine.id : null, now);
-    }
-    await tx.activityLog.create({ data: { organizationId: context.organizationId, actorId: context.memberId, action: existing ? "PROCESS_UPDATED" : "PROCESS_CREATED", entityType: "PROCESS", entityId: process.id, metadata: { version: version.version, taskCount: definition.tasks.length } } });
-    return process;
-  });
-  refresh(); return { success: true, data: { id: result.id } };
 }
 
 export async function toggleProcessStatusAction(processId: string, newStatus: "ACTIVE" | "PAUSED" | "ARCHIVED"): Promise<ActionResult> {
@@ -287,133 +119,314 @@ export async function cancelExecutionAction(executionId: string, reason: string,
   return updateExecution(executionId, "CANCEL", reason, category);
 }
 
-/**
- * Instanciar processo a partir de uma versão de template para uma ou mais unidades (Item 8)
- */
-export async function instantiateProcessFromTemplateAction(
-  templateVersionId: string,
-  targetLocationIds: string[],
-  overrideName?: string
-): Promise<ActionResult> {
-  const context = await getAuthenticatedContext();
-  if (!context || !isManagement(context)) return { error: "Apenas gestores podem instanciar processos a partir de templates." };
-
-  const version = await prisma.processTemplateVersion.findFirst({
-    where: { id: templateVersionId, template: { organizationId: context.organizationId } },
-    include: { template: true },
-  });
-  if (!version) return { error: "Versão do template não encontrada." };
-
-  const baseDefinition = readProcessDefinition(version.definition);
-  if (!baseDefinition) return { error: "Definição do template inválida." };
-
-  const locations = await prisma.location.findMany({
-    where: {
-      organizationId: context.organizationId,
-      status: "ACTIVE",
-      id: { in: targetLocationIds },
-      ...(context.role === "MANAGER" ? { id: { in: context.scope?.locationIds ?? [] } } : {}),
-    },
-  });
-  if (!locations.length) return { error: "Nenhuma unidade válida selecionada." };
-
-  const createdProcesses = await prisma.$transaction(async (tx) => {
-    const list = [];
-    for (const loc of locations) {
-      const locDefinition = { ...baseDefinition, locationId: loc.id, name: overrideName || baseDefinition.name };
-      const proc = await tx.process.create({
-        data: {
-          organizationId: context.organizationId,
-          name: locDefinition.name,
-          description: locDefinition.description,
-          locationId: loc.id,
-          criticality: locDefinition.criticality,
-          sourceTemplateVersionId: version.id,
-          createdBy: context.memberId,
-          status: "ACTIVE",
-        },
-      });
-
-      let routine = null;
-      if (locDefinition.schedule) {
-        const s = locDefinition.schedule;
-        routine = await tx.routine.create({
-          data: {
-            processId: proc.id,
-            recurrenceRule: JSON.stringify(s),
-            timezone: loc.timezone || s.timezone,
-            startsAt: new Date(s.startsAt),
-            endsAt: s.endsAt ? new Date(`${s.endsAt}T23:59:59Z`) : null,
-            generationLeadTime: s.generationLeadTime,
-            pendingPreviousPolicy: s.pendingPreviousPolicy,
-          },
-        });
-      }
-
-      await createInitialProcessExecution(tx, context, proc, locDefinition, routine ? routine.id : null);
-
-      await tx.activityLog.create({
-        data: {
-          organizationId: context.organizationId,
-          actorId: context.memberId,
-          action: "PROCESS_INSTANTIATED_FROM_TEMPLATE",
-          entityType: "PROCESS",
-          entityId: proc.id,
-          metadata: { templateId: version.templateId, version: version.version, locationId: loc.id },
-        },
-      });
-
-      list.push(proc);
+export async function instantiateProcessFromTemplateAction(templateVersionId: string, targetLocationIds: string[], overrideName?: string): Promise<ActionResult> {
+  const context = await getAuthenticatedContext(false);
+  if (!context || !isManagement(context)) return { error: "Acesso negado." };
+  if (!Array.isArray(targetLocationIds) || !targetLocationIds.length || targetLocationIds.length > 50 || new Set(targetLocationIds).size !== targetLocationIds.length) return { error: "Escolha unidades diferentes." };
+  try {
+    const results = await prisma.$transaction(async tx => {
+      const version = await tx.processTemplateVersion.findFirst({ where: { id: templateVersionId, template: { organizationId: context.organizationId } } });
+      const d = readProcessDefinition(version?.definition);
+      if (!d) throw new TemplateInputError("Definição indisponível.");
+      const list = [];
+      for (const id of targetLocationIds) list.push(await saveProcessInTransaction(tx, context, { ...d, locationId: id, name: overrideName || d.name }, { requestId: crypto.randomUUID() }));
+      return list;
+    }, { timeout: 60000 });
+    for (const r of results) {
+      for (const n of r.notifications) void dispatchNotificationAsync(n);
+      if (r.routineId) await generateRoutineExecution(r.routineId, context, new Date(), true).catch(() => undefined);
     }
-    return list;
-  });
-
-  refresh();
-  return { success: true, data: { id: createdProcesses[0]?.id } };
+    refresh(); return { success: true, data: { id: results[0].id } };
+  } catch (error) { return { error: error instanceof TemplateInputError ? error.message : "Não foi possível criar os processos." }; }
 }
 
-/**
- * Adota uma nova versão de template para um processo existente sem retroatividade (Item 8)
- */
-export async function updateProcessToTemplateVersionAction(
-  processId: string,
-  newTemplateVersionId: string
+export async function updateProcessToTemplateVersionAction(processId: string, newTemplateVersionId: string): Promise<ActionResult> {
+  const context = await getAuthenticatedContext(false);
+  if (!context || !isManagement(context)) return { error: "Acesso negado." };
+  try {
+    await prisma.$transaction(async tx => {
+      const p = await tx.process.findFirst({ where: { ...processScope(context), id: processId }, include: { sourceTemplateVersion: true } });
+      const v = p?.sourceTemplateVersion ? await tx.processTemplateVersion.findFirst({ where: { id: newTemplateVersionId, templateId: p.sourceTemplateVersion.templateId, template: { organizationId: context.organizationId } } }) : null;
+      const d = readProcessDefinition(v?.definition);
+      if (!d || !p) throw new TemplateInputError("Versão indisponível para este processo.");
+      await saveProcessInTransaction(tx, context, { ...d, locationId: p.locationId }, { processId: p.id });
+    }, { timeout: 30000 });
+    refresh(); return { success: true };
+  } catch (error) { return { error: error instanceof TemplateInputError ? error.message : "Não foi possível atualizar o processo." }; }
+}
+
+export type EmployeeProcessTaskItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  instructions: string | null;
+  taskType: string;
+  status: string;
+  priority: string;
+  criticality: string;
+  required: boolean;
+  orderIndex: number;
+  completedAt: string | null;
+  startedAt: string | null;
+  deadlineAt: string | null;
+  scheduledDate?: string | null;
+  formFields: any[] | null;
+  formAnswers: any | null;
+  evidenceRequirements: Array<{
+    id: string;
+    type: string;
+    required: boolean;
+    minQuantity: number;
+    maxQuantity: number;
+    submissions: Array<{
+      id: string;
+      storageKey: string | null;
+      value: string | null;
+      validationStatus: string;
+      createdAt: string;
+    }>;
+  }>;
+  isAssignedToCurrent: boolean;
+  assignedMemberName: string | null;
+  isUnassigned: boolean;
+  dependsOnIds: string[];
+  isBlocked: boolean;
+};
+
+export type EmployeeProcessExecutionDetail = {
+  id: string;
+  processId: string;
+  processName: string;
+  processDescription: string | null;
+  locationName: string | null;
+  status: string;
+  scheduledAt: string;
+  completedAt: string | null;
+  orderRule: "FREE" | "STRICT" | "CUSTOM";
+  tasks: EmployeeProcessTaskItem[];
+};
+
+export async function getEmployeeProcessExecutionAction(
+  executionId: string
+): Promise<{ execution?: EmployeeProcessExecutionDetail; error?: string }> {
+  const context = await getAuthenticatedContext();
+  if (!context) return { error: "Não autenticado." };
+
+  const execution = await prisma.processExecution.findFirst({
+    where: {
+      id: executionId,
+      organizationId: context.organizationId,
+    },
+    include: {
+      process: { select: { id: true, name: true, description: true } },
+      location: { select: { id: true, name: true } },
+      tasks: {
+        where: { deletedAt: null },
+        include: {
+          assignments: {
+            where: { removedAt: null },
+            include: { member: { include: { user: { select: { name: true } } } } },
+          },
+          evidenceRequirements: {
+            include: {
+              submissions: {
+                orderBy: { createdAt: "desc" },
+                select: {
+                  id: true,
+                  storageKey: true,
+                  value: true,
+                  validationStatus: true,
+                  createdAt: true,
+                },
+              },
+            },
+          },
+          dependencies: {
+            include: {
+              dependsOnTask: {
+                select: { id: true, status: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!execution) {
+    return { error: "Execução de processo não encontrada." };
+  }
+
+  const snapshotTasks = (execution.definitionSnapshot as any)?.tasks;
+  let orderRule: "FREE" | "STRICT" | "CUSTOM" = "FREE";
+
+  if (Array.isArray(snapshotTasks) && snapshotTasks.length > 1) {
+    const hasAnyDepends = snapshotTasks.some(
+      (t: any) => Array.isArray(t.dependsOn) && t.dependsOn.length > 0
+    );
+    if (!hasAnyDepends) {
+      orderRule = "FREE";
+    } else {
+      const isStrict = snapshotTasks.every((t: any, idx: number) => {
+        if (idx === 0) return !t.dependsOn || t.dependsOn.length === 0;
+        return (
+          Array.isArray(t.dependsOn) &&
+          t.dependsOn.length === 1 &&
+          t.dependsOn[0] === snapshotTasks[idx - 1].id
+        );
+      });
+      orderRule = isStrict ? "STRICT" : "CUSTOM";
+    }
+  }
+
+  // Ordenar tarefas conforme a definição original no snapshot ou ID/createdAt
+  const titleOrderMap = new Map<string, number>();
+  if (Array.isArray(snapshotTasks)) {
+    snapshotTasks.forEach((st: any, idx: number) => {
+      if (st.title) titleOrderMap.set(st.title.trim().toLowerCase(), idx);
+    });
+  }
+
+  const sortedTasks = [...execution.tasks].sort((a, b) => {
+    const orderA = a.definitionOrder ?? titleOrderMap.get(a.title.trim().toLowerCase()) ?? 999;
+    const orderB = b.definitionOrder ?? titleOrderMap.get(b.title.trim().toLowerCase()) ?? 999;
+    if (orderA !== orderB) return orderA - orderB;
+    return a.id.localeCompare(b.id);
+  });
+
+  const formattedTasks: EmployeeProcessTaskItem[] = sortedTasks.map((task, idx) => {
+    const isCompleted = task.status === "COMPLETED";
+    let isBlocked = task.status === "BLOCKED";
+
+    if (!isCompleted) {
+      if (orderRule === "STRICT") {
+        if (idx > 0 && sortedTasks.slice(0, idx).some((prev) => prev.status !== "COMPLETED")) {
+          isBlocked = true;
+        }
+      } else if (orderRule === "CUSTOM") {
+        const hasPendingDep = task.dependencies.some(
+          (dep) => dep.dependsOnTask?.status !== "COMPLETED"
+        );
+        if (hasPendingDep) isBlocked = true;
+      }
+    } else {
+      isBlocked = false;
+    }
+
+    const primaryAssignee = task.assignments.find((a) => a.type === "PRIMARY");
+    const isAssignedToCurrent = task.assignments.some(
+      (a) => a.memberId === context.memberId
+    );
+    const isUnassigned = !primaryAssignee;
+
+    return {
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      instructions: task.instructions,
+      taskType: task.taskType,
+      status: task.status,
+      priority: task.priority,
+      criticality: task.criticality,
+      required: task.required,
+      orderIndex: idx + 1,
+      completedAt: task.completedAt ? task.completedAt.toISOString() : null,
+      startedAt: task.startedAt ? task.startedAt.toISOString() : null,
+      deadlineAt: task.deadlineAt ? task.deadlineAt.toISOString() : null,
+      scheduledDate: task.scheduledDate ? task.scheduledDate.toISOString() : null,
+      formFields: Array.isArray(task.formFields) ? (task.formFields as any[]) : null,
+      formAnswers: task.formAnswers || null,
+      evidenceRequirements: task.evidenceRequirements.map((er) => ({
+        id: er.id,
+        type: er.type,
+        required: er.required,
+        minQuantity: er.minQuantity,
+        maxQuantity: er.maxQuantity,
+        submissions: er.submissions.map((s) => ({
+          id: s.id,
+          storageKey: s.storageKey,
+          value: s.value,
+          validationStatus: s.validationStatus,
+          createdAt: s.createdAt.toISOString(),
+        })),
+      })),
+      isAssignedToCurrent,
+      assignedMemberName: primaryAssignee?.member.user?.name || null,
+      isUnassigned,
+      dependsOnIds: task.dependencies.map((d) => d.dependsOnId),
+      isBlocked,
+    };
+  });
+
+  return {
+    execution: {
+      id: execution.id,
+      processId: execution.processId,
+      processName: execution.process.name,
+      processDescription: execution.process.description,
+      locationName: execution.location?.name || null,
+      status: execution.status,
+      scheduledAt: execution.scheduledAt.toISOString(),
+      completedAt: execution.completedAt ? execution.completedAt.toISOString() : null,
+      orderRule,
+      tasks: formattedTasks,
+    },
+  };
+}
+
+export async function completeProcessExecutionAction(
+  executionId: string
 ): Promise<ActionResult> {
   const context = await getAuthenticatedContext();
-  if (!context || !isManagement(context)) return { error: "Apenas gestores podem atualizar a versão do processo." };
+  if (!context) return { error: "Não autenticado." };
 
-  const process = await prisma.process.findFirst({
-    where: { id: processId, organizationId: context.organizationId },
-    include: { sourceTemplateVersion: true },
-  });
-  if (!process) return { error: "Processo não encontrado." };
-
-  const newVersion = await prisma.processTemplateVersion.findFirst({
-    where: { id: newTemplateVersionId, template: { organizationId: context.organizationId } },
-  });
-  if (!newVersion) return { error: "Versão do template não encontrada." };
-
-  await prisma.$transaction(async (tx) => {
-    await tx.process.update({
-      where: { id: process.id },
-      data: { sourceTemplateVersionId: newVersion.id },
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"execution:" + executionId}))`;
+    const execution = await tx.processExecution.findFirst({
+      where: { id: executionId, organizationId: context.organizationId },
+      include: { tasks: { where: { deletedAt: null } } },
     });
+    if (!execution) return { error: "Execução de processo não encontrada." };
+
+    const uncompletedTasks = execution.tasks.filter((t) => t.status !== "COMPLETED");
+    if (uncompletedTasks.length > 0) {
+      return {
+        error: `Ainda existem ${uncompletedTasks.length} ${
+          uncompletedTasks.length === 1 ? "tarefa pendente" : "tarefas pendentes"
+        } neste processo. Todas as tarefas devem ser concluídas primeiro.`,
+      };
+    }
+
+    const now = new Date();
+    if (execution.scheduledAt && execution.scheduledAt > now) {
+      const timeFormatted = execution.scheduledAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+      return {
+        error: `Este processo está agendado para às ${timeFormatted} e só pode ser concluído a partir do horário agendado.`,
+      };
+    }
+
+    await tx.processExecution.update({
+      where: { id: executionId },
+      data: {
+        status: "COMPLETED",
+        completedAt: execution.completedAt ?? now,
+      },
+    });
+
     await tx.activityLog.create({
       data: {
         organizationId: context.organizationId,
         actorId: context.memberId,
-        action: "PROCESS_VERSION_ADOPTED",
-        entityType: "PROCESS",
-        entityId: process.id,
-        metadata: {
-          previousVersionId: process.sourceTemplateVersionId,
-          newVersionId: newVersion.id,
-          newVersion: newVersion.version,
-        },
+        action: "EXECUTION_COMPLETED",
+        entityType: "EXECUTION",
+        entityId: executionId,
+        metadata: { completedByMemberId: context.memberId },
+        createdAt: now,
       },
     });
-  });
 
-  refresh();
-  return { success: true };
+    refresh();
+    return { success: true };
+  });
 }
+

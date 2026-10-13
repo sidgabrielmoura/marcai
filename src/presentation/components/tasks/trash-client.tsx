@@ -80,11 +80,12 @@ export function TrashClient({ tasks, canPurge }: TrashClientProps) {
         }
       />
 
-      <Card className="bg-surface rounded-[18px] overflow-hidden shadow-none border-(--border-subtle)">
+      <Card className="bg-surface rounded-[18px] overflow-hidden shadow-none border-(--border-subtle) p-4! grid grid-cols-1 sm:grid-cols-2 gap-5">
         {tasks.length === 0 ? (
           <EmptyState
             title="Lixeira vazia"
             description="As tarefas removidas aparecerão aqui."
+            className="bg-canvas/60! col-span-full"
             icon={
               <Trash2
                 data-icon="inline-start"
@@ -97,7 +98,7 @@ export function TrashClient({ tasks, canPurge }: TrashClientProps) {
             {tasks.map((task) => (
               <div
                 key={task.id}
-                className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-(--canvas)/50 transition-colors"
+                className="px-6 py-4 flex flex-col justify-between gap-6 bg-canvas/80 rounded-xl"
               >
                 <div>
                   <h4 className="text-brand-900 text-(length:--type-card-title) font-bold">
@@ -169,7 +170,7 @@ export function TrashClient({ tasks, canPurge }: TrashClientProps) {
           if (!open) setTaskToPurge(null);
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-xl!">
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir tarefa definitivamente?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -177,7 +178,7 @@ export function TrashClient({ tasks, canPurge }: TrashClientProps) {
               associados serão excluídos definitivamente.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
+          <AlertDialogFooter className="flex-row! bg-transparent!">
             <AlertDialogCancel onClick={() => setTaskToPurge(null)}>
               Cancelar
             </AlertDialogCancel>

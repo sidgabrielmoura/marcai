@@ -26,6 +26,7 @@ import {
   ChevronDown,
   Info,
 } from "lucide-react";
+import { SaveProcessTemplateButton } from "@/presentation/components/templates/save-process-template";
 import { PageHeader, StatusBadge, Modal, EmptyState } from "../shared";
 import {
   toggleProcessStatusAction,
@@ -109,7 +110,7 @@ export interface ProcessDetailProps {
     title: string;
     description: string;
     teamName: string | null;
-    estimatedMinutes: number | null;
+    toleranceMinutes: number;
     required: boolean;
     primaryMemberName: string | null;
     approverNames: string[];
@@ -325,9 +326,23 @@ export function ProcessDetailClient({
       const res = await triggerExecutionGenerationAction(routineId);
       if (res.error) {
         toast.add({
-          title: "Erro ao disparar execução",
+          title: "Execução não gerada",
           description: res.error,
           type: "error",
+        });
+      } else if (res.skipped) {
+        toast.add({
+          title: "Execução ignorada",
+          description:
+            res.reason ||
+            "A execução anterior ainda está pendente e foi pulada conforme a política da rotina.",
+          type: "warning",
+        });
+      } else if (!res.generated) {
+        toast.add({
+          title: "Execução já agendada",
+          description: "A próxima ocorrência desta rotina já está programada no cronograma.",
+          type: "info",
         });
       } else {
         toast.add({
@@ -439,7 +454,7 @@ export function ProcessDetailClient({
 
   return (
     <div className="page-stack mx-auto space-y-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <Link
           href="/management/processes"
           className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--brand-900)] transition-colors"
@@ -448,7 +463,8 @@ export function ProcessDetailClient({
           <span>Voltar para Processos</span>
         </Link>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {["OWNER", "ADMIN"].includes(userRole) && <SaveProcessTemplateButton processId={proc.id} name={proc.name} />}
           {canEdit && (
             <Button
               size="sm"
@@ -693,8 +709,16 @@ export function ProcessDetailClient({
                     ? formatDateTime(activeRoutine.nextOccurrenceAt).full
                     : "Sem novas ocorrências programadas"}
                 </strong>
-                <span className="text-muted-foreground text-[11px]">
+                <span className="text-muted-foreground text-[11px] block">
                   Antecedência de geração: {Math.round(activeRoutine.generationLeadTime / 60)}h antes
+                </span>
+                <span className="text-muted-foreground text-[11px] block">
+                  Política de pendência:{" "}
+                  {activeRoutine.pendingPreviousPolicy === "SKIP_IF_PENDING"
+                    ? "Pular se houver pendente"
+                    : activeRoutine.pendingPreviousPolicy === "BLOCK_NEW"
+                    ? "Bloquear até finalizar"
+                    : "Criar normalmente"}
                 </span>
               </div>
 
@@ -709,7 +733,18 @@ export function ProcessDetailClient({
                   </span>
                 </div>
                 {canEdit && (
-                  <div className="flex items-center gap-2 pt-2">
+                  <div className="flex items-center gap-2 pt-2 flex-wrap sm:justify-end">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busyAction === "trigger-execution" || activeRoutine.status !== "ACTIVE"}
+                      onClick={() => handleTriggerExecution(activeRoutine.id)}
+                      className="text-xs h-7 px-2 gap-1 text-[var(--brand-900)] border-[var(--border-subtle)] hover:bg-[var(--surface)]"
+                      title="Gerar próxima execução imediatamente"
+                    >
+                      <Play className="size-3" />
+                      Disparar agora
+                    </Button>
                     <Button
                       size="sm"
                       variant="ghost"
@@ -1093,12 +1128,10 @@ export function ProcessDetailClient({
                           Responsável: <strong>{task.primaryMemberName}</strong>
                         </span>
                       )}
-                      {task.estimatedMinutes && (
-                        <span className="flex items-center gap-1">
-                          <Timer className="size-3 text-muted-foreground" />
-                          Estimativa: {task.estimatedMinutes} min
-                        </span>
-                      )}
+                      <span className="flex items-center gap-1">
+                        <Timer className="size-3 text-muted-foreground" />
+                        Tolerância: {task.toleranceMinutes} min
+                      </span>
                       {task.approverNames.length > 0 && (
                         <span>
                           Aprovação: {task.approverNames.join(", ")}

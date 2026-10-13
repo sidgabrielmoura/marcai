@@ -1,59 +1,148 @@
 "use client";
-import { useRef, useState } from "react";
+import { FormChoiceInput } from "@/presentation/components/shared/form-choice-input";
+
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Play, Check, MapPin, Send, ArrowLeft, RotateCcw } from "lucide-react";
-import { completeTaskAction, submitEvidenceAction, uploadEvidenceAction } from "@/presentation/actions/task-actions";
-import { resumeTaskAction, reportImpedimentAction } from "@/presentation/actions/management-task-actions";
-import { PageHeader, StatusBadge, PriorityBadge, Modal } from "../shared";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import {
+  Check,
+  MapPin,
+  ArrowLeft,
+  RotateCcw,
+  Lock,
+  Clock,
+  ListTodo,
+  FileCheck2,
+  AlertTriangle,
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  Camera,
+  Video,
+  Paperclip,
+} from "lucide-react";
+import {
+  completeTaskAction,
+  submitEvidenceAction,
+  uploadEvidenceAction,
+  uploadTaskFormFileAction,
+} from "@/presentation/actions/task-actions";
+import {
+  resumeTaskAction,
+  reportImpedimentAction,
+  claimTaskAction,
+} from "@/presentation/actions/management-task-actions";
+import { StatusBadge, PriorityBadge, Modal } from "../shared";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Field, FieldLabel, FieldGroup } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
-type Evidence = { id: string; type: string; required: boolean; minQuantity: number; executionStage?: string; submissions: { id: string; validationStatus: string; attemptNumber: number; value: string | null; createdAt: string; storageKey?: string | null }[] };
-interface TaskDetailClientProps { task: { id: string; title: string; description: string | null; instructions: string | null; status: string; priority: string; deadlineAt: Date | null; locationName: string | null; scheduledDate?: Date | null; requiresApproval?: boolean; correctionRequested?: boolean; dependencies: { id: string; type: string; logic: string; dependsOnTask: { id: string; title: string; status: string } }[]; occurrences: { id: string; type: string; category: string; reason: string; severity: string; createdAt: string }[]; evidenceRequirements: Evidence[] } }
-const labels: Record<string, string> = { PHOTO: "Foto", VIDEO: "Vídeo", FILE: "Arquivo", TEXT: "Texto", NUMBER: "Medição numérica", SIGNATURE: "Assinatura", LOCATION: "Localização" };
+import { Input } from "@/components/ui/input";
+import {
+  TaskEvidenceItem,
+  evidenceTypeMeta,
+  type EvidenceDraft,
+  type TaskEvidenceRequirement,
+} from "./task-evidence-item";
 
-function EvidenceForm({ taskId, requirement: req, disabled, onResult }: { taskId: string; requirement: Evidence; disabled: boolean; onResult: (error?: string) => void }) {
-  const [busy, setBusy] = useState(false), [value, setValue] = useState(""), [file, setFile] = useState<File | null>(null), [signed, setSigned] = useState(false);
-  const canvas = useRef<HTMLCanvasElement>(null), drawing = useRef(false);
-  const valid = req.submissions.filter(s => s.validationStatus === "VALID"), failures = req.submissions.filter(s => s.validationStatus === "REJECTED").length;
-  const done = valid.length >= req.minQuantity;
-  async function submit(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true);
-    try {
-      let selected = file;
-      if (req.type === "SIGNATURE") { if (!signed || !canvas.current) { onResult("Desenhe a assinatura antes de enviar."); return; } const blob = await new Promise<Blob | null>(resolve => canvas.current!.toBlob(resolve, "image/png")); if (blob) selected = new File([blob], "assinatura.png", { type: "image/png" }); }
-      if (["PHOTO", "VIDEO", "FILE", "SIGNATURE"].includes(req.type)) { if (!selected) { onResult("Selecione um arquivo antes de enviar."); return; } const form = new FormData(); form.set("taskId", taskId); form.set("requirementId", req.id); form.set("file", selected); const r = await uploadEvidenceAction(form); onResult(r.error); }
-      else { const r = await submitEvidenceAction(taskId, req.id, value); onResult(r.error); }
-    } catch { onResult("Não foi possível enviar. Verifique a conexão e tente novamente."); } finally { setBusy(false); }
-  }
-  async function gps() {
-    if (!navigator.geolocation) { onResult("Este dispositivo não oferece localização."); return; }
-    setBusy(true);
-    navigator.geolocation.getCurrentPosition(p => { setValue(JSON.stringify({ latitude: p.coords.latitude, longitude: p.coords.longitude, accuracy: p.coords.accuracy })); setBusy(false); }, () => { onResult("Não foi possível obter a localização. Permita o acesso ao GPS e tente novamente."); setBusy(false); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
-  }
-  return <div className="evidence-form"><div className="flex flex-wrap justify-between gap-2 items-center"><h3 className="font-semibold">{labels[req.type] || req.type}</h3><Badge variant={done ? "secondary" : "outline"}>{done ? "Registrada" : req.required ? "Obrigatória" : "Opcional"}</Badge></div>{valid.map(s => <p className="text-label text-muted-foreground break-words" key={s.id}>{s.storageKey ? <a className="underline" href={`/api/evidence/${s.id}`}>Baixar {s.value || "evidência"}</a> : s.value}</p>)}{failures > 0 && <p className="text-caption text-muted-foreground">{failures} {failures === 1 ? "tentativa inválida" : "tentativas inválidas"}.{failures >= 3 ? " Você pode continuar com ressalva. A gestão foi avisada." : " Corrija o envio para continuar."}</p>}
-    {!done && !disabled && <form onSubmit={submit} className="flex flex-col gap-3">
-      {["PHOTO", "VIDEO", "FILE"].includes(req.type) && <Field><FieldLabel htmlFor={`file-${req.id}`}>Escolha {req.type === "PHOTO" ? "uma foto" : req.type === "VIDEO" ? "um vídeo" : "um arquivo"}</FieldLabel><Input id={`file-${req.id}`} type="file" accept={req.type === "PHOTO" ? "image/jpeg,image/png,image/webp" : req.type === "VIDEO" ? "video/mp4" : "image/jpeg,image/png,image/webp,application/pdf,video/mp4"} capture={req.type === "PHOTO" ? "environment" : undefined} onChange={e => setFile(e.target.files?.[0] ?? null)} required /><p className="text-caption text-muted-foreground">Até 10 MB. {req.type === "VIDEO" ? "Formato MP4." : "JPG, PNG, WebP" + (req.type === "FILE" ? ", PDF ou MP4." : ".")}</p></Field>}
-      {["TEXT", "NUMBER"].includes(req.type) && <Field><FieldLabel htmlFor={`value-${req.id}`}>{req.type === "TEXT" ? "Descreva o resultado" : "Valor medido"}</FieldLabel>{req.type === "TEXT" ? <Textarea id={`value-${req.id}`} value={value} onChange={e => setValue(e.target.value)} required /> : <Input id={`value-${req.id}`} type="number" step="any" value={value} onChange={e => setValue(e.target.value)} required />}</Field>}
-      {req.type === "LOCATION" && <><Button type="button" variant="outline" disabled={busy} onClick={gps}><MapPin data-icon="inline-start" />Capturar localização atual</Button><p className="text-caption text-muted-foreground">{value ? "Localização capturada. Confirme o envio abaixo." : "O navegador solicitará permissão para acessar sua localização."}</p></>}
-      {req.type === "SIGNATURE" && <><p className="text-label text-muted-foreground">Assine no espaço abaixo usando o dedo ou o mouse.</p><canvas ref={canvas} width={600} height={180} aria-label="Área para desenhar a assinatura" className="signature-pad" onPointerDown={e => { drawing.current = true; e.currentTarget.setPointerCapture(e.pointerId); const rect = e.currentTarget.getBoundingClientRect(), ctx = e.currentTarget.getContext("2d"); if (ctx) { ctx.beginPath(); ctx.moveTo((e.clientX - rect.left) * 600 / rect.width, (e.clientY - rect.top) * 180 / rect.height); } }} onPointerMove={e => { if (!drawing.current) return; const rect = e.currentTarget.getBoundingClientRect(), ctx = e.currentTarget.getContext("2d"); if (ctx) { ctx.lineWidth = 2; ctx.strokeStyle = "#1c2420"; ctx.lineTo((e.clientX - rect.left) * 600 / rect.width, (e.clientY - rect.top) * 180 / rect.height); ctx.stroke(); setSigned(true); } }} onPointerUp={() => { drawing.current = false; }} onPointerCancel={() => { drawing.current = false; }} /><Button type="button" variant="ghost" onClick={() => { canvas.current?.getContext("2d")?.clearRect(0, 0, 600, 180); setSigned(false); }}>Limpar assinatura</Button></>}
-      <Button type="submit" variant="outline" disabled={busy || req.type === "LOCATION" && !value}>{busy ? <Spinner data-icon="inline-start" /> : <Send data-icon="inline-start" />}Enviar evidência</Button>
-    </form>}
-  </div>;
+function isPauseOccurrence(o: { type?: string; category?: string; reason?: string }): boolean {
+  const type = (o.type || "").toUpperCase();
+  const category = (o.category || "").toUpperCase();
+  const reason = (o.reason || "").toLowerCase();
+  return (
+    type === "PAUSE_ALERT" ||
+    type.includes("PAUSE") ||
+    category === "LONG_PAUSE" ||
+    category === "INTERVALO" ||
+    category.includes("PAUSE") ||
+    category.includes("PAUSA") ||
+    reason.includes("está pausada") ||
+    reason.includes("tarefa pausada") ||
+    reason.includes("pausa de descanso")
+  );
+}
+
+function cleanReason(reason: string): string {
+  return reason
+    .replace(/O prazo de SLA foi excedido\.?/gi, "O prazo de execução foi excedido.")
+    .replace(/SLA excedido há/gi, "Prazo limite excedido há")
+    .replace(/SLA excedido/gi, "Prazo limite excedido")
+    .replace(/\bSLA\b/g, "prazo limite");
+}
+
+interface TaskDetailClientProps {
+  task: {
+    id: string;
+    title: string;
+    description: string | null;
+    instructions: string | null;
+    status: string;
+    priority: string;
+    deadlineAt: Date | null;
+    slaDueAt?: Date | null;
+    toleranceMinutes?: number | null;
+    locationName: string | null;
+    scheduledDate?: Date | null;
+    requiresApproval?: boolean;
+    correctionRequested?: boolean;
+    isUnassigned?: boolean;
+    slaExceeded?: boolean;
+    delayMinutes?: number;
+    dependencies: {
+      id: string;
+      type: string;
+      logic: string;
+      dependsOnTask: { id: string; title: string; status: string };
+    }[];
+    occurrences: {
+      id: string;
+      type: string;
+      category: string;
+      reason: string;
+      severity: string;
+      createdAt: string;
+    }[];
+    evidenceRequirements: TaskEvidenceRequirement[];
+    taskType?: string | null;
+    formFields?: any;
+  };
 }
 
 export function TaskDetailClient({ task }: TaskDetailClientProps) {
   const router = useRouter();
-  const [busy, setBusy] = useState(false), [dialog, setDialog] = useState<"pause" | "impediment" | null>(null), [reason, setReason] = useState(""), [category, setCategory] = useState("OUTROS");
-  const terminal = ["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status), active = task.status === "IN_PROGRESS", scheduled = !!task.scheduledDate && new Date(task.scheduledDate) > new Date();
-  async function run(action: () => Promise<{ error?: string }>, complete = false) {
+  const [busy, setBusy] = useState(false);
+  const [dialog, setDialog] = useState<"impediment" | null>(null);
+  const [reason, setReason] = useState("");
+  const [category, setCategory] = useState("OUTROS");
+  const [evidenceDrafts, setEvidenceDrafts] = useState<Record<string, EvidenceDraft>>({});
+  const [formAnswers, setFormAnswers] = useState<Record<string, any>>({});
+  const [occurrencesOpen, setOccurrencesOpen] = useState(false);
+
+  const terminal = ["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status);
+  const scheduled = !!task.scheduledDate && new Date(task.scheduledDate) > new Date();
+
+  const deadlines = [task.deadlineAt, task.slaDueAt]
+    .filter((v): v is Date => !!v)
+    .map((v) => new Date(v).getTime())
+    .filter(Number.isFinite);
+  const dueAt = terminal || task.status === "BLOCKED" || !deadlines.length ? null : Math.min(...deadlines);
+  const toleranceMinutes = task.toleranceMinutes ?? 20;
+  const toleranceLimitAt = dueAt !== null ? dueAt + toleranceMinutes * 60 * 1000 : null;
+  const isToleranceExceeded = toleranceLimitAt !== null && !terminal && Date.now() > toleranceLimitAt;
+
+  const totalRequirements = task.evidenceRequirements.length;
+  const completedRequirements = task.evidenceRequirements.filter(
+    (req) => req.submissions.filter((s) => s.validationStatus === "VALID").length >= req.minQuantity
+  ).length;
+
+  async function run(
+    action: () => Promise<{ success?: boolean; error?: string }>,
+    options?: { successNotice?: string; complete?: boolean }
+  ) {
     setBusy(true);
     try {
       const r = await action();
@@ -66,11 +155,13 @@ export function TaskDetailClient({ task }: TaskDetailClientProps) {
       } else {
         toast.add({
           title: "Sucesso",
-          description: "Ação concluída com sucesso.",
+          description: options?.successNotice || "Ação concluída com sucesso.",
           type: "success",
         });
         setDialog(null);
-        if (complete) router.push("/tasks");
+        if (options?.complete) {
+          router.push("/tasks");
+        }
         router.refresh();
       }
     } catch {
@@ -83,16 +174,845 @@ export function TaskDetailClient({ task }: TaskDetailClientProps) {
       setBusy(false);
     }
   }
-  const evidencePending = task.evidenceRequirements.filter(r => r.required && r.submissions.filter(s => s.validationStatus === "VALID").length < r.minQuantity && r.submissions.filter(s => s.validationStatus === "REJECTED").length < 3).length;
-  return <div className="page-stack employee-execution"><PageHeader title={task.title} subtitle={task.locationName || "Siga as orientações para realizar esta tarefa."} backHref="/tasks" actions={<StatusBadge status={scheduled ? "SCHEDULED" : task.status} />} />
-    {task.correctionRequested && !terminal && <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-900">Esta entrega está em uma nova rodada de correção. Registre novas evidências; os envios anteriores permanecem no histórico da gestão.</div>}
-    <div className="employee-execution-grid"><div className="flex flex-col gap-5"><Card><CardHeader><CardTitle>1. Confira as orientações</CardTitle><CardDescription>Confira as instruções para executar e comprovar a entrega.</CardDescription></CardHeader><CardContent className="flex flex-col gap-4"><div className="flex flex-wrap gap-3 items-center"><PriorityBadge priority={task.priority} />{task.deadlineAt && <span className="text-label">Prazo: {new Date(task.deadlineAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}</span>}</div>{task.description && <p>{task.description}</p>}<p className="whitespace-pre-wrap">{task.instructions || "Realize a atividade descrita no título e registre as evidências solicitadas abaixo."}</p>{task.dependencies.length > 0 && <div className="flex flex-col gap-2"><h3 className="font-semibold">Etapas relacionadas</h3>{task.dependencies.map(d => <div key={d.id} className="flex flex-wrap justify-between gap-2"><span>{d.dependsOnTask.title}</span><StatusBadge status={d.dependsOnTask.status} /></div>)}</div>}</CardContent></Card>
-    <Card><CardHeader><CardTitle>2. Registre a entrega</CardTitle><CardDescription>{task.evidenceRequirements.length ? "Envie cada comprovação solicitada. Cancelar a escolha de um arquivo não conta como tentativa." : "Esta tarefa não exige evidências. Ao terminar o trabalho, selecione Concluir tarefa."}</CardDescription></CardHeader><CardContent className="flex flex-col gap-4">{task.evidenceRequirements.map(r => <EvidenceForm key={r.id} taskId={task.id} requirement={r} disabled={terminal || task.status === "BLOCKED"} onResult={message => { if (message) toast.add({ title: "Erro no envio", description: message, type: "error" }); else toast.add({ title: "Evidência registrada", description: "Evidência enviada com sucesso.", type: "success" }); router.refresh(); }} />)}</CardContent></Card>
-    {!!task.occurrences.length && <Card><CardHeader><CardTitle>Ocorrências registradas</CardTitle></CardHeader><CardContent className="flex flex-col gap-3">{task.occurrences.map(o => <p key={o.id} className="text-label">{o.reason}</p>)}</CardContent></Card>}
-    </div><Card className="employee-action-panel"><CardHeader><CardTitle>3. Próxima ação</CardTitle></CardHeader><CardContent className="flex flex-col gap-4">
-      {scheduled ? <p>A tarefa será liberada em {new Date(task.scheduledDate!).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}.</p> : task.status === "BLOCKED" ? <p>Aguarde as etapas anteriores. Esta tarefa será liberada quando as dependências forem atendidas; o SLA não corre enquanto estiver bloqueada.</p> : task.status === "PAUSED" ? <><p>O prazo continua sendo contado durante a pausa.</p><Button disabled={busy} onClick={() => run(() => resumeTaskAction(task.id))}><RotateCcw data-icon="inline-start" />Retomar tarefa</Button></> : !terminal && task.status !== "SUBMITTED" ? <><p>{task.status === "NEEDS_CORRECTION" ? "A gestão solicitou uma correção. Confira as orientações, anexe as novas evidências e finalize a conclusão." : evidencePending ? `${evidencePending} evidência(s) obrigatória(s) pendente(s). Registre antes de finalizar.` : "Tudo pronto para registrar a entrega."}</p><Button disabled={busy || !!evidencePending} onClick={() => run(() => completeTaskAction(task.id), true)}>{busy ? <Spinner data-icon="inline-start" /> : <Check data-icon="inline-start" />}{task.requiresApproval ? "Enviar para aprovação" : "Concluir tarefa"}</Button></> : task.status === "SUBMITTED" ? <p>Sua entrega foi enviada. Aguarde a revisão do aprovador; você será avisado se precisar corrigir algo.</p> : <p>Esta tarefa foi encerrada. As evidências e ocorrências permanecem no histórico.</p>}
-      {!terminal && task.status !== "SUBMITTED" && <Button variant="ghost" disabled={busy} onClick={() => { setReason(""); setDialog("impediment"); }}>Não foi possível realizar</Button>}<Button variant="ghost" nativeButton={false} render={<Link href="/tasks" />}><ArrowLeft data-icon="inline-start" />Voltar às tarefas</Button>
-    </CardContent></Card></div>
-    {dialog && <Modal open title="Registrar impedimento" onClose={() => { if (!busy) setDialog(null); }}><form className="flex flex-col gap-5" onSubmit={e => { e.preventDefault(); run(() => reportImpedimentAction(task.id, category, reason)); }}><p>Use quando uma condição da operação impedir a realização. Isso encerra a tarefa como não realizada e avisa a gestão.</p><FieldGroup><Field><FieldLabel htmlFor="reason-category">Motivo</FieldLabel><NativeSelect id="reason-category" className="w-full" value={category} onChange={e => setCategory(e.target.value)}>{Object.entries({ OUTROS: "Outro motivo", MATERIAL_FALTANTE: "Falta de material", EQUIPAMENTO_QUEBRADO: "Equipamento com defeito", ACESSO_BLOQUEADO: "Local sem acesso", INTERVALO: "Intervalo" }).map(([v, l]) => <NativeSelectOption key={v} value={v}>{l}</NativeSelectOption>)}</NativeSelect></Field><Field><FieldLabel htmlFor="reason-detail">O que aconteceu?</FieldLabel><Textarea id="reason-detail" required minLength={3} maxLength={1000} value={reason} onChange={e => setReason(e.target.value)} /></Field></FieldGroup><div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={busy} onClick={() => setDialog(null)}>Voltar</Button><Button disabled={busy} type="submit">{busy && <Spinner data-icon="inline-start" />}Registrar impedimento</Button></div></form></Modal>}
-  </div>;
+
+  async function handleCompleteWithEvidence() {
+    if (scheduled) {
+      toast.add({
+        title: "Aguardando horário",
+        description: `Esta tarefa está agendada para iniciar às ${new Date(task.scheduledDate!).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} e só pode ser concluída a partir deste horário.`,
+        type: "error",
+      });
+      return;
+    }
+    if (isToleranceExceeded) {
+      toast.add({
+        title: "Limite de tolerância atingido",
+        description: "O tempo limite de tolerância desta tarefa foi atingido. Ela está bloqueada para conclusão.",
+        type: "error",
+      });
+      return;
+    }
+    setBusy(true);
+    try {
+      const pendingRequirements = task.evidenceRequirements.filter((req) => {
+        const validCount = req.submissions.filter((s) => s.validationStatus === "VALID").length;
+        return validCount < req.minQuantity;
+      });
+
+      // Validação de formulário se for o caso
+      if (task.taskType === "FORM" && Array.isArray(task.formFields)) {
+        for (const field of task.formFields) {
+          if (field.required) {
+            const answer = formAnswers[field.id];
+            if (answer === undefined || answer === null || answer === "") {
+              toast.add({
+                title: "Perguntas pendentes",
+                description: `A pergunta "${field.question}" é obrigatória.`,
+                type: "error",
+              });
+              setBusy(false);
+              return;
+            }
+          }
+        }
+      }
+
+      // Validação prévia de exigências obrigatórias
+      for (const req of pendingRequirements) {
+        const draft = evidenceDrafts[req.id];
+        const meta = evidenceTypeMeta[req.type] || { label: req.type };
+        const failures = req.submissions.filter((s) => s.validationStatus === "REJECTED").length;
+        if (failures >= 3) continue; // Tolerância operacional D-05
+
+        if (req.required) {
+          if (req.type === "PHOTO") {
+            if (!draft?.file) {
+              toast.add({
+                title: "Evidência obrigatória",
+                description: `Tire a foto de comprovação (${meta.label}) antes de concluir.`,
+                type: "error",
+              });
+              setBusy(false);
+              return;
+            }
+          } else if (["VIDEO", "FILE"].includes(req.type)) {
+            if (!draft?.file) {
+              toast.add({
+                title: "Evidência obrigatória",
+                description: `Anexe o arquivo (${meta.label}) antes de concluir.`,
+                type: "error",
+              });
+              setBusy(false);
+              return;
+            }
+          } else if (req.type === "SIGNATURE") {
+            if (!draft?.signed) {
+              toast.add({
+                title: "Evidência obrigatória",
+                description: "Desenhe a sua assinatura antes de concluir.",
+                type: "error",
+              });
+              setBusy(false);
+              return;
+            }
+          } else if (req.type === "LOCATION") {
+            if (!draft?.value) {
+              toast.add({
+                title: "Evidência obrigatória",
+                description: "Capture a localização GPS antes de concluir.",
+                type: "error",
+              });
+              setBusy(false);
+              return;
+            }
+          } else if (req.type === "NUMBER") {
+            if (!draft?.value || !draft.value.trim() || !Number.isFinite(Number(draft.value.replace(",", ".")))) {
+              toast.add({
+                title: "Evidência obrigatória",
+                description: `Informe a medição numérica para "${meta.label}".`,
+                type: "error",
+              });
+              setBusy(false);
+              return;
+            }
+          } else if (req.type === "TEXT") {
+            if (!draft?.value || !draft.value.trim()) {
+              toast.add({
+                title: "Evidência obrigatória",
+                description: `Preencha o relato escrito para "${meta.label}".`,
+                type: "error",
+              });
+              setBusy(false);
+              return;
+            }
+          }
+        }
+      }
+
+      // Envia automaticamente as evidências pendentes fornecidas
+      for (const req of pendingRequirements) {
+        const draft = evidenceDrafts[req.id];
+        if (!draft) continue;
+
+        if (req.type === "SIGNATURE" && draft.signed && draft.getSignatureBlob) {
+          const blob = await draft.getSignatureBlob();
+          if (blob) {
+            const sigFile = new File([blob], "assinatura.png", { type: "image/png" });
+            const form = new FormData();
+            form.set("taskId", task.id);
+            form.set("requirementId", req.id);
+            form.set("file", sigFile);
+            const uploadRes = await uploadEvidenceAction(form);
+            if (uploadRes.error) {
+              toast.add({
+                title: "Erro ao enviar assinatura",
+                description: uploadRes.error,
+                type: "error",
+              });
+              setBusy(false);
+              return;
+            }
+          }
+        } else if (["PHOTO", "VIDEO", "FILE"].includes(req.type) && draft.file) {
+          const form = new FormData();
+          form.set("taskId", task.id);
+          form.set("requirementId", req.id);
+          form.set("file", draft.file);
+          const uploadRes = await uploadEvidenceAction(form);
+          if (uploadRes.error) {
+            const meta = evidenceTypeMeta[req.type] || { label: req.type };
+            toast.add({
+              title: `Erro ao enviar ${meta.label}`,
+              description: uploadRes.error,
+              type: "error",
+            });
+            setBusy(false);
+            return;
+          }
+        } else if (["TEXT", "NUMBER", "LOCATION"].includes(req.type) && draft.value?.trim()) {
+          const submitRes = await submitEvidenceAction(task.id, req.id, draft.value.trim());
+          if (submitRes.error) {
+            const meta = evidenceTypeMeta[req.type] || { label: req.type };
+            toast.add({
+              title: `Erro ao enviar ${meta.label}`,
+              description: submitRes.error,
+              type: "error",
+            });
+            setBusy(false);
+            return;
+          }
+        }
+      }
+
+      // Envia os arquivos de form se for o caso
+      const finalFormAnswers = { ...formAnswers };
+      if (task.taskType === "FORM" && Array.isArray(task.formFields)) {
+        for (const field of task.formFields) {
+          if (["PHOTO", "VIDEO", "FILE"].includes(field.type) && finalFormAnswers[field.id] instanceof File) {
+            const file = finalFormAnswers[field.id] as File;
+            const form = new FormData();
+            form.set("taskId", task.id);
+            form.set("fieldId", field.id);
+            form.set("file", file);
+            const uploadRes = await uploadTaskFormFileAction(form);
+            if (uploadRes.error) {
+              toast.add({
+                title: `Erro ao enviar ${field.type === "PHOTO" ? "foto" : field.type === "VIDEO" ? "vídeo" : "arquivo"}`,
+                description: uploadRes.error,
+                type: "error",
+              });
+              setBusy(false);
+              return;
+            }
+            finalFormAnswers[field.id] = {
+              storageKey: uploadRes.storageKey,
+              fileName: uploadRes.fileName,
+              fileSize: uploadRes.fileSize,
+              mimeType: uploadRes.mimeType,
+              type: field.type,
+            };
+          }
+        }
+      }
+
+      // Conclui a tarefa
+      const completeRes = await completeTaskAction(task.id, task.taskType === "FORM" ? finalFormAnswers : undefined);
+      if (completeRes.error) {
+        toast.add({
+          title: "Erro ao concluir tarefa",
+          description: completeRes.error,
+          type: "error",
+        });
+        router.refresh();
+      } else {
+        toast.add({
+          title: "Sucesso",
+          description: task.requiresApproval ? "Enviado para aprovação!" : "Tarefa concluída!",
+          type: "success",
+        });
+        router.push("/tasks");
+        router.refresh();
+      }
+    } catch {
+      toast.add({
+        title: "Erro inesperado",
+        description: "Não foi possível concluir a ação. Tente novamente.",
+        type: "error",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto w-full px-4 sm:px-6 py-5 flex flex-col gap-4">
+      {/* Botão de retorno e cabeçalho alinhado ao padrão do Drawer */}
+      <div className="flex flex-col gap-2">
+        <Link
+          href="/tasks"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--brand-900)] transition-colors w-fit"
+        >
+          <ArrowLeft className="size-3.5" />
+          Voltar às tarefas
+        </Link>
+
+        <div className="flex flex-col gap-2 bg-[var(--surface)] p-4 sm:p-5 rounded-2xl border border-[var(--border-subtle)] shadow-xs">
+          <h1 className="text-lg sm:text-xl font-bold leading-snug text-[var(--text-primary)]">
+            {task.title}
+          </h1>
+
+          <div className="w-full flex flex-wrap gap-2 items-center">
+            <StatusBadge status={scheduled ? "SCHEDULED" : task.status} size="sm" className="max-w-fit px-3 font-semibold" />
+            <PriorityBadge priority={task.priority} size="sm" className="max-w-fit px-3 font-semibold" />
+            {task.slaExceeded && (
+              <Badge className="text-[10px] max-w-fit px-3 font-semibold text-red-700 bg-red-50 border-red-200 py-0.5 rounded-md flex items-center gap-1">
+                <AlertTriangle className="size-3 text-red-600" />
+                <span>Prazo estourado</span>
+              </Badge>
+            )}
+            {task.locationName && (
+              <span className="inline-flex items-center gap-1 text-xs text-[var(--text-secondary)] font-medium">
+                <MapPin className="size-3.5 text-slate-400" />
+                {task.locationName}
+              </span>
+            )}
+            {task.deadlineAt && (
+              <span className="inline-flex items-center gap-1 text-xs text-[var(--text-secondary)] font-medium">
+                <Clock className="size-3.5 text-slate-400" />
+                Prazo:{" "}
+                {new Date(task.deadlineAt).toLocaleString("pt-BR", {
+                  timeZone: "America/Sao_Paulo",
+                  dateStyle: "short",
+                  timeStyle: "short",
+                })}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Banners de status e alertas */}
+      {task.correctionRequested && !terminal && (
+        <div className="p-3.5 rounded-xl bg-amber-50/90 border border-amber-200 text-xs text-amber-900 flex items-start gap-2.5">
+          <AlertCircle className="size-4 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <strong className="font-semibold block mb-0.5">Correção solicitada pela gestão</strong>
+            Revise as orientações abaixo e anexe as novas comprovações requeridas para reenviar.
+          </div>
+        </div>
+      )}
+
+      {task.status === "BLOCKED" && (
+        <div className="p-3.5 rounded-xl bg-amber-50/90 border border-amber-200 text-xs text-amber-900 flex items-center gap-2">
+          <AlertTriangle className="size-4 text-amber-600 shrink-0" />
+          <span>Aguardando etapas anteriores para ser liberada. O prazo não corre enquanto a tarefa estiver bloqueada.</span>
+        </div>
+      )}
+
+      {/* Card 1: Instruções de execução */}
+      <Card className="rounded-xl p-0 border border-[var(--border-subtle)] bg-[var(--surface)] shadow-none overflow-hidden">
+        <div className="px-4 py-3 bg-slate-50/80 dark:bg-muted/30 border-b border-[var(--border-subtle)] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ListTodo className="size-4 text-[var(--brand-900)] dark:text-primary" />
+            <h3 className="font-bold text-xs uppercase tracking-wider text-[var(--text-primary)]">
+              Instruções de execução
+            </h3>
+          </div>
+        </div>
+
+        <CardContent className="p-4 sm:p-5 flex flex-col gap-3.5 text-xs leading-relaxed">
+          {task.description && (
+            <div className="p-3 rounded-lg bg-blue-50/60 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 text-blue-950 dark:text-blue-100">
+              <span className="font-semibold block mb-1 text-[11px] uppercase tracking-wide text-blue-800 dark:text-blue-300">
+                Resumo da atividade
+              </span>
+              <p className="font-medium text-xs">{task.description}</p>
+            </div>
+          )}
+
+          {task.taskType === "FORM" && Array.isArray(task.formFields) ? (
+            <div className="space-y-4 pt-2">
+              {task.formFields.map((field: any, idx: number) => (
+                <div key={field.id} className="p-3.5 bg-white dark:bg-card border border-slate-200 dark:border-border rounded-xl">
+                  <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200 mb-2.5">
+                    {idx + 1}. {field.question} {field.required && <span className="text-red-500">*</span>}
+                  </label>
+                  {field.type === "MULTIPLE_CHOICE" && <FormChoiceInput options={field.options ?? []} value={formAnswers[field.id]} onChange={value => setFormAnswers(prev => ({ ...prev, [field.id]: value }))} />}
+                            {field.type === "SHORT_TEXT" && (
+                    <Input
+                      value={formAnswers[field.id] || ""}
+                      onChange={(e) => setFormAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                      placeholder="Sua resposta..."
+                      className="text-xs"
+                      disabled={terminal || busy}
+                    />
+                  )}
+                  {field.type === "LONG_TEXT" && (
+                    <Textarea
+                      value={formAnswers[field.id] || ""}
+                      onChange={(e) => setFormAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                      placeholder="Descreva sua resposta..."
+                      className="text-xs resize-none"
+                      rows={3}
+                      disabled={terminal || busy}
+                    />
+                  )}
+                  {field.type === "RATING" && (
+                    <div className="flex gap-2">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          disabled={terminal || busy}
+                          onClick={() => setFormAnswers((prev) => ({ ...prev, [field.id]: star }))}
+                          className={`size-9 rounded-full flex items-center justify-center border transition-colors ${formAnswers[field.id] === star
+                              ? "bg-amber-100 border-amber-400 text-amber-600"
+                              : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100"
+                            }`}
+                        >
+                          ★
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {field.type === "BOOLEAN" && (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={terminal || busy}
+                        onClick={() => setFormAnswers((prev) => ({ ...prev, [field.id]: true }))}
+                        className={`flex-1 py-2.5 text-xs rounded-lg border font-medium transition-colors ${formAnswers[field.id] === true
+                            ? "bg-emerald-50 border-emerald-300 text-emerald-700"
+                            : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                          }`}
+                      >
+                        Sim
+                      </button>
+                      <button
+                        type="button"
+                        disabled={terminal || busy}
+                        onClick={() => setFormAnswers((prev) => ({ ...prev, [field.id]: false }))}
+                        className={`flex-1 py-2.5 text-xs rounded-lg border font-medium transition-colors ${formAnswers[field.id] === false
+                            ? "bg-red-50 border-red-300 text-red-700"
+                            : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                          }`}
+                      >
+                        Não
+                      </button>
+                    </div>
+                  )}
+                  {field.type === "PHOTO" && (
+                    <div className="flex flex-col gap-2">
+                      {formAnswers[field.id] instanceof File ? (
+                        <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-300 dark:border-emerald-800 rounded-xl flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="size-9 rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 flex items-center justify-center shrink-0">
+                              <Camera className="size-5" />
+                            </div>
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-xs font-semibold text-emerald-900 dark:text-emerald-200 truncate">
+                                {(formAnswers[field.id] as File).name}
+                              </span>
+                              <span className="text-[10px] text-emerald-700/80 dark:text-emerald-400">
+                                {Math.round(((formAnswers[field.id] as File).size || 0) / 1024)} KB · Foto registrada
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={terminal || busy}
+                            onClick={() => setFormAnswers((prev) => { const next = { ...prev }; delete next[field.id]; return next; })}
+                            className="text-xs text-red-600 hover:text-red-800 font-semibold px-2 py-1 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer"
+                          >
+                            Trocar
+                          </button>
+                        </div>
+                      ) : (
+                        <label className={`flex flex-col items-center justify-center p-4 border-2 border-dashed border-[var(--border-subtle)] hover:border-[var(--brand-700)] bg-[var(--surface)] hover:bg-[var(--canvas)] rounded-xl cursor-pointer transition-all ${(terminal || busy) ? "opacity-50 pointer-events-none" : ""
+                          }`}>
+                          <Camera className="size-6 mb-1 text-[var(--brand-700)] opacity-80" />
+                          <span className="text-xs font-semibold text-[var(--brand-900)]">Tirar foto na hora</span>
+                          <span className="text-[10px] text-muted-foreground mt-0.5">Abre a câmera do dispositivo</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) setFormAnswers((prev) => ({ ...prev, [field.id]: file }));
+                            }}
+                          />
+                        </label>
+                      )}
+                    </div>
+                  )}
+
+                  {field.type === "VIDEO" && (
+                    <div className="flex flex-col gap-2">
+                      {formAnswers[field.id] instanceof File ? (
+                        <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-300 dark:border-emerald-800 rounded-xl flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="size-9 rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 flex items-center justify-center shrink-0">
+                              <Video className="size-5" />
+                            </div>
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-xs font-semibold text-emerald-900 dark:text-emerald-200 truncate">
+                                {(formAnswers[field.id] as File).name}
+                              </span>
+                              <span className="text-[10px] text-emerald-700/80 dark:text-emerald-400">
+                                {Math.round(((formAnswers[field.id] as File).size || 0) / 1024)} KB · Vídeo gravado
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={terminal || busy}
+                            onClick={() => setFormAnswers((prev) => { const next = { ...prev }; delete next[field.id]; return next; })}
+                            className="text-xs text-red-600 hover:text-red-800 font-semibold px-2 py-1 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer"
+                          >
+                            Trocar
+                          </button>
+                        </div>
+                      ) : (
+                        <label className={`flex flex-col items-center justify-center p-4 border-2 border-dashed border-[var(--border-subtle)] hover:border-[var(--brand-700)] bg-[var(--surface)] hover:bg-[var(--canvas)] rounded-xl cursor-pointer transition-all ${(terminal || busy) ? "opacity-50 pointer-events-none" : ""
+                          }`}>
+                          <Video className="size-6 mb-1 text-[var(--brand-700)] opacity-80" />
+                          <span className="text-xs font-semibold text-[var(--brand-900)]">Gravar vídeo na hora</span>
+                          <span className="text-[10px] text-muted-foreground mt-0.5">Abre a câmera para gravação direta</span>
+                          <input
+                            type="file"
+                            accept="video/*"
+                            capture="environment"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) setFormAnswers((prev) => ({ ...prev, [field.id]: file }));
+                            }}
+                          />
+                        </label>
+                      )}
+                    </div>
+                  )}
+
+                  {field.type === "FILE" && (
+                    <div className="flex flex-col gap-2">
+                      {formAnswers[field.id] instanceof File ? (
+                        <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-300 dark:border-emerald-800 rounded-xl flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="size-9 rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 flex items-center justify-center shrink-0">
+                              <Paperclip className="size-5" />
+                            </div>
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-xs font-semibold text-emerald-900 dark:text-emerald-200 truncate">
+                                {(formAnswers[field.id] as File).name}
+                              </span>
+                              <span className="text-[10px] text-emerald-700/80 dark:text-emerald-400">
+                                {Math.round(((formAnswers[field.id] as File).size || 0) / 1024)} KB · Arquivo anexado
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={terminal || busy}
+                            onClick={() => setFormAnswers((prev) => { const next = { ...prev }; delete next[field.id]; return next; })}
+                            className="text-xs text-red-600 hover:text-red-800 font-semibold px-2 py-1 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer"
+                          >
+                            Trocar
+                          </button>
+                        </div>
+                      ) : (
+                        <label className={`flex flex-col items-center justify-center p-4 border-2 border-dashed border-[var(--border-subtle)] hover:border-[var(--brand-700)] bg-[var(--surface)] hover:bg-[var(--canvas)] rounded-xl cursor-pointer transition-all ${(terminal || busy) ? "opacity-50 pointer-events-none" : ""
+                          }`}>
+                          <Paperclip className="size-6 mb-1 text-[var(--brand-700)] opacity-80" />
+                          <span className="text-xs font-semibold text-[var(--brand-900)]">Anexar arquivo</span>
+                          <span className="text-[10px] text-muted-foreground mt-0.5">Imagens, vídeos ou documentos (máx. 10 MB)</span>
+                          <input
+                            type="file"
+                            accept="image/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) setFormAnswers((prev) => ({ ...prev, [field.id]: file }));
+                            }}
+                          />
+                        </label>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <span className="font-semibold text-xs text-[var(--text-primary)] block">
+                Passo a passo:
+              </span>
+              <p className="whitespace-pre-wrap text-slate-700 dark:text-slate-300 bg-slate-50/50 dark:bg-muted/10 p-3.5 rounded-lg border border-[var(--border-subtle)]">
+                {task.instructions ||
+                  "Execute as ações indicadas no título e confirme com as comprovações abaixo."}
+              </p>
+            </div>
+          )}
+
+          {task.dependencies && task.dependencies.length > 0 && (
+            <div className="flex flex-col gap-2 pt-2 border-t border-[var(--border-subtle)]">
+              <span className="font-semibold text-[11px] text-[var(--text-secondary)] uppercase tracking-wide">
+                Etapas predecessoras
+              </span>
+              <div className="flex flex-col gap-1.5">
+                {task.dependencies.map((d) => (
+                  <div
+                    key={d.id}
+                    className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-white dark:bg-card border border-slate-200 dark:border-border text-xs"
+                  >
+                    <span className="truncate font-medium">{d.dependsOnTask.title}</span>
+                    <StatusBadge status={d.dependsOnTask.status} size="sm" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Card 2: Comprovações e Evidências */}
+      <Card className="rounded-xl p-0 border border-[var(--border-subtle)] bg-[var(--surface)] shadow-none overflow-hidden">
+        <div className="px-4 py-3 bg-slate-50/80 dark:bg-muted/30 border-b border-[var(--border-subtle)] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FileCheck2 className="size-4 text-[var(--brand-900)] dark:text-primary" />
+            <h3 className="font-bold text-xs uppercase tracking-wider text-[var(--text-primary)]">
+              Comprovações e Evidências
+            </h3>
+          </div>
+          {totalRequirements > 0 && (
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-200/80 dark:bg-muted text-slate-800 dark:text-foreground">
+              {completedRequirements}/{totalRequirements} entregues
+            </span>
+          )}
+        </div>
+
+        <CardContent className="p-4 sm:p-5 flex flex-col gap-3.5">
+          {totalRequirements === 0 ? (
+            <div className="p-4 text-center rounded-lg bg-emerald-50/60 border border-emerald-100 text-xs text-emerald-800">
+              <FileCheck2 className="size-5 mx-auto mb-1 text-emerald-600" />
+              Nenhuma evidência documental exigida. Basta confirmar o término do trabalho no botão abaixo.
+            </div>
+          ) : (
+            task.evidenceRequirements.map((req) => (
+              <TaskEvidenceItem
+                key={req.id}
+                taskId={task.id}
+                requirement={req}
+                disabled={terminal || task.status === "BLOCKED" || !!task.isUnassigned || isToleranceExceeded}
+                draft={evidenceDrafts[req.id]}
+                onDraftChange={(draft) =>
+                  setEvidenceDrafts((prev) => ({ ...prev, [req.id]: draft }))
+                }
+                onSuccess={(msg) => {
+                  toast.add({
+                    title: "Comprovação enviada",
+                    description: msg || "Comprovação enviada com sucesso!",
+                    type: "success",
+                  });
+                  router.refresh();
+                }}
+                onError={(err) => {
+                  toast.add({
+                    title: "Erro no envio",
+                    description: err,
+                    type: "error",
+                  });
+                }}
+              />
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Card 3: Ocorrências registradas - Inicialmente colapsado, layout neutro */}
+      {(() => {
+        const validOccurrences = (task.occurrences || []).filter((o) => !isPauseOccurrence(o));
+        if (validOccurrences.length === 0) return null;
+        return (
+          <Card className="rounded-xl p-0 border border-slate-200 dark:border-slate-800 bg-surface shadow-none overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setOccurrencesOpen((prev) => !prev)}
+              className="w-full px-4 py-2.5 bg-slate-50/80 dark:bg-slate-900/40 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 text-left cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-800/40 transition-colors select-none"
+            >
+              <div className="flex items-center gap-2">
+                <AlertCircle className="size-4 text-slate-600 dark:text-slate-400" />
+                <span className="font-bold text-[11px] uppercase tracking-wide text-slate-900 dark:text-slate-200">
+                  Ocorrências registradas
+                </span>
+                <Badge variant="outline" className="text-[10px] font-semibold px-1.5 py-0 border-slate-300 text-slate-700 bg-slate-100 dark:bg-slate-800 dark:text-slate-300">
+                  {validOccurrences.length}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                <span>{occurrencesOpen ? "Recolher" : "Expandir"}</span>
+                {occurrencesOpen ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+              </div>
+            </button>
+            {occurrencesOpen && (
+              <CardContent className="p-3.5 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {validOccurrences.map((occ) => (
+                  <div
+                    key={occ.id}
+                    className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 text-xs flex flex-col gap-0.5"
+                  >
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">{cleanReason(occ.reason)}</span>
+                    <span className="text-[10px] text-muted-foreground font-mono">
+                      {new Date(occ.createdAt).toLocaleString("pt-BR", {
+                        timeZone: "America/Sao_Paulo",
+                      })}
+                    </span>
+                  </div>
+                ))}
+              </CardContent>
+            )}
+          </Card>
+        );
+      })()}
+
+      {/* Card 4: Painel de Ações Operacionais */}
+      <Card className="rounded-xl p-4 sm:p-5 border border-[var(--border-subtle)] bg-[var(--surface)] shadow-xs flex flex-col gap-3">
+        {scheduled ? (
+          <div className="flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-center">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+              <Clock className="size-4 text-slate-500" />
+              <span>Aguardando horário</span>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              Esta tarefa será liberada em{" "}
+              {new Date(task.scheduledDate!).toLocaleString("pt-BR", {
+                timeZone: "America/Sao_Paulo",
+                dateStyle: "short",
+                timeStyle: "short",
+              })}
+              .
+            </p>
+          </div>
+        ) : task.isUnassigned ? (
+          <Button
+            className="w-full h-11 text-xs font-semibold rounded-xl bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)] cursor-pointer"
+            disabled={busy || task.status === "BLOCKED"}
+            onClick={() =>
+              run(() => claimTaskAction(task.id), {
+                successNotice: "Tarefa assumida com sucesso!",
+              })
+            }
+          >
+            {busy ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <Check data-icon="inline-start" />
+            )}
+            {task.status === "BLOCKED" ? "Aguardando etapas anteriores" : "Assumir esta tarefa"}
+          </Button>
+        ) : task.status === "BLOCKED" ? (
+          <div className="p-3 text-center rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900 font-medium">
+            Aguardando etapas anteriores para ser liberada.
+          </div>
+        ) : !terminal && task.status !== "SUBMITTED" ? (
+          <div className="flex flex-col gap-2">
+            {isToleranceExceeded && (
+              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 font-medium">
+                <Lock className="size-4 shrink-0 text-red-600" />
+                <span>Limite de tolerância atingido. Esta tarefa está bloqueada para conclusão.</span>
+              </div>
+            )}
+
+            <Button
+              className={`w-full h-11 text-xs font-semibold rounded-xl ${isToleranceExceeded
+                  ? "bg-slate-200 text-slate-500 border border-slate-300 cursor-not-allowed opacity-70 hover:bg-slate-200 hover:text-slate-500"
+                  : "bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)] cursor-pointer"
+                }`}
+              disabled={busy || isToleranceExceeded}
+              onClick={handleCompleteWithEvidence}
+            >
+              {busy ? (
+                <Spinner data-icon="inline-start" />
+              ) : isToleranceExceeded ? (
+                <Lock data-icon="inline-start" className="size-4" />
+              ) : (
+                <Check data-icon="inline-start" />
+              )}
+              {isToleranceExceeded
+                ? "Bloqueada por limite de tolerância"
+                : task.requiresApproval
+                  ? "Enviar para aprovação"
+                  : "Concluir tarefa"}
+            </Button>
+
+            <Button
+              variant="ghost"
+              className="w-full h-9 rounded-lg text-xs text-red-600 hover:text-red-700 hover:bg-red-50 cursor-pointer"
+              disabled={busy}
+              onClick={() => {
+                setReason("");
+                setDialog("impediment");
+              }}
+            >
+              Não foi possível realizar
+            </Button>
+          </div>
+        ) : task.status === "SUBMITTED" ? (
+          <div className="p-3 text-center rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-900 font-medium">
+            Entrega aguardando aprovação da gestão.
+          </div>
+        ) : (
+          <div className="p-3 text-center rounded-lg bg-slate-100 text-xs text-slate-700 font-medium">
+            Tarefa finalizada. Histórico e comprovações preservados.
+          </div>
+        )}
+      </Card>
+
+      {/* Modal de Impedimento Operacional */}
+      {dialog === "impediment" && (
+        <Modal
+          open={true}
+          title="Registrar impedimento"
+          onClose={() => {
+            if (!busy) setDialog(null);
+          }}
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!reason.trim()) return;
+              run(() => reportImpedimentAction(task.id, reason.trim(), category), {
+                successNotice: "Impedimento registrado. A gestão foi notificada.",
+                complete: true,
+              });
+            }}
+            className="space-y-4"
+          >
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="reason-cat" className="text-xs">
+                  Categoria do impedimento
+                </FieldLabel>
+                <NativeSelect
+                  id="reason-cat"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                >
+                  {Object.entries({
+                    OUTROS: "Outro motivo",
+                    MATERIAL_FALTANTE: "Falta de materiais / insumos",
+                    EQUIPAMENTO_QUEBRADO: "Equipamento com defeito",
+                    ACESSO_BLOQUEADO: "Local inacessível / trancado",
+                  }).map(([val, label]) => (
+                    <NativeSelectOption key={val} value={val}>
+                      {label}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="reason-desc" className="text-xs">
+                  Detalhes do ocorrido
+                </FieldLabel>
+                <Textarea
+                  id="reason-desc"
+                  required
+                  minLength={3}
+                  maxLength={1000}
+                  rows={3}
+                  className="text-xs"
+                  placeholder="Descreva o motivo com clareza..."
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                />
+              </Field>
+            </FieldGroup>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => setDialog(null)}
+                className="text-xs h-9 cursor-pointer"
+              >
+                Voltar
+              </Button>
+              <Button
+                disabled={busy}
+                type="submit"
+                variant="destructive"
+                className="text-xs h-9 cursor-pointer"
+              >
+                {busy && <Spinner data-icon="inline-start" />}
+                Confirmar impedimento
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
 }

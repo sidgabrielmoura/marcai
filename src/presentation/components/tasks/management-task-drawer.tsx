@@ -18,7 +18,11 @@ import {
   cancelTaskAction,
   trashTaskAction,
   submitApprovalDecisionAction,
+  reassignTaskAction,
+  getEligibleMembersForTaskAction,
 } from "@/presentation/actions/management-task-actions";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Input } from "@/components/ui/input";
 import { StatusBadge, PriorityBadge } from "../shared";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -61,8 +65,18 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
   ListTodo,
   ChevronRight,
+  UserCheck,
+  ClipboardList,
+  Camera,
+  Video,
+  Paperclip,
+  Download,
+  Star,
 } from "lucide-react";
 
 interface ManagementTaskDrawerProps {
@@ -90,6 +104,7 @@ const actionLabels: Record<string, string> = {
   APPROVAL_REJECTED: "Aprovação negada",
   TASK_ASSIGNED: "Atribuída",
   TASK_TRANSFERRED: "Reatribuída",
+  TASK_REASSIGNED: "Reatribuída & Prazo renovado",
 };
 
 function fmtDate(iso: string) {
@@ -106,6 +121,70 @@ function fmtDuration(secs: number | null): string {
   const m = Math.floor((secs % 3600) / 60);
   if (h > 0) return `${h}h ${m}min`;
   return `${m}min`;
+}
+
+function isPauseOccurrence(o: { type?: string; category?: string; reason?: string }): boolean {
+  const type = (o.type || "").toUpperCase();
+  const category = (o.category || "").toUpperCase();
+  const reason = (o.reason || "").toLowerCase();
+  return (
+    type === "PAUSE_ALERT" ||
+    type.includes("PAUSE") ||
+    category === "LONG_PAUSE" ||
+    category === "INTERVALO" ||
+    category.includes("PAUSE") ||
+    category.includes("PAUSA") ||
+    reason.includes("está pausada") ||
+    reason.includes("tarefa pausada") ||
+    reason.includes("pausa de descanso")
+  );
+}
+
+function formatOccurrenceCategory(category: string, type: string): string {
+  if (type === "SLA_BREACH" || category.startsWith("SLA_")) {
+    const mins = parseInt(category.replace(/^SLA_/, ""), 10);
+    if (isNaN(mins) || mins === 0) return "Término do prazo limite";
+    if (mins >= 60 && mins % 60 === 0) {
+      const h = mins / 60;
+      return `Atraso de ${h} ${h === 1 ? "hora" : "horas"}`;
+    }
+    if (mins >= 60) {
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      return `Atraso de ${h}h ${m}min`;
+    }
+    return `Atraso de ${mins} minutos`;
+  }
+  const labels: Record<string, string> = {
+    MATERIAL_FALTANTE: "Falta de materiais / insumos",
+    EQUIPAMENTO_QUEBRADO: "Equipamento com defeito",
+    ACESSO_BLOQUEADO: "Local inacessível / trancado",
+    OUTROS: "Impedimento operacional",
+  };
+  return labels[category] || category;
+}
+
+function formatSeverity(severity: string): { label: string; badgeClass: string } {
+  switch (severity) {
+    case "CRITICAL":
+      return { label: "Crítica", badgeClass: "bg-red-100 text-red-800 border-red-200" };
+    case "HIGH":
+      return { label: "Alta", badgeClass: "bg-rose-100 text-rose-800 border-rose-200" };
+    case "MEDIUM":
+      return { label: "Média", badgeClass: "bg-slate-100 text-slate-800 border-slate-300" };
+    case "LOW":
+      return { label: "Baixa", badgeClass: "bg-slate-100 text-slate-700 border-slate-200" };
+    default:
+      return { label: severity, badgeClass: "bg-slate-100 text-slate-700 border-slate-200" };
+  }
+}
+
+function cleanReason(reason: string): string {
+  return reason
+    .replace(/O prazo de SLA foi excedido\.?/gi, "O prazo de execução foi excedido.")
+    .replace(/SLA excedido há/gi, "Prazo limite excedido há")
+    .replace(/SLA excedido/gi, "Prazo limite excedido")
+    .replace(/\bSLA\b/g, "prazo limite");
 }
 
 export function ManagementTaskDrawer({
@@ -128,6 +207,109 @@ export function ManagementTaskDrawer({
     decision: "APPROVED" | "REJECTED";
   } | null>(null);
   const [approvalNote, setApprovalNote] = useState("");
+
+  // Reatribuição e Renovação de Prazo
+  const [showReassignModal, setShowReassignModal] = useState(false);
+  const [reassignMemberId, setReassignMemberId] = useState("");
+  const [reassignDeadlineType, setReassignDeadlineType] = useState<"15" | "30" | "60" | "120" | "eod" | "custom">("60");
+  const [reassignCustomDate, setReassignCustomDate] = useState("");
+  const [reassignReason, setReassignReason] = useState("");
+  const [eligibleMembers, setEligibleMembers] = useState<
+    Array<{ id: string; name: string; role: string; availability: string }>
+  >([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [drawerOccurrencesOpen, setDrawerOccurrencesOpen] = useState(false);
+
+  function getDeadlinePreview(type: string, customDate: string) {
+    const now = new Date();
+    let target: Date;
+    if (type === "custom") {
+      if (!customDate) return "Selecione uma data e horário";
+      target = new Date(customDate);
+      if (isNaN(target.getTime())) return "Data inválida";
+    } else if (type === "eod") {
+      target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 18, 0, 0, 0);
+      if (target <= now) {
+        target.setHours(23, 59, 0, 0);
+      }
+    } else {
+      target = new Date(now.getTime() + Number(type) * 60000);
+    }
+    const diffMinutes = Math.round((target.getTime() - now.getTime()) / 60000);
+    const isToday = target.toDateString() === now.toDateString();
+    const timeStr = target.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    const dateStr = target.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+    if (diffMinutes <= 0) {
+      return "Prazo no passado (escolha um horário futuro)";
+    }
+    return `${isToday ? "Hoje" : dateStr} às ${timeStr} (daqui a ${diffMinutes} min)`;
+  }
+
+  async function handleOpenReassignModal() {
+    if (!task) return;
+    const current = task.assignments.find((a) => a.type === "PRIMARY")?.memberId || "";
+    setReassignMemberId(current);
+    setReassignDeadlineType("60");
+    setReassignReason("");
+    setReassignCustomDate("");
+    setShowReassignModal(true);
+
+    setLoadingMembers(true);
+    try {
+      const res = await getEligibleMembersForTaskAction(task.id);
+      if (res.success && Array.isArray(res.data)) {
+        setEligibleMembers(res.data);
+        if (!current && res.data.length > 0) {
+          setReassignMemberId(res.data[0].id);
+        }
+      }
+    } catch {
+      // fallback
+    } finally {
+      setLoadingMembers(false);
+    }
+  }
+
+  async function handleConfirmReassign() {
+    if (!task || !reassignMemberId) return;
+
+    let deadlineMinutes: number | undefined;
+    let customDeadlineAt: string | undefined;
+
+    if (reassignDeadlineType === "custom") {
+      if (!reassignCustomDate) {
+        toast.add({
+          title: "Data inválida",
+          description: "Selecione a data e hora do novo prazo.",
+          type: "error",
+        });
+        return;
+      }
+      customDeadlineAt = new Date(reassignCustomDate).toISOString();
+    } else if (reassignDeadlineType === "eod") {
+      const now = new Date();
+      const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 18, 0, 0, 0);
+      if (target <= now) {
+        target.setHours(23, 59, 0, 0);
+      }
+      deadlineMinutes = Math.max(15, Math.round((target.getTime() - now.getTime()) / 60000));
+    } else {
+      deadlineMinutes = Number(reassignDeadlineType);
+    }
+
+    await runAction(
+      () =>
+        reassignTaskAction({
+          taskId: task.id,
+          memberId: reassignMemberId,
+          deadlineMinutes,
+          customDeadlineAt,
+          reason: reassignReason.trim() || undefined,
+        }),
+      "Tarefa reatribuída e prazo renovado com sucesso!"
+    );
+    setShowReassignModal(false);
+  }
 
   const loadTask = useCallback(async (id: string) => {
     setLoading(true);
@@ -276,13 +458,19 @@ export function ManagementTaskDrawer({
                 <Skeleton className="h-4 w-1/2" />
               ) : task ? (
                 <>
-                  <div className="w-full flex gap-1 items-center">
-                    <StatusBadge status={task.status} size="sm" className="flex-1!" />
-                    <PriorityBadge priority={task.priority} size="sm" className="max-w-fit! flex-1!" />
+                  <div className="w-full flex gap-1 items-center flex-wrap">
+                    <StatusBadge status={task.status} size="sm" className="flex-1! max-w-fit! px-5" />
+                    <PriorityBadge priority={task.priority} size="sm" className="max-w-fit! flex-1! px-5!" />
+                    {task.taskType === "FORM" && (
+                      <Badge className="text-[10px] max-w-fit px-3! flex-none truncate font-semibold bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800 py-0.5 rounded-md flex items-center! gap-1">
+                        <ClipboardList className="size-3" />
+                        <p className="text-xs">Tarefa com Perguntas</p>
+                      </Badge>
+                    )}
                     {task.slaExceeded && (
-                      <Badge className="text-[10px] flex-1! truncate font-semibold text-red-700 bg-red-50 border-red-200 px-1.5 py-0.5 rounded-md flex items-center! gap-1">
-                        <AlertTriangle className="size-2" />
-                        SLA
+                      <Badge className="text-[10px] max-w-fit px-5! flex-1! truncate font-semibold text-red-700 bg-red-50 border-red-200 py-0.5 rounded-md flex items-center! gap-1">
+                        <AlertTriangle className="size-1.5" />
+                        <p className="text-xs">Atrasada</p>
                       </Badge>
                     )}
                   </div>
@@ -319,6 +507,28 @@ export function ManagementTaskDrawer({
               </div>
             ) : task ? (
               <>
+                {!["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status) && (task.status === "BLOCKED" || task.slaExceeded) && (
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 flex items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="size-4 text-slate-600 dark:text-slate-400 shrink-0" />
+                      <span>
+                        {task.status === "BLOCKED"
+                          ? "Tarefa bloqueada para conclusão. Reatribua ou renove o prazo para liberá-la."
+                          : "Prazo ou tolerância esgotados. Renove o prazo para que o colaborador possa concluir."}
+                      </span>
+                    </div>
+                    {userRole !== "EMPLOYEE" && (
+                      <Button
+                        size="sm"
+                        className="h-7 text-xs bg-slate-900 hover:bg-slate-800 text-white shrink-0 font-medium"
+                        onClick={handleOpenReassignModal}
+                      >
+                        Destravar
+                      </Button>
+                    )}
+                  </div>
+                )}
+
                 <Card className="shrink-0 rounded-xl p-0 border border-(--border-subtle) bg-surface shadow-none overflow-hidden">
                   <div className="px-4 py-3 bg-slate-50/80 dark:bg-muted/30 border-b border-(--border-subtle) flex items-center gap-2">
                     <ListTodo className="size-4 text-brand-900 dark:text-primary" />
@@ -340,15 +550,28 @@ export function ManagementTaskDrawer({
                           {task.teamName || "—"}
                         </span>
                       </div>
-                      <div>
-                        <span className="text-[10px] uppercase tracking-wide font-semibold text-(--text-secondary) block mb-0.5">Responsável</span>
-                        <span className="font-medium">
-                          {primaryAssignee?.memberName || <span className="text-amber-700">Sem responsável</span>}
-                        </span>
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <span className="text-[10px] uppercase tracking-wide font-semibold text-(--text-secondary) block mb-0.5">Responsável</span>
+                          <span className="font-medium">
+                            {primaryAssignee?.memberName || <span className="text-amber-700">Sem responsável</span>}
+                          </span>
+                        </div>
+                        {userRole !== "EMPLOYEE" && !["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status) && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-6 text-[11px] px-2 font-medium border-brand-200 text-brand-900 hover:bg-brand-50"
+                            onClick={handleOpenReassignModal}
+                          >
+                            Alterar
+                          </Button>
+                        )}
                       </div>
                       <div>
                         <span className="text-[10px] uppercase tracking-wide font-semibold text-(--text-secondary) block mb-0.5">Origem</span>
-                        <span className="font-medium">{task.origin === "PROCESS" ? "Processo" : "Avulsa"}</span>
+                        <span className="font-medium">{task.taskType === "FORM" ? "Tarefa com Perguntas" : task.origin === "PROCESS" ? "Processo" : "Avulsa"}</span>
                       </div>
                       {task.startedAt && (
                         <div>
@@ -368,12 +591,7 @@ export function ManagementTaskDrawer({
                           <span className="font-medium">{fmtDuration(task.actualDuration)}</span>
                         </div>
                       )}
-                      {task.estimatedDuration !== null && (
-                        <div>
-                          <span className="text-[10px] uppercase tracking-wide font-semibold text-(--text-secondary) block mb-0.5">Estimativa</span>
-                          <span className="font-medium">{fmtDuration(task.estimatedDuration)}</span>
-                        </div>
-                      )}
+
                     </div>
 
                     {task.description && (
@@ -383,14 +601,136 @@ export function ManagementTaskDrawer({
                       </div>
                     )}
 
-                    {task.instructions && (
+                    {task.taskType === "FORM" && Array.isArray(task.formFields) ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-xs block text-(--text-primary)">
+                            Perguntas e Respostas:
+                          </span>
+                          <span className="text-[11px] text-muted-foreground font-medium">
+                            {task.formFields.length} {task.formFields.length === 1 ? "pergunta" : "perguntas"}
+                          </span>
+                        </div>
+                        <div className="space-y-2">
+                          {task.formFields.map((field: any, idx: number) => {
+                            const answer = task.formAnswers?.[field.id];
+                            const isAnswered = answer !== undefined && answer !== null && answer !== "";
+                            return (
+                              <div key={field.id} className="p-3 bg-slate-50/70 dark:bg-muted/15 border border-(--border-subtle) rounded-lg flex flex-col gap-2">
+                                <div className="flex items-start justify-between gap-2">
+                                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-snug">
+                                    {idx + 1}. {field.question || field.label || "Pergunta sem título"}{" "}
+                                    {field.required && <span className="text-red-500 font-bold">*</span>}
+                                  </span>
+                                  <Badge variant="outline" className="text-[10px] font-medium shrink-0 px-1.5 py-0">
+                                    {field.type === "SHORT_TEXT" && "Texto Curto"}
+                                    {field.type === "LONG_TEXT" && "Texto Longo"}
+                                    {field.type === "RATING" && "Avaliação"}
+                                    {field.type === "BOOLEAN" && "Sim / Não"}
+                                    {field.type === "PHOTO" && "Foto"}
+                                    {field.type === "VIDEO" && "Vídeo"}
+                                    {field.type === "FILE" && "Arquivos"}
+                                    {field.type === "NUMBER" && "Número"}
+                                    {(!field.type || !["SHORT_TEXT", "LONG_TEXT", "RATING", "BOOLEAN", "PHOTO", "VIDEO", "FILE", "NUMBER"].includes(field.type)) && (field.type || "Texto")}
+                                  </Badge>
+                                </div>
+                                <div className="text-xs text-slate-900 dark:text-slate-100 font-medium bg-white dark:bg-slate-900 p-2.5 rounded-md border border-slate-200 dark:border-slate-800">
+                                  {!isAnswered ? (
+                                    <span className="text-slate-400 dark:text-slate-500 italic text-[11px] flex items-center gap-1.5">
+                                      <Clock className="size-3" />
+                                      Aguardando resposta do colaborador
+                                    </span>
+                                  ) : field.type === "BOOLEAN" ? (
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                      answer === true || answer === "true"
+                                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
+                                        : "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300"
+                                    }`}>
+                                      {answer === true || answer === "true" ? "✓ Sim" : "✕ Não"}
+                                    </span>
+                                  ) : field.type === "RATING" ? (
+                                    <div className="flex items-center gap-2">
+                                      <div className="flex gap-1 text-amber-500 text-sm">
+                                        {Array.from({ length: 5 }).map((_, i) => (
+                                          <span key={i}>{i < Number(answer) ? "★" : "☆"}</span>
+                                        ))}
+                                      </div>
+                                      <span className="text-[11px] text-muted-foreground font-medium">({answer} de 5)</span>
+                                    </div>
+                                  ) : field.type === "PHOTO" ? (
+                                    <div className="flex flex-col gap-1.5">
+                                      <div className="flex items-center gap-2 text-brand-900 dark:text-primary">
+                                        <Camera className="size-3.5 shrink-0" />
+                                        <span className="truncate">{typeof answer === "object" ? answer.fileName : String(answer)}</span>
+                                      </div>
+                                      {typeof answer === "object" && answer.storageKey && (
+                                        <a
+                                          href={`/api/tasks/${task.id}/form-file/${answer.storageKey}`}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-brand-900 dark:text-brand-300 hover:underline w-fit"
+                                        >
+                                          <ExternalLink className="size-3" />
+                                          <span>Visualizar foto</span>
+                                        </a>
+                                      )}
+                                    </div>
+                                  ) : field.type === "VIDEO" ? (
+                                    <div className="flex flex-col gap-1.5">
+                                      <div className="flex items-center gap-2 text-brand-900 dark:text-primary">
+                                        <Video className="size-3.5 shrink-0" />
+                                        <span className="truncate">{typeof answer === "object" ? answer.fileName : String(answer)}</span>
+                                      </div>
+                                      {typeof answer === "object" && answer.storageKey && (
+                                        <a
+                                          href={`/api/tasks/${task.id}/form-file/${answer.storageKey}`}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-brand-900 dark:text-brand-300 hover:underline w-fit"
+                                        >
+                                          <ExternalLink className="size-3" />
+                                          <span>Assistir / Baixar vídeo</span>
+                                        </a>
+                                      )}
+                                    </div>
+                                  ) : field.type === "FILE" ? (
+                                    <div className="flex flex-col gap-1.5">
+                                      <div className="flex items-center gap-2 text-brand-900 dark:text-primary">
+                                        <Paperclip className="size-3.5 shrink-0" />
+                                        <span className="truncate">{typeof answer === "object" ? answer.fileName : String(answer)}</span>
+                                        {typeof answer === "object" && answer.fileSize && (
+                                          <span className="text-[10px] text-muted-foreground">({Math.round(answer.fileSize / 1024)} KB)</span>
+                                        )}
+                                      </div>
+                                      {typeof answer === "object" && answer.storageKey && (
+                                        <a
+                                          href={`/api/tasks/${task.id}/form-file/${answer.storageKey}`}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-brand-900 dark:text-brand-300 hover:underline w-fit"
+                                        >
+                                          <Download className="size-3" />
+                                          <span>Baixar anexo</span>
+                                        </a>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="whitespace-pre-wrap">{String(answer)}</span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : task.instructions ? (
                       <div className="space-y-1">
                         <span className="font-semibold text-xs block">Instruções:</span>
                         <p className="whitespace-pre-wrap text-slate-700 dark:text-slate-300 bg-slate-50/50 dark:bg-muted/10 p-3 rounded-lg border border-(--border-subtle) text-xs">
                           {task.instructions}
                         </p>
                       </div>
-                    )}
+                    ) : null}
 
                     <Link
                       href={`/management/tasks/${task.id}`}
@@ -558,23 +898,125 @@ export function ManagementTaskDrawer({
                   </Card>
                 )}
 
-                {/* ── Ocorrências ── */}
-                {task.occurrences.length > 0 && (
-                  <Card className="shrink-0 rounded-xl border border-red-200 bg-red-50/20 shadow-none overflow-hidden">
-                    <div className="px-4 py-2.5 bg-red-50/60 border-b border-red-200 flex items-center gap-2">
-                      <AlertTriangle className="size-4 text-red-600" />
-                      <span className="font-bold text-[11px] uppercase tracking-wide text-red-900">Ocorrências</span>
-                    </div>
-                    <CardContent className="p-3.5 flex flex-col gap-2">
-                      {task.occurrences.map((occ) => (
-                        <div key={occ.id} className="p-2.5 rounded-lg bg-white dark:bg-card border border-red-200 text-xs flex flex-col gap-0.5">
-                          <span className="font-semibold text-red-800">{occ.reason}</span>
-                          <span className="text-[10px] text-muted-foreground">{fmtDate(occ.createdAt)}</span>
+                {(() => {
+                  const validOccurrences = (task.occurrences || []).filter((o) => !isPauseOccurrence(o));
+                  if (validOccurrences.length === 0) return null;
+
+                  const impediments = validOccurrences.filter((o) => o.type !== "SLA_BREACH");
+                  const slaBreaches = validOccurrences
+                    .filter((o) => o.type === "SLA_BREACH")
+                    .sort((a, b) => {
+                      const minsA = parseInt(a.category.replace(/^SLA_/, ""), 10) || 0;
+                      const minsB = parseInt(b.category.replace(/^SLA_/, ""), 10) || 0;
+                      return minsB - minsA;
+                    });
+                  const latestBreach = slaBreaches[0];
+                  const latestDelayText = latestBreach
+                    ? formatOccurrenceCategory(latestBreach.category, latestBreach.type)
+                    : null;
+                  const latestSev = latestBreach ? formatSeverity(latestBreach.severity) : null;
+
+                  return (
+                    <Card className="shrink-0 p-0 rounded-xl border border-slate-200 dark:border-slate-800 bg-surface shadow-none overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setDrawerOccurrencesOpen((prev) => !prev)}
+                        className="w-full px-4 py-2.5 bg-slate-50/80 dark:bg-slate-900/40 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 text-left hover:bg-slate-100/60 dark:hover:bg-slate-800/40 transition-colors cursor-pointer select-none"
+                      >
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="size-4 text-slate-600 dark:text-slate-400" />
+                          <span className="font-bold text-[11px] uppercase tracking-wide text-slate-900 dark:text-slate-200">
+                            Ocorrências e Alertas
+                          </span>
+                          <Badge variant="outline" className="text-[10px] font-semibold px-1.5 py-0 border-slate-300 text-slate-700 bg-slate-100 dark:bg-slate-800 dark:text-slate-300">
+                            {validOccurrences.length} {validOccurrences.length === 1 ? "registro" : "registros"}
+                          </Badge>
                         </div>
-                      ))}
-                    </CardContent>
-                  </Card>
-                )}
+                        <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                          <span>{drawerOccurrencesOpen ? "Recolher" : "Expandir"}</span>
+                          {drawerOccurrencesOpen ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                        </div>
+                      </button>
+
+                      {drawerOccurrencesOpen && (
+                        <CardContent className="p-3.5 flex flex-col gap-3">
+                          {/* Impedimentos operacionais */}
+                          {impediments.length > 0 && (
+                            <div className="flex flex-col gap-2">
+                              <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">
+                                Impedimentos operacionais ({impediments.length})
+                              </span>
+                              {impediments.map((imp) => {
+                                const sev = formatSeverity(imp.severity);
+                                return (
+                                  <div
+                                    key={imp.id}
+                                    className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 text-xs flex flex-col gap-1.5"
+                                  >
+                                    <div className="flex items-center justify-between gap-1 flex-wrap">
+                                      <div className="flex items-center gap-1.5">
+                                        <Badge variant="destructive" className="text-[9px] uppercase px-1 py-0">
+                                          Impedimento
+                                        </Badge>
+                                        <span className="font-semibold text-slate-900 dark:text-slate-100 text-xs">
+                                          {formatOccurrenceCategory(imp.category, imp.type)}
+                                        </span>
+                                      </div>
+                                      <Badge className={`text-[10px] font-semibold ${sev.badgeClass}`}>
+                                        {sev.label}
+                                      </Badge>
+                                    </div>
+                                    <p className="text-slate-700 dark:text-slate-300 text-xs leading-relaxed bg-white dark:bg-slate-950 p-2 rounded border border-slate-100 dark:border-slate-800">
+                                      {imp.reason}
+                                    </p>
+                                    <span className="text-[10px] text-muted-foreground font-mono">
+                                      {fmtDate(imp.createdAt)}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* Alerta consolidado de SLA */}
+                          {latestBreach && (
+                            <div className="flex flex-col gap-1.5">
+                              <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">
+                                Alertas de Prazo & Atraso
+                              </span>
+                              <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 flex flex-col gap-1.5 text-xs">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <div className="flex items-center gap-1.5">
+                                    <Clock className="size-3.5 text-slate-600 dark:text-slate-400 shrink-0" />
+                                    <span className="font-bold text-slate-900 dark:text-slate-100">
+                                      {latestDelayText}
+                                    </span>
+                                  </div>
+                                  {latestSev && (
+                                    <Badge className={`text-[10px] font-semibold ${latestSev.badgeClass}`}>
+                                      {latestSev.label}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-slate-600 dark:text-slate-400 text-[11px]">
+                                  {cleanReason(latestBreach.reason)}
+                                </p>
+                                <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-200/60 dark:border-slate-800">
+                                  <span>Último disparo: {fmtDate(latestBreach.createdAt)}</span>
+                                  {slaBreaches.length > 1 && (
+                                    <span className="font-medium text-slate-700 dark:text-slate-300">
+                                      {slaBreaches.length} avisos acumulados
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </CardContent>
+                      )}
+                    </Card>
+                  );
+                })()}
 
                 {/* ── Histórico ── */}
                 {task.activityLogs.length > 0 && (
@@ -610,8 +1052,21 @@ export function ManagementTaskDrawer({
                 {!["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status) && (
                   <Button
                     type="button"
+                    variant="default"
+                    className="flex-1 h-10 text-xs font-semibold rounded-xl bg-brand-900 text-white hover:bg-brand-800 cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                    disabled={actionBusy}
+                    onClick={handleOpenReassignModal}
+                  >
+                    <UserCheck className="size-4" />
+                    Reatribuir / Renovar prazo
+                  </Button>
+                )}
+
+                {!["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status) && (
+                  <Button
+                    type="button"
                     variant="ghost"
-                    className="flex-1 h-10 text-xs font-semibold rounded-xl text-amber-800 hover:bg-amber-50 cursor-pointer"
+                    className="h-10 px-3 text-xs font-semibold rounded-xl text-amber-800 hover:bg-amber-50 cursor-pointer"
                     disabled={actionBusy}
                     onClick={() => { setCancelReason(""); setShowCancelDialog(true); }}
                   >
@@ -635,6 +1090,138 @@ export function ManagementTaskDrawer({
           )}
         </DrawerContent>
       </Drawer>
+
+      <Dialog open={showReassignModal} onOpenChange={setShowReassignModal}>
+        <DialogContent className="sm:max-w-lg p-7!">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="">Reatribuir tarefa & renovar prazo</span>
+            </DialogTitle>
+            <DialogDescription>
+              Selecione o colaborador responsável e defina o novo prazo para conclusão.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Responsável */}
+            <Field>
+              <FieldLabel className="text-xs font-semibold text-(--text-primary)">
+                Colaborador responsável *
+              </FieldLabel>
+              {loadingMembers ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+                  <Spinner className="size-3.5" />
+                  <span>Carregando membros da equipe...</span>
+                </div>
+              ) : (
+                <NativeSelect
+                  value={reassignMemberId}
+                  onChange={(e) => setReassignMemberId(e.target.value)}
+                  className="text-xs"
+                >
+                  <NativeSelectOption value="">Selecione um colaborador...</NativeSelectOption>
+                  {eligibleMembers.map((m) => {
+                    const isCurrent = m.id === primaryAssignee?.memberId;
+                    const availLabel =
+                      m.availability === "AVAILABLE"
+                        ? "Disponível"
+                        : m.availability === "BUSY"
+                          ? "Ocupado"
+                          : "Indisponível";
+                    return (
+                      <NativeSelectOption key={m.id} value={m.id}>
+                        {m.name} {isCurrent ? "- Responsável atual" : ""} - {availLabel}
+                      </NativeSelectOption>
+                    );
+                  })}
+                </NativeSelect>
+              )}
+            </Field>
+
+            {/* Novo Prazo */}
+            <div className="space-y-2">
+              <FieldLabel className="text-xs font-semibold text-(--text-primary) block">
+                Novo prazo para conclusão *
+              </FieldLabel>
+              <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
+                {[
+                  { id: "15", label: "+15 min" },
+                  { id: "30", label: "+30 min" },
+                  { id: "60", label: "+1 hora" },
+                  { id: "120", label: "+2 horas" },
+                  { id: "eod", label: "Fim do dia" },
+                  { id: "custom", label: "Outro" },
+                ].map((opt) => (
+                  <Button
+                    key={opt.id}
+                    type="button"
+                    variant={reassignDeadlineType === opt.id ? "default" : "outline"}
+                    className={`h-8 text-xs font-medium px-2 rounded-lg transition-all ${reassignDeadlineType === opt.id
+                      ? "bg-brand-900 text-white font-semibold shadow-xs hover:bg-brand-800"
+                      : "bg-surface hover:bg-slate-100 dark:hover:bg-muted text-(--text-secondary)"
+                      }`}
+                    onClick={() => setReassignDeadlineType(opt.id as any)}
+                  >
+                    {opt.label}
+                  </Button>
+                ))}
+              </div>
+
+              {reassignDeadlineType === "custom" && (
+                <div className="pt-2">
+                  <Input
+                    type="datetime-local"
+                    value={reassignCustomDate}
+                    onChange={(e) => setReassignCustomDate(e.target.value)}
+                    className="text-xs h-9"
+                  />
+                </div>
+              )}
+
+              {/* Preview do novo prazo */}
+              <div className="p-2.5 rounded-lg bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 flex items-center gap-2 text-xs text-emerald-900 dark:text-emerald-300">
+                <Clock className="size-4 shrink-0 text-emerald-700" />
+                <span>
+                  <strong>Novo prazo:</strong> {getDeadlinePreview(reassignDeadlineType, reassignCustomDate)}
+                </span>
+              </div>
+            </div>
+
+            {/* Justificativa / Observação */}
+            <Field>
+              <FieldLabel className="text-xs font-semibold text-(--text-primary)">
+                Observação / Motivo (opcional)
+              </FieldLabel>
+              <Textarea
+                rows={2}
+                value={reassignReason}
+                onChange={(e) => setReassignReason(e.target.value)}
+                placeholder="Ex: Tarefa atrasada por falta de material; novo prazo acordado com o operador..."
+                className="text-sm! resize-none"
+              />
+            </Field>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowReassignModal(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirmReassign}
+              disabled={actionBusy || !reassignMemberId}
+              className="bg-brand-900 hover:bg-brand-800 text-white font-semibold"
+            >
+              {actionBusy && <Spinner data-icon="inline-start" />}
+              <span>Confirmar e renovar prazo</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Cancelar */}
       <Dialog open={showCancelDialog} onOpenChange={(o) => { if (!o) setShowCancelDialog(false); }}>

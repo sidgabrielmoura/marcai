@@ -52,7 +52,7 @@ export function StatusBadge({
       icon: Clock,
     },
     AVAILABLE: {
-      label: "Aberta",
+      label: "Disponível",
       bg: "bg-[var(--sage-400)]/30",
       text: "text-[var(--brand-900)]",
       border: "border-[var(--sage-400)]/40",

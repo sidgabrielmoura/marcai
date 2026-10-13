@@ -4,7 +4,6 @@ import { generateRoutineExecution } from "./generate-execution";
 import { notifyManagers } from "@/application/tasks/notify-managers";
 import { dispatchNotificationAsync } from "@/infrastructure/notifications/notification-service";
 import { synchronizeExecution } from "@/application/tasks/synchronize-execution";
-import { executeRetentionPurge } from "@/application/jobs/retention-purge";
 import { sendScheduledReportEmail } from "@/infrastructure/email";
 // Called by a protected scheduler, never as a side effect of viewing a page.
 export async function operationalTick(now = new Date()) {
@@ -44,9 +43,32 @@ export async function operationalTick(now = new Date()) {
                         return false;
                     const tasks = await tx.task.findMany({ where: { executionId: execution.id, organizationId: execution.organizationId, deletedAt: null, status: "AVAILABLE" }, include: { assignments: { where: { removedAt: null, type: "PRIMARY" } } } });
                     for (const task of tasks) {
-                        await tx.task.update({ where: { id: task.id }, data: { status: "IN_PROGRESS", startedAt: now, ...(task.slaDurationMinutes && !task.slaDueAt && task.slaStartEvent === "ON_AVAILABLE" ? { slaDueAt: new Date(execution.availableAt.getTime() + task.slaDurationMinutes * 60000) } : {}) } });
-                        for (const assignment of task.assignments) {
-                            await tx.taskExecutionSession.create({ data: { taskId: task.id, memberId: assignment.memberId, startedAt: now } });
+                        const hasAssignee = task.assignments.length > 0;
+                        const effectiveBase = Math.max(execution.availableAt.getTime(), now.getTime());
+                        const freshSla = undefined;
+                        const freshDeadline = undefined;
+
+                        if (hasAssignee) {
+                            await tx.task.update({
+                                where: { id: task.id },
+                                data: {
+                                    status: "IN_PROGRESS",
+                                    startedAt: now,
+                                    ...(freshDeadline ? { slaDueAt: freshDeadline } : {}),
+                                    ...(freshDeadline ? { deadlineAt: freshDeadline } : {}),
+                                },
+                            });
+                            for (const assignment of task.assignments) {
+                                await tx.taskExecutionSession.create({ data: { taskId: task.id, memberId: assignment.memberId, startedAt: now } });
+                            }
+                        } else if (freshSla || freshDeadline) {
+                            await tx.task.update({
+                                where: { id: task.id },
+                                data: {
+                                    ...(freshDeadline ? { slaDueAt: freshDeadline } : {}),
+                                    ...(freshDeadline ? { deadlineAt: freshDeadline } : {}),
+                                },
+                            });
                         }
                     }
                     await tx.activityLog.create({ data: { organizationId: execution.organizationId, action: "EXECUTION_STARTED", entityType: "EXECUTION", entityId: execution.id } });
@@ -104,37 +126,115 @@ export async function operationalTick(now = new Date()) {
                     const task = await tx.task.findFirst({ where: { id: candidate.id, organizationId: candidate.organizationId, deletedAt: null, slaDueAt: { lt: now }, status: { in: ["AVAILABLE", "IN_PROGRESS", "PAUSED", "SUBMITTED", "NEEDS_CORRECTION"] }, organization: { status: "ACTIVE" } }, include: { organization: { select: { settings: true } } } });
                     if (!task?.slaDueAt)
                         return 0;
-                    const settings = task.organization.settings as {
+                    const refDate = task.slaDueAt!;
+                    const endOfDay = new Date(
+                        refDate.getFullYear(),
+                        refDate.getMonth(),
+                        refDate.getDate(),
+                        23,
+                        59,
+                        59,
+                        999
+                    );
+                    const effectiveNow = now > endOfDay ? endOfDay : now;
+                    const minutes = Math.max(0, (effectiveNow.getTime() - task.slaDueAt!.getTime()) / 60000);
+                    const settings = task.organization?.settings as {
                         delayMilestones?: number[];
                     } | null;
-                    const minutes = (now.getTime() - task.slaDueAt!.getTime()) / 60000;
-                    for (const milestone of [0, ...(settings?.delayMilestones ?? [15, 30, 60, 120])].filter(v => Number.isFinite(v) && v >= 0 && v <= minutes)) {
+                    const allMilestones = [0, ...(settings?.delayMilestones ?? [15, 30, 60, 120])]
+                        .filter((v) => Number.isFinite(v) && v >= 0)
+                        .sort((a, b) => a - b);
+
+                    const existingBreaches = await tx.taskOccurrence.findMany({
+                        where: { taskId: task.id, type: "SLA_BREACH" },
+                        select: { category: true },
+                    });
+
+                    const maxProcessedMilestone = existingBreaches.reduce((max, occ) => {
+                        if (occ.category.startsWith("SLA_")) {
+                            const val = Number(occ.category.slice(4));
+                            return Number.isFinite(val) ? Math.max(max, val) : max;
+                        }
+                        return max;
+                    }, -1);
+
+                    const candidateMilestones = allMilestones.filter(
+                        (m) => m > maxProcessedMilestone && m <= minutes
+                    );
+
+                    if (candidateMilestones.length > 0) {
+                        // Seleciona unicamente o marco mais recente/crítico alcançado, evitando tempestade de notificações
+                        const milestone = Math.max(...candidateMilestones);
                         const category = "SLA_" + milestone;
-                        if (await tx.taskOccurrence.findFirst({ where: { taskId: task.id, type: "SLA_BREACH", category } }))
-                            continue;
-                        await tx.taskOccurrence.create({ data: { taskId: task.id, type: "SLA_BREACH", category, severity: task.criticality, reason: milestone ? "SLA excedido há " + milestone + " minutos." : "O prazo de SLA foi excedido." } });
-                        await tx.task.update({ where: { id: task.id }, data: { slaExceededAt: task.slaDueAt } });
-                        await notifyManagers(tx, task, "Prazo de SLA excedido", task.title);
-                        const assignments = await tx.taskAssignment.findMany({ where: { taskId: task.id, removedAt: null }, include: { member: { select: { userId: true } } } });
+                        const reason = milestone
+                            ? `Prazo limite excedido há ${milestone} minutos.`
+                            : "O prazo limite foi excedido.";
+                        const notifTitle = milestone
+                            ? `Prazo excedido há ${milestone} minutos`
+                            : "Prazo limite excedido";
+
+                        await tx.taskOccurrence.create({
+                            data: {
+                                taskId: task.id,
+                                type: "SLA_BREACH",
+                                category,
+                                severity: task.criticality,
+                                reason,
+                            },
+                        });
+
+                        await tx.task.update({
+                            where: { id: task.id },
+                            data: { slaExceededAt: task.slaDueAt },
+                        });
+
+                        await notifyManagers(tx, task, notifTitle, `${task.title} (${reason})`);
+
+                        const assignments = await tx.taskAssignment.findMany({
+                            where: { taskId: task.id, removedAt: null },
+                            include: { member: { select: { userId: true } } },
+                        });
+
                         const assigneeUserIds: string[] = [];
                         for (const a of assignments) {
-                            await tx.notification.create({ data: { organizationId: task.organizationId, userId: a.member.userId, type: "TASK_OVERDUE", priority: task.priority, title: "Prazo de SLA excedido", message: task.title, data: { taskId: task.id } } });
+                            await tx.notification.create({
+                                data: {
+                                    organizationId: task.organizationId,
+                                    userId: a.member.userId,
+                                    type: "TASK_OVERDUE",
+                                    priority: task.priority,
+                                    title: notifTitle,
+                                    message: `${task.title} (${reason})`,
+                                    data: { taskId: task.id },
+                                },
+                            });
                             assigneeUserIds.push(a.member.userId);
                         }
+
                         if (assigneeUserIds.length > 0) {
                             void dispatchNotificationAsync({
                                 organizationId: task.organizationId,
                                 userIds: assigneeUserIds,
                                 type: "TASK_OVERDUE",
                                 priority: task.priority,
-                                title: "Prazo de SLA excedido",
-                                message: task.title,
+                                title: notifTitle,
+                                message: `${task.title} (${reason})`,
                                 data: { taskId: task.id },
                                 clickAction: `/tasks/${task.id}`,
                                 forcePush: true,
                             });
                         }
-                        await tx.activityLog.create({ data: { organizationId: task.organizationId, action: "TASK_OVERDUE", entityType: "TASK", entityId: task.id, metadata: { milestone } } });
+
+                        await tx.activityLog.create({
+                            data: {
+                                organizationId: task.organizationId,
+                                action: "TASK_OVERDUE",
+                                entityType: "TASK",
+                                entityId: task.id,
+                                metadata: { milestone },
+                            },
+                        });
+
                         count++;
                     }
                     return count;
@@ -252,72 +352,7 @@ export async function operationalTick(now = new Date()) {
         expiringCursor = expiringSoon[expiringSoon.length - 1].id;
     }
 
-    // 4. Detecção de pausas prolongadas com emissão de PAUSE_ALERT (Item 20)
-    let pauseCursor = "";
-    while (true) {
-        const pausedTasks = await prisma.task.findMany({
-            where: {
-                id: { gt: pauseCursor },
-                status: "PAUSED",
-                deletedAt: null,
-                organization: { status: "ACTIVE" },
-            },
-            include: {
-                sessions: {
-                    include: {
-                        pauses: {
-                            where: { endedAt: null },
-                            orderBy: { startedAt: "desc" },
-                            take: 1,
-                        },
-                    },
-                },
-                organization: { select: { settings: true } },
-            },
-            take: 200,
-            orderBy: { id: "asc" },
-        });
 
-        if (!pausedTasks.length) break;
-
-        for (const task of pausedTasks) {
-            try {
-                const activePause = task.sessions.flatMap(s => s.pauses).find(p => !p.endedAt);
-                if (!activePause) continue;
-
-                const settings = (task.organization.settings as Record<string, any>) || {};
-                const maxPause = settings.maxPauseDurationMinutes ?? 30;
-                const minutesPaused = Math.floor((now.getTime() - activePause.startedAt.getTime()) / 60000);
-
-                if (minutesPaused >= maxPause) {
-                    await prisma.$transaction(async (tx) => {
-                        await lockTask(tx, task.organizationId, task.id);
-                        const existing = await tx.taskOccurrence.findFirst({
-                            where: { taskId: task.id, type: "PAUSE_ALERT", category: "LONG_PAUSE" },
-                        });
-                        if (existing) return;
-
-                        await tx.taskOccurrence.create({
-                            data: {
-                                taskId: task.id,
-                                type: "PAUSE_ALERT",
-                                category: "LONG_PAUSE",
-                                severity: "MEDIUM",
-                                reason: `A tarefa está pausada há ${minutesPaused} minutos (limite: ${maxPause} min).`,
-                            },
-                        });
-
-                        await notifyManagers(tx, task, "Pausa prolongada", `A tarefa “${task.title}” está pausada há ${minutesPaused} minutos.`);
-                        alerts++;
-                    });
-                }
-            } catch {
-                failures.push({ kind: "pause", id: task.id });
-            }
-        }
-
-        pauseCursor = pausedTasks[pausedTasks.length - 1].id;
-    }
 
     // 5. Alerta de tarefas sem responsável aguardando além do tempo limite (Item 17)
     let unassignedCursor = "";
@@ -551,45 +586,8 @@ export async function operationalTick(now = new Date()) {
         failures.push({ kind: "scheduled_reports_query", id: "query" });
     }
 
-    // 8. Expurgo automático diário de retenção e lixeira (uma vez a cada 24h por organização ativa)
-    try {
-        const activeOrgs = await prisma.organization.findMany({
-            where: { status: "ACTIVE" },
-            select: { id: true },
-        });
-
-        const oneDayAgo = new Date(now.getTime() - 24 * 3600 * 1000);
-
-        for (const org of activeOrgs) {
-            try {
-                const recentPurge = await prisma.activityLog.findFirst({
-                    where: {
-                        organizationId: org.id,
-                        action: "RETENTION_PURGE_EXECUTED",
-                        createdAt: { gte: oneDayAgo },
-                    },
-                });
-
-                if (!recentPurge) {
-                    const purgeRes = await executeRetentionPurge(org.id, now);
-                    await prisma.activityLog.create({
-                        data: {
-                            organizationId: org.id,
-                            action: "RETENTION_PURGE_EXECUTED",
-                            entityType: "ORGANIZATION",
-                            entityId: org.id,
-                            metadata: purgeRes as any,
-                        },
-                    });
-                    purgedOrgsCount++;
-                }
-            } catch {
-                failures.push({ kind: "retention_purge", id: org.id });
-            }
-        }
-    } catch {
-        failures.push({ kind: "retention_purge_query", id: "query" });
-    }
+    // O expurgo de retenção e lixeira agora é gerenciado por rotas dedicadas de cron-job:
+    // /api/jobs/retention/history (de 6 em 6 meses) e /api/jobs/retention/trash (mensal).
 
     return {
         generated,

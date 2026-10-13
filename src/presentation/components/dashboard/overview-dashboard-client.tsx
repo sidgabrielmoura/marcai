@@ -8,6 +8,9 @@ import {
   Clock,
   ChevronLeft,
   ChevronRight,
+  AlertTriangle,
+  CheckCircle2,
+  ArrowRight,
 } from "lucide-react";
 import { PageHeader, EmptyState, StatusBadge, PriorityBadge } from "../shared";
 import { Button } from "@/components/ui/button";
@@ -60,7 +63,6 @@ export interface OverviewTask {
   isPaused: boolean;
   pendingApproval: boolean;
   assigneeName: string;
-  estimatedDuration: number | null;
   actualDuration: number | null;
 }
 
@@ -68,6 +70,21 @@ interface Options {
   locations: { id: string; name: string }[];
   teams: { id: string; name: string }[];
   processes: { id: string; name: string }[];
+}
+
+function formatMinutesHuman(totalMinutes: number): string {
+  if (!totalMinutes || totalMinutes <= 0) return "0 min";
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const mins = totalMinutes % 60;
+
+  if (days > 0) {
+    if (hours > 0) return `${days}d ${hours}h`;
+    return `${days}d`;
+  }
+  if (mins > 0) return `${hours}h ${mins}m`;
+  return `${hours}h`;
 }
 
 export function OverviewDashboardClient({
@@ -90,10 +107,6 @@ export function OverviewDashboardClient({
   const [assignee, setAssignee] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [priorityFilter, setPriorityFilter] = useState("ALL");
-
-  // Paginação da tabela detalhada de tarefas
-  const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
 
   // Modal de Agendamento de Relatórios
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -130,11 +143,6 @@ export function OverviewDashboardClient({
     });
   }, [tasks, period, location, team, process, assignee, statusFilter, priorityFilter]);
 
-  // Reset page when filters change
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const safePage = Math.min(currentPage, totalPages);
-  const paginatedTasks = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
-
   const completed = filtered.filter((t) => t.status === "COMPLETED");
   const pending = filtered.filter(
     (t) => !["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(t.status),
@@ -144,23 +152,23 @@ export function OverviewDashboardClient({
   const rework = filtered.filter((t) => t.status === "NEEDS_CORRECTION");
   const cancelled = filtered.filter((t) => t.status === "CANCELLED");
 
+  const bottlenecks = useMemo(() => {
+    return filtered.filter(
+      (t) =>
+        t.slaExceeded ||
+        t.pendingApproval ||
+        t.status === "NOT_COMPLETED" ||
+        t.status === "NEEDS_CORRECTION",
+    );
+  }, [filtered]);
+
   const averageDelay = breached.length
     ? Math.round(
       breached.reduce((n, t) => n + t.delayMinutes, 0) / breached.length,
     )
     : 0;
 
-  const durations = completed.filter(
-    (t) => t.actualDuration !== null && t.estimatedDuration !== null,
-  );
-  const deviation = durations.length
-    ? Math.round(
-      durations.reduce(
-        (n, t) => n + t.actualDuration! / 60 - t.estimatedDuration!,
-        0,
-      ) / durations.length,
-    )
-    : null;
+
 
   const activity = useMemo(() => {
     const days = Number(period);
@@ -227,7 +235,7 @@ export function OverviewDashboardClient({
       "Prazo",
       "Concluída em",
       "Atraso (min)",
-      "SLA Excedido",
+      "Prazo Excedido",
     ];
 
     const lines = filtered.map((t) => [
@@ -254,7 +262,7 @@ export function OverviewDashboardClient({
       [`# Período: Últimos ${period} dias`],
       [`# Total de Tarefas: ${filtered.length}`],
       [`# Concluídas: ${completed.length}`],
-      [`# SLA Excedido: ${breached.length}`],
+      [`# Prazo Excedido: ${breached.length}`],
       [`# Média de Atraso: ${averageDelay} min`],
       [""],
     ];
@@ -372,7 +380,6 @@ export function OverviewDashboardClient({
                 value={period}
                 onChange={(e) => {
                   setPeriod(e.target.value);
-                  setCurrentPage(1);
                 }}
               >
                 <NativeSelectOption value="7">Últimos 7 dias</NativeSelectOption>
@@ -389,7 +396,6 @@ export function OverviewDashboardClient({
                 value={location}
                 onChange={(e) => {
                   setLocation(e.target.value);
-                  setCurrentPage(1);
                 }}
               >
                 <NativeSelectOption value="ALL">Todas as unidades</NativeSelectOption>
@@ -409,7 +415,6 @@ export function OverviewDashboardClient({
                 value={team}
                 onChange={(e) => {
                   setTeam(e.target.value);
-                  setCurrentPage(1);
                 }}
               >
                 <NativeSelectOption value="ALL">Todas as equipes</NativeSelectOption>
@@ -429,7 +434,6 @@ export function OverviewDashboardClient({
                 value={process}
                 onChange={(e) => {
                   setProcess(e.target.value);
-                  setCurrentPage(1);
                 }}
               >
                 <NativeSelectOption value="ALL">Todos os processos</NativeSelectOption>
@@ -449,7 +453,6 @@ export function OverviewDashboardClient({
                 value={statusFilter}
                 onChange={(e) => {
                   setStatusFilter(e.target.value);
-                  setCurrentPage(1);
                 }}
               >
                 <NativeSelectOption value="ALL">Todos os status</NativeSelectOption>
@@ -471,7 +474,6 @@ export function OverviewDashboardClient({
                 value={priorityFilter}
                 onChange={(e) => {
                   setPriorityFilter(e.target.value);
-                  setCurrentPage(1);
                 }}
               >
                 <NativeSelectOption value="ALL">Todas</NativeSelectOption>
@@ -500,14 +502,14 @@ export function OverviewDashboardClient({
             note: `${pending.filter((t) => t.isOverdue).length} com prazo vencido`,
           },
           {
-            title: "SLA excedido",
+            title: "Prazo excedido",
             value: breached.length,
             note: "Entregas com atraso além do limite",
           },
           {
             title: "Média de atraso",
-            value: `${averageDelay} min`,
-            note: `${breached.length} tarefas com SLA violado`,
+            value: formatMinutesHuman(averageDelay),
+            note: `${breached.length} tarefas com prazo excedido${averageDelay >= 60 ? ` (${averageDelay} min totais)` : ""}`,
           },
         ].map((m) => (
           <Card
@@ -566,40 +568,48 @@ export function OverviewDashboardClient({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-[linear-gradient(125deg,#12472f,#248458)] text-white border-0 shadow-sm overflow-hidden">
           <CardHeader>
-            <CardTitle>Ocorrências e duração</CardTitle>
-            <CardDescription>
-              Impedimentos e cancelamentos ficam fora da média de SLA.
+            <CardTitle className="text-white">Volume por responsável</CardTitle>
+            <CardDescription className="text-emerald-100/80">
+              Distribuição de tarefas por pessoa na equipe.
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <dl className="analytics-facts">
-              {[
-                [
-                  "Não realizadas (Impedimentos)",
-                  `${impediments.length} (${filtered.length ? Math.round((impediments.length / filtered.length) * 100) : 0}%)`,
-                ],
-                ["Canceladas", cancelled.length],
-                ["Em correção", rework.length],
-                [
-                  "Aguardando aprovação",
-                  filtered.filter((t) => t.pendingApproval).length,
-                ],
-                ["Bloqueadas", filtered.filter((t) => t.status === "BLOCKED" || t.isPaused).length],
-                [
-                  "Desvio médio de duração",
-                  deviation === null
-                    ? "Sem registros"
-                    : `${deviation > 0 ? "+" : ""}${deviation} min`,
-                ],
-              ].map(([l, val]) => (
-                <div key={l}>
-                  <dt>{l}</dt>
-                  <dd>{val}</dd>
-                </div>
-              ))}
-            </dl>
+          <CardContent className="max-h-50! overflow-y-auto">
+            <Table className="rounded-2xl!">
+              <TableHeader>
+                <TableRow className="bg-transparent border-transparent! hover:bg-white/5!">
+                  <TableHead className="text-emerald-100! font-semibold bg-transparent! border-transparent!">Responsável</TableHead>
+                  <TableHead className="text-emerald-100! font-semibold bg-transparent! border-transparent!">Total</TableHead>
+                  <TableHead className="text-emerald-100! font-semibold bg-transparent! border-transparent!">Concluídas</TableHead>
+                  <TableHead className="text-emerald-100! font-semibold bg-transparent! border-transparent!">Atrasadas</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="divide-y divide-white/10">
+                {people.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center py-6 text-emerald-100/70">
+                      Nenhum responsável com tarefas no período.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  people.map((p) => (
+                    <TableRow key={p.name} className="hover:bg-white/5! border-transparent! transition-colors">
+                      <TableCell className="font-medium text-white">{p.name}</TableCell>
+                      <TableCell className="text-white">{p.total}</TableCell>
+                      <TableCell className="text-emerald-200 font-semibold">
+                        {p.done}
+                      </TableCell>
+                      <TableCell
+                        className={p.late > 0 ? "text-amber-300 font-bold" : "text-white/80"}
+                      >
+                        {p.late}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
 
@@ -622,189 +632,166 @@ export function OverviewDashboardClient({
           </CardContent>
         </Card>
 
+        {/* Ocorrências (no lugar do card de volume, sem métricas de duração) */}
         <Card>
           <CardHeader>
-            <CardTitle>Volume por responsável</CardTitle>
-            <CardDescription>Distribuição de tarefas por pessoa na equipe.</CardDescription>
+            <CardTitle>Ocorrências</CardTitle>
+            <CardDescription>
+              Impedimentos, cancelamentos e retrabalhos registrados no período.
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Responsável</TableHead>
-                  <TableHead>Total</TableHead>
-                  <TableHead>Concluídas</TableHead>
-                  <TableHead>Atrasadas</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {people.map((p) => (
-                  <TableRow key={p.name}>
-                    <TableCell className="font-medium">{p.name}</TableCell>
-                    <TableCell>{p.total}</TableCell>
-                    <TableCell className="text-emerald-700 font-semibold">
-                      {p.done}
-                    </TableCell>
-                    <TableCell
-                      className={p.late > 0 ? "text-red-600 font-bold" : ""}
-                    >
-                      {p.late}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <dl className="analytics-facts">
+              {[
+                [
+                  "Não realizadas (Impedimentos)",
+                  `${impediments.length} (${filtered.length ? Math.round((impediments.length / filtered.length) * 100) : 0}%)`,
+                ],
+                ["Canceladas", cancelled.length],
+                ["Em correção", rework.length],
+                [
+                  "Aguardando aprovação",
+                  filtered.filter((t) => t.pendingApproval).length,
+                ],
+                ["Bloqueadas", filtered.filter((t) => t.status === "BLOCKED" || t.isPaused).length],
+              ].map(([l, val]) => (
+                <div key={l}>
+                  <dt>{l}</dt>
+                  <dd>{val}</dd>
+                </div>
+              ))}
+            </dl>
           </CardContent>
         </Card>
       </div>
 
-      {/* Tabela de Detalhamento das Tarefas com Paginação */}
+      {/* Radar de Ações Imediatas & Gargalos Operacionais */}
       <Card className="bg-[var(--surface)] rounded-2xl overflow-hidden shadow-none border border-[var(--border-subtle)]">
         <CardHeader className="px-6 py-5 border-b border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <CardTitle className="text-base font-semibold text-[var(--text-primary)]">
-              Detalhamento operacional das tarefas
-            </CardTitle>
-            <CardDescription className="text-xs text-[var(--text-secondary)] mt-0.5">
-              Lista granular para auditoria e controle de prazos da operação.
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="size-4.5 text-amber-600 shrink-0" />
+              <CardTitle className="text-base font-semibold text-[var(--text-primary)]">
+                Radar de Ações Imediatas & Gargalos Operacionais
+              </CardTitle>
+            </div>
+            <CardDescription className="text-xs text-[var(--text-secondary)] mt-1">
+              Foco executivo nas tarefas que exigem intervenção de liderança (atrasos, aprovações pendentes ou impedimentos).
             </CardDescription>
           </div>
-          <div className="text-xs text-[var(--text-secondary)]">
-            Total: <strong className="font-semibold text-[var(--text-primary)]">{filtered.length}</strong> tarefas
-          </div>
+          <Button
+            nativeButton={false}
+            variant="outline"
+            size="sm"
+            render={<Link href="/management/tasks" />}
+            className="gap-1.5 text-xs h-9 shrink-0"
+          >
+            <span>Ir para Painel de Tarefas</span>
+            <ArrowRight className="size-3.5" />
+          </Button>
         </CardHeader>
 
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table className="w-full text-left">
-              <TableHeader className="bg-[var(--canvas)]/70 border-b border-[var(--border-subtle)] text-[var(--text-secondary)] text-xs font-semibold">
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="px-5 py-3.5 font-semibold text-[var(--text-primary)]">
-                    Tarefa
-                  </TableHead>
-                  <TableHead className="px-4 py-3.5 font-semibold text-[var(--text-primary)]">
-                    Local e Equipe
-                  </TableHead>
-                  <TableHead className="px-4 py-3.5 font-semibold text-[var(--text-primary)]">
-                    Responsável
-                  </TableHead>
-                  <TableHead className="px-4 py-3.5 font-semibold text-[var(--text-primary)]">
-                    Prioridade
-                  </TableHead>
-                  <TableHead className="px-4 py-3.5 font-semibold text-[var(--text-primary)]">
-                    Status
-                  </TableHead>
-                  <TableHead className="px-5 py-3.5 text-right font-semibold text-[var(--text-primary)]">
-                    Prazo
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody className="divide-y divide-[var(--border-subtle)]">
-                {paginatedTasks.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-10 text-muted-foreground text-sm">
-                      Nenhuma tarefa encontrada com os filtros selecionados.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  paginatedTasks.map((task) => (
-                    <TableRow key={task.id} className="hover:bg-[var(--canvas)]/50 transition-colors">
-                      <TableCell className="px-5 py-4">
-                        <Link
-                          href={`/management/tasks/${task.id}`}
-                          className="font-medium text-sm text-[var(--text-primary)] hover:text-[var(--brand-900)] hover:underline block truncate max-w-xs transition-colors"
-                        >
-                          {task.title}
-                        </Link>
-                        {task.processName && (
-                          <span className="text-xs text-[var(--text-secondary)] block truncate max-w-xs mt-0.5">
-                            {task.processName}
+          {bottlenecks.length === 0 ? (
+            <div className="p-8 text-center flex flex-col items-center justify-center gap-2 text-muted-foreground">
+              <div className="size-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-600 mb-1">
+                <CheckCircle2 className="size-5" />
+              </div>
+              <h3 className="font-semibold text-sm text-[var(--text-primary)]">Operação fluindo sem gargalos críticos</h3>
+              <p className="text-xs max-w-md">
+                Nenhuma tarefa com prazo excedido, impedimento operacional ou pendência de aprovação no recorte selecionado.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-[var(--border-subtle)]">
+              {bottlenecks.slice(0, 8).map((task) => (
+                <div
+                  key={task.id}
+                  className="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[var(--canvas)]/40 transition-colors"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link
+                        href={`/management/tasks/${task.id}`}
+                        className="font-medium text-sm text-[var(--text-primary)] hover:text-[var(--brand-900)] hover:underline truncate transition-colors"
+                      >
+                        {task.title}
+                      </Link>
+
+                      {task.slaExceeded && (
+                        <Badge variant="destructive" className="text-[10px] py-0 px-2">
+                          Prazo Excedido (+{task.delayMinutes}m)
+                        </Badge>
+                      )}
+                      {task.pendingApproval && (
+                        <Badge variant="secondary" className="text-[10px] py-0 px-2 bg-purple-50 text-purple-700 border-purple-200">
+                          Aguardando aprovação
+                        </Badge>
+                      )}
+                      {task.status === "NOT_COMPLETED" && (
+                        <Badge variant="destructive" className="text-[10px] py-0 px-2 bg-amber-50 text-amber-800 border-amber-200">
+                          Impedimento operacional
+                        </Badge>
+                      )}
+                      {task.status === "NEEDS_CORRECTION" && (
+                        <Badge variant="destructive" className="text-[10px] py-0 px-2 bg-orange-50 text-orange-800 border-orange-200">
+                          Necessita correção
+                        </Badge>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-secondary)] mt-1.5">
+                      <span>{task.locationName || "Sem unidade"}</span>
+                      {task.teamName && (
+                        <>
+                          <span>·</span>
+                          <span className="text-[var(--text-primary)]">{task.teamName}</span>
+                        </>
+                      )}
+                      {task.assigneeName && (
+                        <>
+                          <span>·</span>
+                          <span>Responsável: <strong>{task.assigneeName}</strong></span>
+                        </>
+                      )}
+                      {task.deadlineAt && (
+                        <>
+                          <span>·</span>
+                          <span className={task.slaExceeded ? "text-red-600 font-semibold" : ""}>
+                            Prazo: {new Date(task.deadlineAt).toLocaleString("pt-BR", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
                           </span>
-                        )}
-                      </TableCell>
+                        </>
+                      )}
+                    </div>
+                  </div>
 
-                      <TableCell className="px-4 py-4 whitespace-nowrap text-xs text-[var(--text-secondary)]">
-                        <span>{task.locationName || "Sem unidade"}</span>
-                        {task.teamName && (
-                          <>
-                            <span className="mx-1 text-muted-foreground">·</span>
-                            <span className="text-[var(--text-primary)]">{task.teamName}</span>
-                          </>
-                        )}
-                      </TableCell>
-
-                      <TableCell className="px-4 py-4 whitespace-nowrap text-xs text-[var(--text-secondary)]">
-                        {task.assigneeName || <span className="text-muted-foreground">-</span>}
-                      </TableCell>
-
-                      <TableCell className="px-4 py-4 whitespace-nowrap">
-                        <PriorityBadge priority={task.priority} size="sm" />
-                      </TableCell>
-
-                      <TableCell className="px-4 py-4 whitespace-nowrap">
-                        <StatusBadge status={task.status} size="sm" />
-                      </TableCell>
-
-                      <TableCell className="px-5 py-4 text-right whitespace-nowrap text-xs">
-                        {task.deadlineAt ? (
-                          <div className="flex flex-col items-end gap-0.5">
-                            <span className={task.slaExceeded ? "text-red-600 font-medium" : "text-[var(--text-secondary)]"}>
-                              {new Date(task.deadlineAt).toLocaleString("pt-BR", {
-                                day: "2-digit",
-                                month: "2-digit",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </span>
-                            {task.slaExceeded && (
-                              <span className="inline-flex items-center text-[10px] text-red-600 bg-red-50 border border-red-200/60 px-1.5 py-0.5 rounded font-medium">
-                                +{task.delayMinutes}m atraso
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">Sem prazo</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-
-          {/* Controles de Paginação */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-6 py-4 border-t border-[var(--border-subtle)] bg-[var(--canvas)]/30">
-              <div className="text-xs text-[var(--text-secondary)]">
-                Página <strong className="font-semibold text-[var(--text-primary)]">{safePage}</strong> de{" "}
-                <strong className="font-semibold text-[var(--text-primary)]">{totalPages}</strong> (
-                {filtered.length} tarefas)
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={safePage <= 1}
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  className="gap-1 h-8 text-xs cursor-pointer border-[var(--border-subtle)] hover:bg-[var(--canvas)]"
-                >
-                  <ChevronLeft className="size-3.5" />
-                  <span>Anterior</span>
-                </Button>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={safePage >= totalPages}
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  className="gap-1 h-8 text-xs cursor-pointer border-[var(--border-subtle)] hover:bg-[var(--canvas)]"
-                >
-                  <span>Próxima</span>
-                  <ChevronRight className="size-3.5" />
-                </Button>
-              </div>
+                  <div className="shrink-0 flex items-center gap-2">
+                    <Button
+                      nativeButton={false}
+                      size="sm"
+                      variant="outline"
+                      render={<Link href={`/management/tasks/${task.id}`} />}
+                      className="h-8 text-xs gap-1"
+                    >
+                      <span>Abrir tarefa</span>
+                      <ArrowRight className="size-3" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              {bottlenecks.length > 8 && (
+                <div className="px-6 py-3 bg-[var(--canvas)]/30 text-xs text-[var(--text-secondary)] text-center">
+                  Mais {bottlenecks.length - 8} tarefas exigindo atenção.{" "}
+                  <Link href="/management/tasks" className="font-semibold text-[var(--brand-900)] underline">
+                    Ver todas no painel de tarefas →
+                  </Link>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

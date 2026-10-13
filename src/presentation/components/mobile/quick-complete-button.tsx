@@ -10,12 +10,14 @@ interface QuickCompleteButtonProps {
   taskId: string;
   taskTitle?: string;
   className?: string;
+  disabled?: boolean;
 }
 
 export function QuickCompleteButton({
   taskId,
   taskTitle,
   className = "",
+  disabled = false,
 }: QuickCompleteButtonProps) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -24,7 +26,7 @@ export function QuickCompleteButton({
   async function handleComplete(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    if (busy) return;
+    if (busy || disabled) return;
 
     setBusy(true);
     setError("");
@@ -49,10 +51,10 @@ export function QuickCompleteButton({
     <Button
       type="button"
       size="sm"
-      disabled={busy}
+      disabled={busy || disabled}
       onClick={handleComplete}
       aria-label={`Concluir tarefa: ${taskTitle || ""}`}
-      className={`w-full h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all flex items-center justify-center gap-1.5 ${className}`}
+      className={`w-full h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all flex items-center justify-center gap-1.5 ${disabled ? "opacity-60 cursor-not-allowed bg-slate-300 text-slate-500 hover:bg-slate-300" : ""} ${className}`}
     >
       {busy ? (
         <>

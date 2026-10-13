@@ -148,6 +148,23 @@ export async function dispatchNotificationAsync(params: DispatchNotificationAsyn
       console.error("[Notification Service] Erro ao despachar e-mail assíncrono:", emailErr);
     }
   }
+
+  // 4. Se a organização possuir alertas por WhatsApp habilitados via WAHA, despacha assincronamente
+  try {
+    const { maybeDispatchWhatsAppAlert } = await import("@/infrastructure/whatsapp/waha-service");
+    void maybeDispatchWhatsAppAlert({
+      organizationId: params.organizationId,
+      type: params.type,
+      title: params.title,
+      message: params.message,
+      priority: String(params.priority || "NORMAL"),
+      milestoneStep: typeof (params.data as any)?.milestone === "number" ? (params.data as any).milestone : undefined,
+      taskTitle: typeof (params.data as any)?.taskTitle === "string" ? (params.data as any).taskTitle : undefined,
+      actionUrl: params.clickAction,
+    });
+  } catch (waErr) {
+    // Fail-safe silencioso para nunca afetar outras notificações
+  }
 }
 
 

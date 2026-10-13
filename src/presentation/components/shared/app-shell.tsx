@@ -26,6 +26,7 @@ import {
   ShieldCheck,
   Building2,
   Activity,
+  Workflow, Layers,
   type LucideIcon,
 } from "lucide-react";
 import { logoutAction } from "@/presentation/actions/auth-actions";
@@ -33,6 +34,8 @@ import { searchWorkspaceAction, type SearchResult } from "@/presentation/actions
 import { useRealtimeEvents } from "@/presentation/hooks/use-realtime-events";
 import { toast } from "@/components/ui/toast";
 import { getCurrentUserSummaryAction } from "@/presentation/actions/notification-actions";
+import { SubscriptionExpirationCard } from "./subscription-expiration-card";
+import type { SubscriptionNotice } from "@/application/superadmin/manual-subscription";
 import { Brand } from "./brand";
 import { OrganizationSwitcher } from "./organization-switcher";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -62,22 +65,23 @@ const managementNav: NavItem[] = [
     group: "Principal",
   },
   {
-    label: "Tarefas",
+    label: "Tarefas avulsas",
     href: "/management/tasks",
     icon: CheckSquare,
-    group: "Principal",
+    group: "Operação",
   },
   {
     label: "Processos",
     href: "/management/processes",
     icon: GitMerge,
-    group: "Principal",
+    group: "Operação",
   },
+  { label: "Templates", href: "/management/templates", icon: Layers, group: "Operação" },
   {
     label: "Arquivados",
     href: "/management/archived",
     icon: Archive,
-    group: "Principal",
+    group: "Operação",
   },
   {
     label: "Pessoas",
@@ -101,9 +105,8 @@ const managementNav: NavItem[] = [
     label: "Configurações",
     href: "/management/settings",
     icon: Settings,
-    group: "Geral",
+    group: "Configurações",
   },
-  { label: "Avisos", href: "/notifications", icon: Bell, group: "Geral" },
 ];
 const employeeNav: NavItem[] = [
   {
@@ -186,6 +189,7 @@ export function AppShell({
   mode = "management",
   activeView = "overview",
   userId,
+  initialSubscriptionNotice,
 }: {
   children: ReactNode;
   userName: string;
@@ -194,10 +198,14 @@ export function AppShell({
   mode?: "management" | "employee" | "platform";
   activeView?: string;
   userId?: string;
+  initialSubscriptionNotice?: SubscriptionNotice | null;
 }) {
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
   const [currentUserId, setCurrentUserId] = useState<string | undefined>(userId);
+  const [subscriptionNotice, setSubscriptionNotice] = useState<SubscriptionNotice | null | undefined>(
+    initialSubscriptionNotice
+  );
   const [searchOpen, setSearchOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -206,6 +214,22 @@ export function AppShell({
   const [searchBusy, setSearchBusy] = useState(false);
   const [searchError, setSearchError] = useState("");
 
+  const isOperacaoActive = [
+    "/management/tasks",
+    "/management/processes",
+    "/management/archived",
+    "/management/templates",
+  ].some((path) => pathname === path || pathname.startsWith(`${path}/`));
+
+  const isOrganizacaoActive = [
+    "/management/people",
+    "/management/teams",
+    "/management/locations",
+  ].some((path) => pathname === path || pathname.startsWith(`${path}/`));
+
+  const [operacaoOpen, setOperacaoOpen] = useState(false);
+  const [organizacaoOpen, setOrganizacaoOpen] = useState(false);
+
   useEffect(() => {
     let active = true;
     getCurrentUserSummaryAction()
@@ -213,6 +237,9 @@ export function AppShell({
         if (active && summary) {
           setUnreadCount(summary.unreadCount);
           if (summary.userId) setCurrentUserId(summary.userId);
+          if (summary.subscriptionNotice !== undefined) {
+            setSubscriptionNotice(summary.subscriptionNotice);
+          }
         }
       })
       .catch(() => { });
@@ -327,6 +354,23 @@ export function AppShell({
       </Link>
     );
   };
+
+  const renderSubNav = (item: NavItem) => {
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        onClick={() => setSearchOpen(false)}
+        className={`sidebar-link !min-h-[38px] !py-2 pl-7! text-[length:var(--type-label)] ${
+          isActive(item) ? "is-active" : ""
+        }`}
+        aria-current={isActive(item) ? "page" : undefined}
+      >
+        <item.icon size={16} strokeWidth={1.7} />
+        <span>{item.label}</span>
+      </Link>
+    );
+  };
   const moreActive =
     ["/notifications", "/account"].includes(pathname) ||
     (pathname.startsWith("/management/") &&
@@ -341,7 +385,7 @@ export function AppShell({
       <a href="#main-content" className="skip-link">
         Pular para o conteúdo
       </a>
-      <aside className="app-sidebar gap-0! space-y-2! p-3!">
+      <aside className="app-sidebar gap-0! p-3!">
         <Link
           href={home}
           className="sidebar-brand"
@@ -349,51 +393,218 @@ export function AppShell({
         >
           <Brand />
         </Link>
-        <nav
-          aria-label={
-            mode === "platform"
-              ? "Navegação da plataforma"
-              : "Navegação principal"
-          }
-        >
-          {[...new Set(items.map((item) => item.group))].map((group) => (
-            <div className="nav-group space-y-1" key={group}>
-              <p className="nav-group-label">{group}</p>
-              {items.filter((item) => item.group === group).map(renderNav)}
+
+        {mode === "management" ? (
+          <nav
+            aria-label="Navegação principal"
+            className="flex-1 flex flex-col min-h-0 space-y-2"
+          >
+            {/* Visão Geral */}
+            <div className="space-y-1">
+              {renderNav({
+                label: "Visão geral",
+                href: "/overview",
+                icon: LayoutDashboard,
+                group: "Principal",
+              })}
             </div>
-          ))}
-          <form action={logoutAction}>
-            <Button
-              variant="ghost"
-              type="submit"
-              className="sidebar-link w-full justify-start font-medium h-auto py-2.5 shadow-none"
+
+            {/* Módulo Operação */}
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => setOperacaoOpen((prev) => !prev)}
+                className={`flex items-center justify-between w-full px-3 py-2 rounded-[9px] text-[length:var(--type-label)] font-semibold transition-all cursor-pointer select-none group ${
+                  !operacaoOpen && isOperacaoActive
+                    ? "bg-[#e8efe9] text-[#164d36]"
+                    : "text-[var(--text-secondary)] hover:text-[#164d36] hover:bg-[#eaf0eb]"
+                }`}
+                aria-expanded={operacaoOpen}
+                aria-label="Alternar módulo de Operação"
+              >
+                <span className="flex items-center gap-2.5">
+                  <Workflow
+                    size={17}
+                    strokeWidth={1.8}
+                    className={`shrink-0 transition-colors ${
+                      !operacaoOpen && isOperacaoActive
+                        ? "text-[#164d36]"
+                        : "text-[var(--brand-700)] group-hover:text-[#164d36]"
+                    }`}
+                  />
+                  <span className="tracking-tight">Operação</span>
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {!operacaoOpen && isOperacaoActive && (
+                    <span
+                      className="size-1.5 rounded-full bg-[#247b56]"
+                      title="Página ativa nesta seção"
+                    />
+                  )}
+                  <ChevronDown
+                    size={15}
+                    strokeWidth={2}
+                    className={`shrink-0 transition-transform duration-200 text-[var(--text-secondary)] group-hover:text-[#164d36] ${
+                      !operacaoOpen ? "-rotate-90" : ""
+                    }`}
+                  />
+                </div>
+              </button>
+
+              <div
+                className={`overflow-hidden transition-all duration-200 ease-in-out ${
+                  operacaoOpen
+                    ? "max-h-96 opacity-100"
+                    : "max-h-0 opacity-0 pointer-events-none"
+                }`}
+              >
+                <div className="space-y-0.5 pt-0.5">
+                  {managementNav
+                    .filter((item) => item.group === "Operação")
+                    .map(renderSubNav)}
+                </div>
+              </div>
+            </div>
+
+
+            {/* Parte inferior: Organização, Configurações e Sair da conta */}
+            <div className="sidebar-bottom mt-auto pt-3 border-t border-[var(--border-subtle)] space-y-1">
+              {/* Módulo Organização */}
+              <div className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => setOrganizacaoOpen((prev) => !prev)}
+                  className={`flex items-center justify-between w-full px-3 py-2 rounded-[9px] text-[length:var(--type-label)] font-semibold transition-all cursor-pointer select-none group ${
+                    !organizacaoOpen && isOrganizacaoActive
+                      ? "bg-[#e8efe9] text-[#164d36]"
+                      : "text-[var(--text-secondary)] hover:text-[#164d36] hover:bg-[#eaf0eb]"
+                  }`}
+                  aria-expanded={organizacaoOpen}
+                  aria-label="Alternar módulo de Organização"
+                >
+                  <span className="flex items-center gap-2.5">
+                    <Building2
+                      size={17}
+                      strokeWidth={1.8}
+                      className={`shrink-0 transition-colors ${
+                        !organizacaoOpen && isOrganizacaoActive
+                          ? "text-[#164d36]"
+                          : "text-[var(--brand-700)] group-hover:text-[#164d36]"
+                      }`}
+                    />
+                    <span className="tracking-tight">Organização</span>
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {!organizacaoOpen && isOrganizacaoActive && (
+                      <span
+                        className="size-1.5 rounded-full bg-[#247b56]"
+                        title="Página ativa nesta seção"
+                      />
+                    )}
+                    <ChevronDown
+                      size={15}
+                      strokeWidth={2}
+                      className={`shrink-0 transition-transform duration-200 text-[var(--text-secondary)] group-hover:text-[#164d36] ${
+                        !organizacaoOpen ? "-rotate-90" : ""
+                      }`}
+                    />
+                  </div>
+                </button>
+
+                <div
+                  className={`overflow-hidden transition-all duration-200 ease-in-out ${
+                    organizacaoOpen
+                      ? "max-h-96 opacity-100"
+                      : "max-h-0 opacity-0 pointer-events-none"
+                  }`}
+                >
+                  <div className="space-y-0.5 pt-0.5">
+                    {managementNav
+                      .filter((item) => item.group === "Organização")
+                      .map(renderSubNav)}
+                  </div>
+                </div>
+              </div>
+
+              <Link
+                href="/management/settings"
+                onClick={() => setSearchOpen(false)}
+                className={`sidebar-link ${
+                  pathname === "/management/settings" ||
+                  pathname.startsWith("/management/settings/")
+                    ? "is-active"
+                    : ""
+                }`}
+                aria-current={
+                  pathname.startsWith("/management/settings")
+                    ? "page"
+                    : undefined
+                }
+              >
+                <Settings size={18} strokeWidth={1.7} />
+                <span>Configurações</span>
+              </Link>
+              <form action={logoutAction}>
+                <Button
+                  variant="ghost"
+                  type="submit"
+                  className="sidebar-link w-full justify-start font-medium h-auto py-2.5 shadow-none cursor-pointer text-[var(--text-secondary)] hover:text-red-700 hover:bg-red-50/60 dark:hover:bg-red-950/20"
+                >
+                  <LogOut size={18} strokeWidth={1.7} />
+                  <span>Sair da conta</span>
+                </Button>
+              </form>
+            </div>
+          </nav>
+        ) : (
+          <>
+            <nav
+              aria-label={
+                mode === "platform"
+                  ? "Navegação da plataforma"
+                  : "Navegação principal"
+              }
             >
-              <LogOut size={18} strokeWidth={1.7} />
-              <span>Sair da conta</span>
-            </Button>
-          </form>
-        </nav>
-        <div className="sidebar-note">
-          {mode === "platform" ? (
-            <ShieldCheck size={24} />
-          ) : (
-            <CheckSquare size={24} />
-          )}
-          <p>
-            {mode === "platform"
-              ? "Tudo sob controle."
-              : "Clareza em cada etapa."}
-          </p>
-          <span>
-            {mode === "platform"
-              ? "Administre organizações e acompanhe a plataforma."
-              : "Sua operação organizada, do planejamento à execução."}
-          </span>
-          <Link href={mode === "management" ? "/overview" : home}>
-            {mode === "management" ? "Ver visão geral" : "Acompanhar"}
-            <ArrowUpRight size={15} />
-          </Link>
-        </div>
+              {[...new Set(items.map((item) => item.group))].map((group) => (
+                <div className="nav-group space-y-1" key={group}>
+                  <p className="nav-group-label">{group}</p>
+                  {items.filter((item) => item.group === group).map(renderNav)}
+                </div>
+              ))}
+              <form action={logoutAction}>
+                <Button
+                  variant="ghost"
+                  type="submit"
+                  className="sidebar-link w-full justify-start font-medium h-auto py-2.5 shadow-none"
+                >
+                  <LogOut size={18} strokeWidth={1.7} />
+                  <span>Sair da conta</span>
+                </Button>
+              </form>
+            </nav>
+            <div className="sidebar-note">
+              {mode === "platform" ? (
+                <ShieldCheck size={24} />
+              ) : (
+                <CheckSquare size={24} />
+              )}
+              <p>
+                {mode === "platform"
+                  ? "Tudo sob controle."
+                  : "Clareza em cada etapa."}
+              </p>
+              <span>
+                {mode === "platform"
+                  ? "Administre organizações e acompanhe a plataforma."
+                  : "Sua operação organizada, do planejamento à execução."}
+              </span>
+              <Link href={home}>
+                Acompanhar
+                <ArrowUpRight size={15} />
+              </Link>
+            </div>
+          </>
+        )}
       </aside>
       <div className="app-workspace">
         <header className="app-topbar">
@@ -467,6 +678,13 @@ export function AppShell({
           </div>
         </header>
         <main className="app-content" id="main-content" tabIndex={-1}>
+          {mode !== "platform" && (
+            <SubscriptionExpirationCard
+              notice={subscriptionNotice}
+              orgName={orgName}
+              userRole={role}
+            />
+          )}
           {children}
         </main>
       </div>
@@ -482,7 +700,11 @@ export function AppShell({
               >
                 <item.icon size={20} />
                 <span>
-                  {item.label === "Visão geral" ? "Início" : item.label}
+                  {item.label === "Visão geral"
+                    ? "Início"
+                    : item.label === "Tarefas avulsas"
+                      ? "Tarefas"
+                      : item.label}
                 </span>
               </Link>
             ))}
@@ -654,7 +876,7 @@ export function AppShell({
               <ArrowUpRight />
             </Link>
             <Link
-              href="/management/processes/new"
+              href="/management/processes/new?choose=template"
               onClick={() => setCreateOpen(false)}
             >
               <GitMerge />

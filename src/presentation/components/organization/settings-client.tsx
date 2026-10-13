@@ -10,7 +10,6 @@ import {
   Database,
   Save,
   Trash2,
-  Info,
 } from "lucide-react";
 import {
   updateOrganizationSettingsAction,
@@ -22,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
+import { Badge } from "@/components/ui/badge";
 import { Field, FieldLabel, FieldDescription } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -66,6 +66,39 @@ export function SettingsClient({
   const [allowManagersToEditSensitiveData, setAllowManagersToEditSensitiveData] =
     useState<boolean>(Boolean(orgSettings.allowManagersToEditSensitiveData));
 
+  // Estados para Alertas via WhatsApp
+  const whatsappConfig = orgSettings.whatsappAlerts || {};
+
+  const [whatsappEnabled, setWhatsappEnabled] = useState<boolean>(
+    Boolean(whatsappConfig.enabled)
+  );
+  const [recipientPhone, setRecipientPhone] = useState<string>(
+    whatsappConfig.recipientPhone || ""
+  );
+  const [recipientName, setRecipientName] = useState<string>(
+    whatsappConfig.recipientName || ""
+  );
+  const [notificationTypes, setNotificationTypes] = useState<string[]>(
+    Array.isArray(whatsappConfig.notificationTypes)
+      ? whatsappConfig.notificationTypes
+      : ["TASK_OVERDUE", "IMPEDIMENT_REPORTED", "APPROVAL_PENDING"]
+  );
+  const [criticalityFilter, setCriticalityFilter] = useState<string>(
+    whatsappConfig.criticalityFilter || "CRITICAL_ONLY"
+  );
+  const [triggerStep, setTriggerStep] = useState<number>(
+    whatsappConfig.triggerStep !== undefined ? Number(whatsappConfig.triggerStep) : 3
+  );
+  const [repeatInterval, setRepeatInterval] = useState<number>(
+    whatsappConfig.repeatInterval !== undefined ? Number(whatsappConfig.repeatInterval) : 0
+  );
+  const [businessHoursOnly, setBusinessHoursOnly] = useState<boolean>(
+    Boolean(whatsappConfig.businessHoursOnly)
+  );
+  const [alwaysUrgent, setAlwaysUrgent] = useState<boolean>(
+    whatsappConfig.alwaysUrgent !== undefined ? Boolean(whatsappConfig.alwaysUrgent) : true
+  );
+
   const [purgeLoading, setPurgeLoading] = useState(false);
 
   async function handleRunPurge() {
@@ -73,10 +106,21 @@ export function SettingsClient({
     try {
       const res = await executeRetentionPurgeAction();
       if (res.success && res.data) {
-        const d = res.data as { trashedTasksPurged: number; evidencesPurged: number; executionsArchived: number };
+        const d = res.data as {
+          trashedTasksPurged: number;
+          archivedTemplatesPurged?: number;
+          evidencesPurged: number;
+          executionsArchived: number;
+        };
+        const parts = [
+          `${d.trashedTasksPurged} tarefas excluídas`,
+          d.archivedTemplatesPurged ? `${d.archivedTemplatesPurged} templates arquivados` : null,
+          `${d.evidencesPurged} arquivos removidos`,
+          `${d.executionsArchived} execuções arquivadas`,
+        ].filter(Boolean);
         toast.add({
           title: "Expurgo concluído",
-          description: `${d.trashedTasksPurged} tarefas excluídas, ${d.evidencesPurged} arquivos removidos e ${d.executionsArchived} execuções arquivadas.`,
+          description: parts.join(", ") + ".",
           type: "success",
         });
       } else {
@@ -131,7 +175,6 @@ export function SettingsClient({
   const tabs = [
     { id: "org", label: "Organização", icon: Settings },
     { id: "sla", label: "Prazos e alertas", icon: Clock },
-    { id: "security", label: "Acesso", icon: Shield },
     { id: "retention", label: "Histórico", icon: Database },
   ];
 
@@ -155,7 +198,7 @@ export function SettingsClient({
                 <TabsTrigger
                   key={tab.id}
                   value={tab.id}
-                  className="gap-1.5 px-3.5 py-2 text-(length:--type-label) font-semibold rounded-[10px] data-active:bg-surface data-active:text-brand-900"
+                  className="gap-1.5 px-5! py-2 text-(length:--type-label) font-semibold rounded-[10px] data-active:bg-surface data-active:text-brand-900"
                 >
                   <Icon className="size-4" data-icon="inline-start" />
                   <span>{tab.label}</span>
@@ -181,7 +224,7 @@ export function SettingsClient({
                     name="name"
                     defaultValue={organization.name}
                     required
-                    className="bg-[var(--canvas)] border-[var(--border-subtle)] text-[length:var(--type-label)] h-10"
+                    className="bg-[var(--canvas)] border-[var(--border-subtle)] text-sm h-10"
                   />
                 </Field>
 
@@ -194,7 +237,7 @@ export function SettingsClient({
                     type="text"
                     value={organization.slug}
                     disabled
-                    className="bg-[var(--canvas)] border-[var(--border-subtle)] text-[length:var(--type-label)] h-10 opacity-70 font-mono"
+                    className="bg-[var(--canvas)] border-[var(--border-subtle)] text-sm h-10 opacity-70 font-mono"
                   />
                   <FieldDescription className="text-[length:var(--type-caption)] text-[var(--text-secondary)]">
                     Este código é fixo e identifica a empresa no acesso por PIN.
@@ -213,7 +256,7 @@ export function SettingsClient({
                     Alertas progressivos de atraso
                   </h3>
                   <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
-                    Quando uma tarefa ultrapassar o prazo estipulado (SLA), o sistema enviará notificações em fases para garantir que a equipe não perca os prazos. Escolha o tempo de tolerância para cada alerta.
+                    Quando uma tarefa ultrapassar o prazo limite estipulado, o sistema enviará notificações em fases para garantir que a equipe não perca os prazos. Escolha o tempo de tolerância para cada alerta.
                   </p>
                 </div>
 
@@ -255,7 +298,7 @@ export function SettingsClient({
                             1: Number(e.target.value),
                           }))
                         }
-                        className="w-full h-9 bg-[var(--canvas)] border-[var(--border-subtle)] text-xs"
+                        className="w-full h-10 bg-[var(--canvas)] border-[var(--border-subtle)] text-sm"
                       >
                         <NativeSelectOption value={5}>5 minutos de atraso</NativeSelectOption>
                         <NativeSelectOption value={10}>10 minutos de atraso</NativeSelectOption>
@@ -293,7 +336,7 @@ export function SettingsClient({
                             2: Number(e.target.value),
                           }))
                         }
-                        className="w-full h-9 bg-[var(--canvas)] border-[var(--border-subtle)] text-xs"
+                        className="w-full h-10 bg-[var(--canvas)] border-[var(--border-subtle)] text-sm"
                       >
                         <NativeSelectOption value={15}>15 minutos de atraso</NativeSelectOption>
                         <NativeSelectOption value={30}>30 minutos de atraso (Padrão)</NativeSelectOption>
@@ -331,7 +374,7 @@ export function SettingsClient({
                             3: Number(e.target.value),
                           }))
                         }
-                        className="w-full h-9 bg-[var(--canvas)] border-[var(--border-subtle)] text-xs"
+                        className="w-full h-10 bg-[var(--canvas)] border-[var(--border-subtle)] text-sm"
                       >
                         <NativeSelectOption value={45}>45 minutos de atraso</NativeSelectOption>
                         <NativeSelectOption value={60}>60 minutos (1 hora - Padrão)</NativeSelectOption>
@@ -369,7 +412,7 @@ export function SettingsClient({
                             4: Number(e.target.value),
                           }))
                         }
-                        className="w-full h-9 bg-[var(--canvas)] border-[var(--border-subtle)] text-xs"
+                        className="w-full h-10 bg-[var(--canvas)] border-[var(--border-subtle)] text-sm"
                       >
                         <NativeSelectOption value={90}>90 minutos (1h 30m)</NativeSelectOption>
                         <NativeSelectOption value={120}>120 minutos (2 horas - Padrão)</NativeSelectOption>
@@ -379,6 +422,216 @@ export function SettingsClient({
                       </NativeSelect>
                     </div>
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Seção: Alertas pelo WhatsApp (Integração WAHA) */}
+            <Card className="p-5 sm:p-6 mt-4">
+              <CardContent className="p-0 flex flex-col gap-5">
+                {/* Cabeçalho Minimalista */}
+                <div className="flex items-center justify-between gap-4 pb-4 border-b border-[var(--border-subtle)]">
+                  <div>
+                    <h3 className="text-[var(--text-primary)] text-base font-bold">
+                      Alertas via WhatsApp
+                    </h3>
+                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                      Encaminhe avisos operacionais críticos e incidentes diretamente ao WhatsApp.
+                    </p>
+                  </div>
+
+                  <label className="relative inline-flex items-center cursor-pointer select-none shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={whatsappEnabled}
+                      onChange={(e) => setWhatsappEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-10 h-5.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-[var(--brand-900)]"></div>
+                    <span className="ml-2.5 text-xs font-semibold text-[var(--text-primary)] hidden sm:inline">
+                      {whatsappEnabled ? "Ativado" : "Desativado"}
+                    </span>
+                  </label>
+                </div>
+
+                <input type="hidden" name="hasWhatsappSettings" value="true" />
+                <input
+                  type="hidden"
+                  name="whatsappAlertsEnabled"
+                  value={whatsappEnabled ? "true" : "false"}
+                />
+                <input
+                  type="hidden"
+                  name="whatsappNotificationTypes"
+                  value={notificationTypes.join(",")}
+                />
+                <input
+                  type="hidden"
+                  name="whatsappBusinessHoursOnly"
+                  value={businessHoursOnly ? "true" : "false"}
+                />
+                <input
+                  type="hidden"
+                  name="whatsappAlwaysUrgent"
+                  value={alwaysUrgent ? "true" : "false"}
+                />
+
+                {/* 1. Destinatário */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field>
+                    <FieldLabel className="text-sm font-semibold text-[var(--text-primary)]">
+                      Número do WhatsApp ou Grupo
+                    </FieldLabel>
+                    <Input
+                      name="whatsappRecipientPhone"
+                      placeholder="5511999999999 ou id-do-grupo@g.us"
+                      value={recipientPhone}
+                      onChange={(e) => setRecipientPhone(e.target.value)}
+                      className="h-10 text-sm bg-[var(--canvas)] border-[var(--border-subtle)]"
+                    />
+                  </Field>
+
+                  <Field>
+                    <FieldLabel className="text-sm font-semibold text-[var(--text-primary)]">
+                      Identificação (opcional)
+                    </FieldLabel>
+                    <Input
+                      name="whatsappRecipientName"
+                      placeholder="Ex: Plantão Operacional / Supervisão"
+                      value={recipientName}
+                      onChange={(e) => setRecipientName(e.target.value)}
+                      className="h-10 text-sm bg-[var(--canvas)] border-[var(--border-subtle)]"
+                    />
+                  </Field>
+                </div>
+
+                {/* 2. Tipos de Notificações Selecionáveis (Chips Minimalistas) */}
+                <div className="flex flex-col gap-2">
+                  <FieldLabel className="text-sm font-semibold text-[var(--text-primary)]">
+                    Eventos notificados
+                  </FieldLabel>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { id: "TASK_OVERDUE", label: "Atraso de SLA / Prazo" },
+                      { id: "IMPEDIMENT_REPORTED", label: "Impedimento operacional" },
+                      { id: "APPROVAL_PENDING", label: "Aguardando aprovação" },
+                      { id: "DEADLINE_WARNING", label: "Aviso preventivo" },
+                      { id: "PROCESS_STALLED", label: "Processos parados" },
+                    ].map((item) => {
+                      const isChecked = notificationTypes.includes(item.id);
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            setNotificationTypes((prev) =>
+                              prev.includes(item.id)
+                                ? prev.filter((t) => t !== item.id)
+                                : [...prev, item.id]
+                            );
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors cursor-pointer ${isChecked
+                            ? "bg-[var(--brand-900)] text-white border-[var(--brand-900)]"
+                            : "bg-[var(--canvas)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:text-[var(--text-primary)] hover:border-[var(--text-secondary)]"
+                            }`}
+                        >
+                          {isChecked ? "✓ " : "+ "}
+                          {item.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 3. Regras de Disparo e Criticidade */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <Field>
+                    <FieldLabel className="text-sm font-semibold text-[var(--text-primary)]">
+                      Filtro de criticidade
+                    </FieldLabel>
+                    <NativeSelect
+                      name="whatsappCriticalityFilter"
+                      value={criticalityFilter}
+                      onChange={(e) => setCriticalityFilter(e.target.value)}
+                      className="w-full h-10 bg-[var(--canvas)] border-[var(--border-subtle)] text-sm"
+                    >
+                      <NativeSelectOption value="CRITICAL_ONLY">
+                        Apenas críticas (urgentes)
+                      </NativeSelectOption>
+                      <NativeSelectOption value="HIGH_AND_CRITICAL">
+                        Alta prioridade e críticas
+                      </NativeSelectOption>
+                      <NativeSelectOption value="ALL">
+                        Todas as tarefas
+                      </NativeSelectOption>
+                    </NativeSelect>
+                  </Field>
+
+                  <Field>
+                    <FieldLabel className="text-sm font-semibold text-[var(--text-primary)]">
+                      Disparar no marco
+                    </FieldLabel>
+                    <NativeSelect
+                      name="whatsappTriggerStep"
+                      value={triggerStep}
+                      onChange={(e) => setTriggerStep(Number(e.target.value))}
+                      className="w-full h-10 bg-[var(--canvas)] border-[var(--border-subtle)] text-sm"
+                    >
+                      <NativeSelectOption value={1}>1º Marco (Início do atraso)</NativeSelectOption>
+                      <NativeSelectOption value={2}>2º Marco (Atenção moderada)</NativeSelectOption>
+                      <NativeSelectOption value={3}>3º Marco (Gestores — Recomendado)</NativeSelectOption>
+                      <NativeSelectOption value={4}>4º Marco (Incidente grave)</NativeSelectOption>
+                      <NativeSelectOption value={0}>Todos os marcos</NativeSelectOption>
+                    </NativeSelect>
+                  </Field>
+
+                  <Field>
+                    <FieldLabel className="text-sm font-semibold text-[var(--text-primary)]">
+                      Repetição
+                    </FieldLabel>
+                    <NativeSelect
+                      name="whatsappRepeatInterval"
+                      value={repeatInterval}
+                      onChange={(e) => setRepeatInterval(Number(e.target.value))}
+                      className="w-full h-10 bg-[var(--canvas)] border-[var(--border-subtle)] text-sm"
+                    >
+                      <NativeSelectOption value={0}>Apenas 1 vez</NativeSelectOption>
+                      <NativeSelectOption value={15}>A cada 15 min</NativeSelectOption>
+                      <NativeSelectOption value={30}>A cada 30 min</NativeSelectOption>
+                      <NativeSelectOption value={60}>A cada 1 hora</NativeSelectOption>
+                    </NativeSelect>
+                  </Field>
+                </div>
+
+                {/* 4. Opções / Checkboxes */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4 pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer text-sm text-[var(--text-primary)]">
+                    <input
+                      type="checkbox"
+                      checked={alwaysUrgent}
+                      onChange={(e) => setAlwaysUrgent(e.target.checked)}
+                      className="rounded text-[var(--brand-900)] focus:ring-0 cursor-pointer"
+                    />
+                    <span>Notificar incidentes urgentes imediatamente</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer text-sm text-[var(--text-primary)]">
+                    <input
+                      type="checkbox"
+                      checked={businessHoursOnly}
+                      onChange={(e) => setBusinessHoursOnly(e.target.checked)}
+                      className="rounded text-[var(--brand-900)] focus:ring-0 cursor-pointer"
+                    />
+                    <span>Silenciar fora do horário comercial</span>
+                  </label>
+                </div>
+
+                {/* Canal Oficial de Envio Marcaí */}
+                <div className="pt-3 border-t border-[var(--border-subtle)] flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                  <span className="size-2 rounded-full bg-emerald-500 shrink-0" />
+                  <span>
+                    Os alertas são disparados automaticamente pelo canal oficial do Marcaí no WhatsApp.
+                  </span>
                 </div>
               </CardContent>
             </Card>
@@ -473,24 +726,25 @@ export function SettingsClient({
                       <div className="size-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
                         <Database className="size-4" />
                       </div>
-                      <span className="font-semibold text-sm text-[var(--brand-900)]">
+                      <span className="font-semibold text-sm text-brand-900">
                         Histórico de Execuções e Tarefas
                       </span>
                     </div>
-                    <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                    <p className="text-xs text-(--text-secondary) leading-relaxed">
                       Tempo em que checklists realizados, evidências e dados de conclusão ficam salvos para consultas em relatórios e auditorias.
                     </p>
                     <div className="mt-1">
                       <NativeSelect
                         name="operationalRetentionMonths"
-                        defaultValue={String(orgSettings.operationalRetentionMonths || 12)}
-                        className="w-full h-9 bg-slate-50"
+                        defaultValue={String(
+                          [6, 12].includes(Number(orgSettings.operationalRetentionMonths))
+                            ? orgSettings.operationalRetentionMonths
+                            : 6
+                        )}
+                        className="w-full h-10 bg-slate-50 text-sm"
                       >
-                        <NativeSelectOption value="6">6 meses</NativeSelectOption>
-                        <NativeSelectOption value="12">1 ano (Recomendado — Padrão)</NativeSelectOption>
-                        <NativeSelectOption value="24">2 anos</NativeSelectOption>
-                        <NativeSelectOption value="36">3 anos</NativeSelectOption>
-                        <NativeSelectOption value="60">5 anos (Conformidade estendida)</NativeSelectOption>
+                        <NativeSelectOption value="6">6 meses (Recomendado — Padrão)</NativeSelectOption>
+                        <NativeSelectOption value="12">1 ano (12 meses)</NativeSelectOption>
                       </NativeSelect>
                     </div>
                   </div>
@@ -506,19 +760,21 @@ export function SettingsClient({
                       </span>
                     </div>
                     <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                      Tarefas excluídas e logs temporários de alertas de atraso são mantidos por esse período antes de serem apagados definitivamente.
+                      Tarefas excluídas, templates arquivados e logs temporários de alertas de atraso são mantidos por esse período antes de serem apagados definitivamente.
                     </p>
                     <div className="mt-1">
                       <NativeSelect
                         name="delayRetentionDays"
-                        defaultValue={String(orgSettings.delayRetentionDays || 90)}
-                        className="w-full h-9 bg-slate-50"
+                        defaultValue={String(
+                          [30, 60, 90].includes(Number(orgSettings.delayRetentionDays))
+                            ? orgSettings.delayRetentionDays
+                            : 60
+                        )}
+                        className="w-full h-10 bg-slate-50 text-sm"
                       >
                         <NativeSelectOption value="30">30 dias (1 mês)</NativeSelectOption>
-                        <NativeSelectOption value="60">60 dias (2 meses)</NativeSelectOption>
-                        <NativeSelectOption value="90">90 dias (3 meses — Recomendado)</NativeSelectOption>
-                        <NativeSelectOption value="180">180 dias (6 meses)</NativeSelectOption>
-                        <NativeSelectOption value="365">1 ano</NativeSelectOption>
+                        <NativeSelectOption value="60">60 dias (2 meses — Padrão)</NativeSelectOption>
+                        <NativeSelectOption value="90">90 dias (3 meses)</NativeSelectOption>
                       </NativeSelect>
                     </div>
                   </div>

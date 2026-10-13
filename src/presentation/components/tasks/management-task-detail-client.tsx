@@ -10,14 +10,93 @@ import {
   Trash2,
   Camera,
   History,
+  UserCheck,
+  AlertTriangle,
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  ClipboardList,
+  CheckCircle2,
+  XCircle,
+  Star,
+  Video,
+  Paperclip,
+  ExternalLink,
+  Download,
 } from "lucide-react";
 import {
+  reassignTaskAction,
   transferTaskAction,
   cancelTaskAction,
   trashTaskAction,
   submitApprovalDecisionAction,
 } from "@/presentation/actions/management-task-actions";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { uiLabel } from "../shared/ui-labels";
+
+function isPauseOccurrence(o: { type?: string; category?: string; reason?: string }): boolean {
+  const type = (o.type || "").toUpperCase();
+  const category = (o.category || "").toUpperCase();
+  const reason = (o.reason || "").toLowerCase();
+  return (
+    type === "PAUSE_ALERT" ||
+    type.includes("PAUSE") ||
+    category === "LONG_PAUSE" ||
+    category === "INTERVALO" ||
+    category.includes("PAUSE") ||
+    category.includes("PAUSA") ||
+    reason.includes("está pausada") ||
+    reason.includes("tarefa pausada") ||
+    reason.includes("pausa de descanso")
+  );
+}
+
+function formatOccurrenceCategory(category: string, type: string): string {
+  if (type === "SLA_BREACH" || category.startsWith("SLA_")) {
+    const mins = parseInt(category.replace(/^SLA_/, ""), 10);
+    if (isNaN(mins) || mins === 0) return "Término do prazo limite";
+    if (mins >= 60 && mins % 60 === 0) {
+      const h = mins / 60;
+      return `Atraso de ${h} ${h === 1 ? "hora" : "horas"}`;
+    }
+    if (mins >= 60) {
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      return `Atraso de ${h}h ${m}min`;
+    }
+    return `Atraso de ${mins} minutos`;
+  }
+  const labels: Record<string, string> = {
+    MATERIAL_FALTANTE: "Falta de materiais / insumos",
+    EQUIPAMENTO_QUEBRADO: "Equipamento com defeito",
+    ACESSO_BLOQUEADO: "Local inacessível / trancado",
+    OUTROS: "Impedimento operacional",
+  };
+  return labels[category] || category;
+}
+
+function formatSeverity(severity: string): { label: string; badgeClass: string } {
+  switch (severity) {
+    case "CRITICAL":
+      return { label: "Crítica", badgeClass: "bg-red-100 text-red-800 border-red-200" };
+    case "HIGH":
+      return { label: "Alta", badgeClass: "bg-rose-100 text-rose-800 border-rose-200" };
+    case "MEDIUM":
+      return { label: "Média", badgeClass: "bg-slate-100 text-slate-800 border-slate-300" };
+    case "LOW":
+      return { label: "Baixa", badgeClass: "bg-slate-100 text-slate-700 border-slate-200" };
+    default:
+      return { label: severity, badgeClass: "bg-slate-100 text-slate-700 border-slate-200" };
+  }
+}
+
+function cleanReason(reason: string): string {
+  return reason
+    .replace(/O prazo de SLA foi excedido\.?/gi, "O prazo de execução foi excedido.")
+    .replace(/SLA excedido há/gi, "Prazo limite excedido há")
+    .replace(/SLA excedido/gi, "Prazo limite excedido")
+    .replace(/\bSLA\b/g, "prazo limite");
+}
 
 import {
   PageHeader,
@@ -65,6 +144,9 @@ interface ManagementTaskDetailProps {
     title: string;
     description: string | null;
     instructions: string | null;
+    taskType?: string | null;
+    formFields?: any;
+    formAnswers?: any;
     origin: string;
     status: string;
     startedAt: Date | string | null;
@@ -75,7 +157,6 @@ interface ManagementTaskDetailProps {
     slaDurationMinutes: number | null;
     slaDueAt: Date | string | null;
     slaExceededAt: Date | string | null;
-    estimatedDuration: number | null;
     actualDuration: number | null;
     locationName: string | null;
     teamName: string | null;
@@ -110,13 +191,6 @@ interface ManagementTaskDetailProps {
         title: string;
         status: string;
       };
-    }>;
-    pauses: Array<{
-      id: string;
-      reasonCategoryId: string | null;
-      note: string | null;
-      startedAt: Date | string;
-      endedAt: Date | string | null;
     }>;
     occurrences: Array<{
       id: string;
@@ -167,12 +241,19 @@ export function ManagementTaskDetailClient({
 
   // Modais de Controle
   const [showTransferModal, setShowTransferModal] = useState(false);
-  const [selectedMemberId, setSelectedMemberId] = useState("");
+  const [selectedMemberId, setSelectedMemberId] = useState(
+    task.assignments.find((a) => a.type === "PRIMARY")?.memberId || ""
+  );
+  const [reassignDeadlineType, setReassignDeadlineType] = useState<"15" | "30" | "60" | "120" | "eod" | "custom">("60");
+  const [reassignCustomDate, setReassignCustomDate] = useState("");
+  const [reassignReason, setReassignReason] = useState("");
 
   const [showTrashAlert, setShowTrashAlert] = useState(false);
 
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+
+  const [occurrencesOpen, setOccurrencesOpen] = useState(false);
 
   const [approvalStep, setApprovalStep] = useState<{
     stepId: string;
@@ -182,26 +263,88 @@ export function ManagementTaskDetailClient({
 
   const primaryAssignment = task.assignments.find((a) => a.type === "PRIMARY");
 
-  const availableMemberItems = availableMembers.map((m) => ({
-    label: `${m.name} (${m.email || "PIN"})`,
-    value: m.id,
-  }));
+  const isForm = task.taskType === "FORM";
+  const formFieldsList: any[] = Array.isArray(task.formFields) ? task.formFields : [];
+  const totalQuestions = formFieldsList.length;
+  const answeredQuestions = formFieldsList.filter((f) => {
+    const val = task.formAnswers?.[f.id];
+    return val !== undefined && val !== null && val !== "";
+  }).length;
+  const completionPercentage = totalQuestions > 0 ? Math.round((answeredQuestions / totalQuestions) * 100) : 0;
+  const isFullyAnswered = totalQuestions > 0 && answeredQuestions === totalQuestions;
+
+  function getDeadlinePreview(type: string, customDate: string) {
+    const now = new Date();
+    let target: Date;
+    if (type === "custom") {
+      if (!customDate) return "Selecione uma data e horário";
+      target = new Date(customDate);
+      if (isNaN(target.getTime())) return "Data inválida";
+    } else if (type === "eod") {
+      target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 18, 0, 0, 0);
+      if (target <= now) {
+        target.setHours(23, 59, 0, 0);
+      }
+    } else {
+      target = new Date(now.getTime() + Number(type) * 60000);
+    }
+    const diffMinutes = Math.round((target.getTime() - now.getTime()) / 60000);
+    const isToday = target.toDateString() === now.toDateString();
+    const timeStr = target.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    const dateStr = target.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+    if (diffMinutes <= 0) {
+      return "Prazo no passado (escolha um horário futuro)";
+    }
+    return `${isToday ? "Hoje" : dateStr} às ${timeStr} (daqui a ${diffMinutes} min)`;
+  }
 
   async function handleTransfer() {
     if (!selectedMemberId) return;
     setLoading(true);
     try {
-      const res = await transferTaskAction(task.id, selectedMemberId);
+      let deadlineMinutes: number | undefined;
+      let customDeadlineAt: string | undefined;
+
+      if (reassignDeadlineType === "custom") {
+        if (!reassignCustomDate) {
+          toast.add({
+            title: "Data inválida",
+            description: "Selecione a data e hora do novo prazo.",
+            type: "error",
+          });
+          setLoading(false);
+          return;
+        }
+        customDeadlineAt = new Date(reassignCustomDate).toISOString();
+      } else if (reassignDeadlineType === "eod") {
+        const now = new Date();
+        const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 18, 0, 0, 0);
+        if (target <= now) {
+          target.setHours(23, 59, 0, 0);
+        }
+        deadlineMinutes = Math.max(15, Math.round((target.getTime() - now.getTime()) / 60000));
+      } else {
+        deadlineMinutes = Number(reassignDeadlineType);
+      }
+
+      const res = await reassignTaskAction({
+        taskId: task.id,
+        memberId: selectedMemberId,
+        deadlineMinutes,
+        customDeadlineAt,
+        reason: reassignReason.trim() || undefined,
+      });
+
       if (res.error) {
         toast.add({
-          title: "Erro ao transferir tarefa",
+          title: "Erro ao reatribuir tarefa",
           description: res.error,
           type: "error",
         });
       } else {
         toast.add({
-          title: "Tarefa transferida",
-          description: "Tarefa transferida com sucesso.",
+          title: "Tarefa reatribuída",
+          description: "Responsável atualizado e prazo renovado com sucesso.",
           type: "success",
         });
         setShowTransferModal(false);
@@ -330,7 +473,29 @@ export function ManagementTaskDetailClient({
         action={
           userRole !== "EMPLOYEE" ? (
             <div className="flex flex-wrap items-center gap-2">
-              {canEditTaskDefinition(task) && <Button variant="outline" disabled={loading} onClick={() => setShowEditDialog(true)}>Editar tarefa</Button>}
+              {!["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status) && (
+                <Button
+                  type="button"
+                  variant="default"
+                  onClick={() => {
+                    setSelectedMemberId(primaryAssignment?.memberId || "");
+                    setReassignDeadlineType("60");
+                    setReassignCustomDate("");
+                    setReassignReason("");
+                    setShowTransferModal(true);
+                  }}
+                  disabled={loading}
+                  className="h-10 px-3.5 rounded-[12px] bg-brand-900 text-white text-(length:--type-label) font-semibold hover:bg-brand-900/80 flex items-center gap-1.5 shadow-xs"
+                >
+                  <UserCheck className="size-4" />
+                  Reatribuir / Destravar
+                </Button>
+              )}
+              {canEditTaskDefinition(task) && (
+                <Button variant="outline" disabled={loading} onClick={() => setShowEditDialog(true)}>
+                  {isForm ? "Editar tarefa com perguntas" : "Editar tarefa"}
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="outline"
@@ -360,31 +525,74 @@ export function ManagementTaskDetailClient({
 
       {showEditDialog && <EditTaskDialog task={task} onClose={() => setShowEditDialog(false)} />}
 
+      {/* Banner se a tarefa estiver bloqueada ou com SLA violado */}
+      {!["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status) && (task.status === "BLOCKED" || (task.deadlineAt && new Date(task.deadlineAt) < new Date())) && (
+        <div className="p-4 rounded-[16px] bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="size-4 text-slate-600 dark:text-slate-400 shrink-0" />
+            <span>
+              {task.status === "BLOCKED"
+                ? (isForm
+                    ? "Esta tarefa com perguntas está bloqueada. O gestor pode reatribuí-la ou renovar o prazo para liberá-la para preenchimento."
+                    : "Esta tarefa está bloqueada. O gestor pode reatribuí-la ou renovar o prazo para liberá-la para execução.")
+                : (isForm
+                    ? "Prazo ou tolerância expirados. Renove o prazo para que o colaborador possa responder às perguntas."
+                    : "Prazo ou tolerância expirados. Renove o prazo para que o colaborador possa concluir a entrega.")}
+            </span>
+          </div>
+          {userRole !== "EMPLOYEE" && (
+            <Button
+              size="sm"
+              className="h-8 text-xs bg-slate-900 hover:bg-slate-800 text-white shrink-0 font-medium px-3 rounded-lg"
+              onClick={() => {
+                setSelectedMemberId(primaryAssignment?.memberId || "");
+                setReassignDeadlineType("60");
+                setReassignCustomDate("");
+                setReassignReason("");
+                setShowTransferModal(true);
+              }}
+            >
+              Destravar {isForm ? "tarefa com perguntas" : "tarefa"}
+            </Button>
+          )}
+        </div>
+      )}
+
       <Card className="bg-[var(--surface)] rounded-[18px] p-5 shadow-none border-[var(--border-subtle)]">
-        <div className="flex flex-wrap justify-between  items-center gap-2 mb-3">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 flex-wrap">
             <StatusBadge status={task.status} size="sm" showIcon />
             <PriorityBadge priority={task.priority} size="sm" className="w-fit! flex-none!" />
+            {isForm && (
+              <Badge className="bg-purple-100 text-purple-900 border-purple-200 dark:bg-purple-950/60 dark:text-purple-300 font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1.5 text-xs">
+                <ClipboardList className="size-3.5" />
+                Tarefa com Perguntas
+              </Badge>
+            )}
           </div>
           <Badge
             variant="secondary"
             className="text-(length:--type-caption) font-semibold"
           >
-            {task.origin === "PROCESS" ? "Processo" : "Tarefa avulsa"}
+            {task.origin === "PROCESS" ? "Processo" : (isForm ? "Tarefa com perguntas" : "Tarefa avulsa")}
           </Badge>
         </div>
 
         <h2 className="text-[var(--text-primary)] mb-2 text-[length:var(--type-section-title)] font-bold">
-          Sobre esta tarefa
+          {isForm ? "Sobre esta tarefa com perguntas" : "Sobre esta tarefa"}
         </h2>
-        {task.description && (
+        {task.description ? (
           <p className="text-[length:var(--type-label)] text-[var(--text-secondary)] leading-relaxed mb-4">
             {task.description}
           </p>
-        )}
+        ) : isForm ? (
+          <p className="text-[length:var(--type-label)] text-[var(--text-secondary)] italic leading-relaxed mb-4">
+            Tarefa com perguntas estruturadas para preenchimento pela equipe.
+          </p>
+        ) : null}
 
         {/* Metadados de Localização, Prazo e SLA */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-[var(--border-subtle)] text-[length:var(--type-label)]">
+        <div className={`grid grid-cols-2 ${isForm ? "sm:grid-cols-4" : "sm:grid-cols-3"} gap-3 pt-4 border-t border-[var(--border-subtle)] text-[length:var(--type-label)]`}>
           <div>
             <span className="text-[length:var(--type-caption)] uppercase font-semibold text-[var(--text-secondary)] block">
               Unidade
@@ -410,32 +618,39 @@ export function ManagementTaskDetailClient({
             <span className="font-semibold text-[var(--brand-900)]">
               {task.deadlineAt
                 ? new Date(task.deadlineAt).toLocaleString("pt-BR", {
-                  day: "2-digit",
-                  month: "2-digit",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
+                    day: "2-digit",
+                    month: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
                 : "Sem prazo fixo"}
             </span>
           </div>
 
-          <div>
-            <span className="text-[length:var(--type-caption)] uppercase font-semibold text-[var(--text-secondary)] block">
-              Tempo limite (SLA)
-            </span>
-            <span className="font-semibold text-[var(--brand-900)]">
-              {task.slaDurationMinutes
-                ? `${task.slaDurationMinutes} min`
-                : "Não configurado"}
-            </span>
-          </div>
+          {isForm && (
+            <div>
+              <span className="text-[length:var(--type-caption)] uppercase font-semibold text-[var(--text-secondary)] block">
+                Preenchimento
+              </span>
+              <span className="font-semibold text-[var(--brand-900)] flex items-center gap-1.5">
+                {answeredQuestions} de {totalQuestions} respondidas
+                {totalQuestions > 0 && (
+                  <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${
+                    isFullyAnswered ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                  }`}>
+                    {completionPercentage}%
+                  </span>
+                )}
+              </span>
+            </div>
+          )}
         </div>
       </Card>
 
       <Card className="bg-[var(--surface)] rounded-[18px] p-5 shadow-none border-[var(--border-subtle)]">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-[var(--text-secondary)] text-[length:var(--type-card-title)] font-bold">
-            Responsáveis
+            {isForm ? "Responsável pelo preenchimento" : "Responsáveis"}
           </h3>
           {userRole !== "EMPLOYEE" && !["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status) && (
             <Button
@@ -466,16 +681,248 @@ export function ManagementTaskDetailClient({
             </div>
           </div>
           <Badge className="text-(length:--type-caption) font-semibold px-2 py-0.5 capitalize text-xs p-3 rounded-full text-white border-transparent">
-            Responsável principal
+            {isForm ? "Atribuído" : "Responsável principal"}
           </Badge>
         </div>
       </Card>
+
+      {/* Tarefa com Perguntas: Perguntas e Respostas */}
+      {isForm && formFieldsList.length > 0 ? (
+        <Card className="bg-[var(--surface)] rounded-[18px] p-5 shadow-none border-[var(--border-subtle)] space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] pb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <ClipboardList className="size-5 text-brand-900" />
+                <h3 className="text-[var(--brand-900)] text-[length:var(--type-card-title)] font-bold">
+                  Perguntas e Respostas da Tarefa
+                </h3>
+              </div>
+              <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                Respostas registradas pelo colaborador para cada pergunta desta tarefa.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {isFullyAnswered ? (
+                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 font-semibold px-3 py-1 rounded-full flex items-center gap-1.5 text-xs">
+                  <CheckCircle2 className="size-3.5 text-emerald-600" />
+                  100% Respondido ({answeredQuestions}/{totalQuestions})
+                </Badge>
+              ) : answeredQuestions > 0 ? (
+                <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 font-semibold px-3 py-1 rounded-full flex items-center gap-1.5 text-xs">
+                  <Clock className="size-3.5 text-amber-600" />
+                  {answeredQuestions} de {totalQuestions} respondidas ({completionPercentage}%)
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-slate-600 border-slate-300 font-medium px-3 py-1 rounded-full flex items-center gap-1.5 text-xs">
+                  <Clock className="size-3.5 text-slate-400" />
+                  Aguardando respostas ({totalQuestions} perguntas)
+                </Badge>
+              )}
+            </div>
+          </div>
+
+          {/* Barra de progresso visual */}
+          {totalQuestions > 0 && (
+            <div className="space-y-1">
+              <div className="flex justify-between text-[11px] font-medium text-[var(--text-secondary)]">
+                <span>Progresso do preenchimento</span>
+                <span>{completionPercentage}%</span>
+              </div>
+              <div className="w-full bg-[var(--canvas)] rounded-full h-2 overflow-hidden border border-[var(--border-subtle)]">
+                <div
+                  className={`h-full transition-all duration-300 rounded-full ${
+                    isFullyAnswered ? "bg-emerald-500" : "bg-brand-900"
+                  }`}
+                  style={{ width: `${completionPercentage}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Lista de perguntas */}
+          <div className="space-y-3 pt-1">
+            {formFieldsList.map((field: any, idx: number) => {
+              const answer = task.formAnswers?.[field.id];
+              const isAnswered = answer !== undefined && answer !== null && answer !== "";
+              return (
+                <div
+                  key={field.id}
+                  className="p-4 bg-[var(--canvas)] border border-[var(--border-subtle)] rounded-[16px] flex flex-col gap-2.5 transition-all"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-2.5">
+                      <span className="size-7 rounded-lg bg-brand-soft border border-brand-200 flex items-center justify-center text-xs font-bold text-brand-900 shrink-0 select-none mt-0.5">
+                        {idx + 1}
+                      </span>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm font-semibold text-[var(--brand-900)] leading-snug">
+                          {field.question || field.label || "Pergunta sem título"}
+                        </span>
+                        {field.required && (
+                          <span className="text-[11px] font-semibold text-red-600 flex items-center gap-0.5">
+                            * Obrigatória
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-medium shrink-0 px-2 py-0.5 rounded-md bg-[var(--surface)] text-[var(--text-secondary)] border-[var(--border-subtle)]"
+                    >
+                      {field.type === "SHORT_TEXT" && "Texto Curto"}
+                      {field.type === "LONG_TEXT" && "Texto Longo"}
+                      {field.type === "RATING" && "Avaliação (1-5)"}
+                      {field.type === "BOOLEAN" && "Sim / Não"}
+                      {field.type === "PHOTO" && "Foto"}
+                      {field.type === "VIDEO" && "Vídeo"}
+                      {field.type === "FILE" && "Arquivos"}
+                      {field.type === "NUMBER" && "Número"}
+                      {field.type === "MULTIPLE_CHOICE" && "Múltipla escolha"}
+                      {(!field.type || !["SHORT_TEXT", "LONG_TEXT", "RATING", "BOOLEAN", "PHOTO", "VIDEO", "FILE", "NUMBER", "MULTIPLE_CHOICE"].includes(field.type)) && (field.type || "Texto")}
+                    </Badge>
+                  </div>
+
+                  {/* Resposta do Colaborador */}
+                  <div className="mt-1">
+                    <span className="text-[11px] uppercase tracking-wider font-semibold text-[var(--text-secondary)] block mb-1">
+                      Resposta:
+                    </span>
+                    <div className="text-sm text-[var(--text-primary)] font-medium bg-[var(--surface)] p-3 rounded-[12px] border border-[var(--border-subtle)]">
+                      {!isAnswered ? (
+                        <div className="flex items-center gap-2 text-slate-400 dark:text-slate-500 italic text-xs py-0.5">
+                          <Clock className="size-3.5 text-slate-400 shrink-0" />
+                          <span>Aguardando resposta do colaborador</span>
+                        </div>
+                      ) : field.type === "BOOLEAN" ? (
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
+                              answer === true || answer === "true"
+                                ? "bg-emerald-100 text-emerald-900 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300"
+                                : "bg-slate-100 text-slate-800 border border-slate-200 dark:bg-slate-800 dark:text-slate-300"
+                            }`}
+                          >
+                            {answer === true || answer === "true" ? (
+                              <>
+                                <CheckCircle2 className="size-3.5 text-emerald-600" /> Sim
+                              </>
+                            ) : (
+                              <>
+                                <XCircle className="size-3.5 text-slate-500" /> Não
+                              </>
+                            )}
+                          </span>
+                        </div>
+                      ) : field.type === "RATING" ? (
+                        <div className="flex items-center gap-3">
+                          <div className="flex gap-1 text-amber-500 text-base">
+                            {Array.from({ length: 5 }).map((_, i) => (
+                              <span key={i}>{i < Number(answer) ? "★" : "☆"}</span>
+                            ))}
+                          </div>
+                          <span className="text-xs font-semibold text-[var(--brand-900)]">
+                            {answer} de 5 estrelas
+                          </span>
+                        </div>
+                      ) : field.type === "PHOTO" ? (
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2.5 text-brand-900 dark:text-primary">
+                            <Camera className="size-4 text-brand-700 shrink-0" />
+                            <span className="font-semibold text-xs">
+                              {typeof answer === "object" ? answer.fileName : String(answer)}
+                            </span>
+                          </div>
+                          {typeof answer === "object" && answer.storageKey && (
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <a
+                                href={`/api/tasks/${task.id}/form-file/${answer.storageKey}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--canvas)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--brand-900)] hover:bg-[var(--surface)] transition-colors"
+                              >
+                                <ExternalLink className="size-3.5" />
+                                <span>Visualizar foto</span>
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      ) : field.type === "VIDEO" ? (
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2.5 text-brand-900 dark:text-primary">
+                            <Video className="size-4 text-brand-700 shrink-0" />
+                            <span className="font-semibold text-xs">
+                              {typeof answer === "object" ? answer.fileName : String(answer)}
+                            </span>
+                          </div>
+                          {typeof answer === "object" && answer.storageKey && (
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <a
+                                href={`/api/tasks/${task.id}/form-file/${answer.storageKey}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--canvas)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--brand-900)] hover:bg-[var(--surface)] transition-colors"
+                              >
+                                <ExternalLink className="size-3.5" />
+                                <span>Assistir / Baixar vídeo</span>
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      ) : field.type === "FILE" ? (
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2.5 text-brand-900 dark:text-primary">
+                            <Paperclip className="size-4 text-brand-700 shrink-0" />
+                            <span className="font-semibold text-xs">
+                              {typeof answer === "object" ? answer.fileName : String(answer)}
+                            </span>
+                            {typeof answer === "object" && answer.fileSize && (
+                              <span className="text-[11px] text-muted-foreground">
+                                ({Math.round(answer.fileSize / 1024)} KB)
+                              </span>
+                            )}
+                          </div>
+                          {typeof answer === "object" && answer.storageKey && (
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <a
+                                href={`/api/tasks/${task.id}/form-file/${answer.storageKey}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--canvas)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--brand-900)] hover:bg-[var(--surface)] transition-colors"
+                              >
+                                <Download className="size-3.5" />
+                                <span>Baixar anexo</span>
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="whitespace-pre-wrap leading-relaxed text-xs sm:text-sm">
+                          {String(answer)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      ) : isForm ? (
+        <Card className="bg-[var(--surface)] rounded-[18px] p-5 shadow-none border-[var(--border-subtle)]">
+          <h3 className="text-[var(--text-secondary)] mb-2 text-[length:var(--type-card-title)] font-bold">
+            Perguntas da Tarefa
+          </h3>
+          <p className="text-xs text-[var(--text-secondary)] italic">
+            Nenhuma pergunta foi cadastrada para esta tarefa.
+          </p>
+        </Card>
+      ) : null}
 
       {/* Instruções de Execução */}
       {task.instructions && (
         <Card className="bg-[var(--surface)] rounded-[18px] p-5 shadow-none border-[var(--border-subtle)]">
           <h3 className="text-[var(--text-secondary)] mb-2 text-[length:var(--type-card-title)] font-bold">
-            Instruções
+            {isForm ? "Orientações gerais para o preenchimento" : "Instruções"}
           </h3>
           <div className="text-[length:var(--type-label)] text-[var(--brand-900)] bg-[var(--canvas)] p-3 rounded-[14px] border border-[var(--border-subtle)] whitespace-pre-line leading-relaxed">
             {task.instructions}
@@ -483,86 +930,88 @@ export function ManagementTaskDetailClient({
         </Card>
       )}
 
-      {/* Evidências Coletadas */}
-      <Card className="bg-[var(--surface)] rounded-[18px] p-5 shadow-none border-[var(--border-subtle)]">
-        <h3 className="text-[var(--text-secondary)] mb-3 text-[length:var(--type-card-title)] font-bold">
-          Evidências
-        </h3>
+      {/* Evidências Coletadas (oculta se for form sem evidências exigidas) */}
+      {(!isForm || task.evidenceRequirements.length > 0) && (
+        <Card className="bg-[var(--surface)] rounded-[18px] p-5 shadow-none border-[var(--border-subtle)]">
+          <h3 className="text-[var(--text-secondary)] mb-3 text-[length:var(--type-card-title)] font-bold">
+            {isForm ? "Evidências Fotográficas Adicionais" : "Evidências"}
+          </h3>
 
-        {task.evidenceRequirements.length === 0 ? (
-          <p className="text-[length:var(--type-label)] text-[var(--text-secondary)]">
-            Esta tarefa não exige evidências.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {task.evidenceRequirements.map((req) => (
-              <Card
-                key={req.id}
-                className="p-3.5 rounded-[16px] bg-[var(--canvas)] border-[var(--border-subtle)] shadow-none"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <Camera className="size-4 text-[var(--brand-700)]" />
-                    <span className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]">
-                      {uiLabel(req.type)}
-                    </span>
+          {task.evidenceRequirements.length === 0 ? (
+            <p className="text-[length:var(--type-label)] text-[var(--text-secondary)]">
+              Esta tarefa não exige evidências.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {task.evidenceRequirements.map((req) => (
+                <Card
+                  key={req.id}
+                  className="p-3.5 rounded-[16px] bg-[var(--canvas)] border-[var(--border-subtle)] shadow-none"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Camera className="size-4 text-[var(--brand-700)]" />
+                      <span className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]">
+                        {uiLabel(req.type)}
+                      </span>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="text-[length:var(--type-caption)] font-semibold px-2 py-0.5 rounded-full bg-[var(--surface)] border-[var(--border-subtle)] text-[var(--brand-900)]"
+                    >
+                      {({ START: "Antes de iniciar", DURING: "Durante a execução", COMPLETION: "Para concluir" } as Record<string, string>)[req.executionStage] || req.executionStage}
+                    </Badge>
                   </div>
-                  <Badge
-                    variant="outline"
-                    className="text-[length:var(--type-caption)] font-semibold px-2 py-0.5 rounded-full bg-[var(--surface)] border-[var(--border-subtle)] text-[var(--brand-900)]"
-                  >
-                    {({ START: "Antes de iniciar", DURING: "Durante a execução", COMPLETION: "Para concluir" } as Record<string, string>)[req.executionStage] || req.executionStage}
-                  </Badge>
-                </div>
 
-                <div className="flex flex-col gap-1.5 mt-2">
-                  {req.submissions.length === 0 ? (
-                    <span className="text-[length:var(--type-label)] text-amber-800 font-medium">
-                      Aguardando envio do colaborador.
-                    </span>
-                  ) : (
-                    req.submissions.map((sub) => (
-                      <Card
-                        key={sub.id}
-                        className="flex items-center justify-between p-2 rounded-[10px] bg-[var(--surface)] border-[var(--border-subtle)] text-[length:var(--type-label)] shadow-none"
-                      >
-                        <div>
-                          <span className="font-semibold text-[var(--brand-900)]">
-                            {sub.storageKey ? <a className="underline" href={`/api/evidence/${sub.id}`}>Baixar {sub.value || "arquivo"}</a> : sub.value || "Evidência enviada"}
-                          </span>
-                          <span className="text-[length:var(--type-caption)] text-[var(--text-secondary)] block">
-                            Tentativa #{sub.attemptNumber} •{" "}
-                            {new Date(sub.createdAt).toLocaleTimeString(
-                              "pt-BR",
-                              {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              },
-                            )}
-                          </span>
-                        </div>
-                        <Badge
-                          variant={
-                            sub.validationStatus === "VALID"
-                              ? "default"
-                              : "destructive"
-                          }
-                          className={`text-[length:var(--type-caption)] font-semibold px-2 py-0.5 rounded-full ${sub.validationStatus === "VALID"
-                            ? "bg-emerald-100 text-emerald-900 border-transparent"
-                            : "bg-red-100 text-red-900 border-transparent"
-                            }`}
+                  <div className="flex flex-col gap-1.5 mt-2">
+                    {req.submissions.length === 0 ? (
+                      <span className="text-[length:var(--type-label)] text-amber-800 font-medium">
+                        Aguardando envio do colaborador.
+                      </span>
+                    ) : (
+                      req.submissions.map((sub) => (
+                        <Card
+                          key={sub.id}
+                          className="flex items-center justify-between p-2 rounded-[10px] bg-[var(--surface)] border-[var(--border-subtle)] text-[length:var(--type-label)] shadow-none"
                         >
-                          {sub.validationStatus === "VALID" ? "Validada" : "Rejeitada"}
-                        </Badge>
-                      </Card>
-                    ))
-                  )}
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
-      </Card>
+                          <div>
+                            <span className="font-semibold text-[var(--brand-900)]">
+                              {sub.storageKey ? <a className="underline" href={`/api/evidence/${sub.id}`}>Baixar {sub.value || "arquivo"}</a> : sub.value || "Evidência enviada"}
+                            </span>
+                            <span className="text-[length:var(--type-caption)] text-[var(--text-secondary)] block">
+                              Tentativa #{sub.attemptNumber} •{" "}
+                              {new Date(sub.createdAt).toLocaleTimeString(
+                                "pt-BR",
+                                {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                },
+                              )}
+                            </span>
+                          </div>
+                          <Badge
+                            variant={
+                              sub.validationStatus === "VALID"
+                                ? "default"
+                                : "destructive"
+                            }
+                            className={`text-[length:var(--type-caption)] font-semibold px-2 py-0.5 rounded-full ${sub.validationStatus === "VALID"
+                              ? "bg-emerald-100 text-emerald-900 border-transparent"
+                              : "bg-red-100 text-red-900 border-transparent"
+                              }`}
+                          >
+                            {sub.validationStatus === "VALID" ? "Validada" : "Rejeitada"}
+                          </Badge>
+                        </Card>
+                      ))
+                    )}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* Dependências Operacionais */}
       <Card className="bg-[var(--surface)] rounded-[18px] p-5 shadow-none border-[var(--border-subtle)]">
@@ -668,78 +1117,197 @@ export function ManagementTaskDetailClient({
         </Card>
       )}
 
-      {/* Histórico de Pausas e Ocorrências */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* Pausas */}
-        <Card className="bg-[var(--surface)] rounded-[18px] p-5 shadow-none border-[var(--border-subtle)]">
-          <h3 className="text-[var(--text-secondary)] mb-2 text-[length:var(--type-card-title)] font-bold">
-            Pausas
-          </h3>
-          {task.pauses.length === 0 ? (
-            <p className="text-[length:var(--type-label)] text-[var(--text-secondary)]">
-              Nenhuma pausa registrada.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {task.pauses.map((p) => (
-                <Card
-                  key={p.id}
-                  className="p-2.5 rounded-[12px] bg-[var(--canvas)] border-[var(--border-subtle)] text-[length:var(--type-label)] shadow-none"
-                >
-                  <div className="font-semibold text-[var(--brand-900)]">
-                    {p.reasonCategoryId || "Geral"}
-                  </div>
-                  {p.note && (
-                    <div className="text-[length:var(--type-caption)] text-[var(--text-secondary)]">
-                      {p.note}
-                    </div>
-                  )}
-                  <div className="text-[length:var(--type-caption)] text-[var(--brand-700)] mt-1">
-                    Início: {new Date(p.startedAt).toLocaleTimeString("pt-BR")}
-                    {p.endedAt
-                      ? ` • Fim: ${new Date(p.endedAt).toLocaleTimeString("pt-BR")}`
-                      : " (Em curso)"}
-                  </div>
-                </Card>
-              ))}
-            </div>
-          )}
-        </Card>
+      {/* Ocorrências e Alertas Operacionais - Inicialmente colapsado, layout limpo e neutro */}
+      {(() => {
+        const validOccurrences = (task.occurrences || []).filter((o) => !isPauseOccurrence(o));
+        const impediments = validOccurrences.filter((o) => o.type !== "SLA_BREACH");
+        const slaBreaches = validOccurrences
+          .filter((o) => o.type === "SLA_BREACH")
+          .sort((a, b) => {
+            const minsA = parseInt(a.category.replace(/^SLA_/, ""), 10) || 0;
+            const minsB = parseInt(b.category.replace(/^SLA_/, ""), 10) || 0;
+            return minsB - minsA;
+          });
 
-        {/* Ocorrências */}
-        <Card className="bg-[var(--surface)] rounded-[18px] p-5 shadow-none border-[var(--border-subtle)]">
-          <h3 className="text-[var(--text-secondary)] mb-2 text-[length:var(--type-card-title)] font-bold">
-            Ocorrências
-          </h3>
-          {task.occurrences.length === 0 ? (
-            <p className="text-[length:var(--type-label)] text-[var(--text-secondary)]">
-              Nenhuma ocorrência ou impedimento.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {task.occurrences.map((oc) => (
-                <Card
-                  key={oc.id}
-                  className="p-2.5 rounded-[12px] bg-rose-50 border-rose-200 text-[length:var(--type-label)] text-rose-900 shadow-none"
+        return (
+          <Card className="bg-[var(--surface)] rounded-[18px] shadow-none border-[var(--border-subtle)] overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setOccurrencesOpen((prev) => !prev)}
+              className="w-full flex items-center justify-between gap-3 p-4 sm:p-5 text-left hover:bg-slate-50/60 dark:hover:bg-slate-900/40 transition-colors cursor-pointer select-none"
+            >
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <AlertCircle className="size-4 text-slate-600 dark:text-slate-400 shrink-0" />
+                <h3 className="text-[var(--text-primary)] text-[length:var(--type-card-title)] font-bold">
+                  Ocorrências e Alertas Operacionais
+                </h3>
+                <Badge
+                  variant="outline"
+                  className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                    validOccurrences.length > 0
+                      ? "bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-200"
+                      : "bg-transparent text-slate-500 border-slate-200"
+                  }`}
                 >
-                  <div className="font-semibold">
-                    [{oc.type}] {oc.category}
-                  </div>
-                  <div className="text-[length:var(--type-caption)] mt-0.5">
-                    {oc.reason}
-                  </div>
-                  <Badge
-                    variant="destructive"
-                    className="text-[length:var(--type-caption)] font-semibold uppercase mt-1 w-fit"
-                  >
-                    Severidade: {oc.severity}
-                  </Badge>
-                </Card>
-              ))}
-            </div>
-          )}
-        </Card>
-      </div>
+                  {validOccurrences.length} {validOccurrences.length === 1 ? "registro" : "registros"}
+                </Badge>
+              </div>
+
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium shrink-0">
+                <span>{occurrencesOpen ? "Ocultar detalhes" : "Ver detalhes"}</span>
+                {occurrencesOpen ? (
+                  <ChevronUp className="size-4 text-slate-500" />
+                ) : (
+                  <ChevronDown className="size-4 text-slate-500" />
+                )}
+              </div>
+            </button>
+
+            {occurrencesOpen && (
+              <div className="px-5 pb-5 pt-1 border-t border-[var(--border-subtle)] flex flex-col gap-4">
+                {validOccurrences.length === 0 ? (
+                  <p className="text-[length:var(--type-label)] text-[var(--text-secondary)] py-3">
+                    Nenhuma ocorrência ou violação de prazo registrada nesta tarefa.
+                  </p>
+                ) : (
+                  <>
+                    {/* 1. Impedimentos Operacionais (se houver) */}
+                    {impediments.length > 0 && (
+                      <div className="flex flex-col gap-2 pt-2">
+                        <span className="text-[11px] font-semibold text-rose-800 dark:text-rose-300 uppercase tracking-wide">
+                          Impedimentos reportados ({impediments.length})
+                        </span>
+                        <div className="flex flex-col gap-2">
+                          {impediments.map((imp) => {
+                            const sev = formatSeverity(imp.severity);
+                            const catLabel = formatOccurrenceCategory(imp.category, imp.type);
+                            return (
+                              <div
+                                key={imp.id}
+                                className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 text-xs flex flex-col gap-2"
+                              >
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="destructive" className="text-[10px] uppercase font-bold px-1.5 py-0.2">
+                                      Impedimento
+                                    </Badge>
+                                    <span className="font-semibold text-slate-900 dark:text-slate-100 text-xs">
+                                      {catLabel}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Badge className={`text-[10px] font-semibold ${sev.badgeClass}`}>
+                                      Severidade: {sev.label}
+                                    </Badge>
+                                    <span className="text-[11px] text-muted-foreground font-mono">
+                                      {new Date(imp.createdAt).toLocaleString("pt-BR", {
+                                        dateStyle: "short",
+                                        timeStyle: "short",
+                                      })}
+                                    </span>
+                                  </div>
+                                </div>
+                                <p className="text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-950/60 p-2.5 rounded-lg border border-slate-200/80 dark:border-slate-800 text-xs leading-relaxed">
+                                  {imp.reason}
+                                </p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 2. Violação de Prazo Limite / Marcos de Atraso */}
+                    {slaBreaches.length > 0 && (() => {
+                      const latestBreach = slaBreaches[0];
+                      const latestMins = parseInt(latestBreach.category.replace(/^SLA_/, ""), 10) || 0;
+                      const sev = formatSeverity(latestBreach.severity);
+
+                      return (
+                        <div className="flex flex-col gap-2.5 pt-2">
+                          <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wide">
+                            Alertas de Prazo & Atraso
+                          </span>
+
+                          {/* Resumo executivo do atraso atual - Neutro, limpo, moderno */}
+                          <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="flex items-start gap-2.5">
+                              <Clock className="size-5 text-slate-600 dark:text-slate-400 shrink-0 mt-0.5" />
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-bold text-slate-900 dark:text-slate-100 text-xs sm:text-sm">
+                                    Prazo Excedido
+                                  </span>
+                                  <Badge variant="outline" className="bg-slate-100 text-slate-800 border-slate-200 dark:bg-slate-800 dark:text-slate-200 text-[10px] font-semibold">
+                                    {latestMins > 0 ? formatOccurrenceCategory(latestBreach.category, latestBreach.type) : "Prazo original esgotado"}
+                                  </Badge>
+                                  <Badge className={`text-[10px] font-semibold ${sev.badgeClass}`}>
+                                    Severidade: {sev.label}
+                                  </Badge>
+                                </div>
+                                <p className="text-slate-600 dark:text-slate-400 text-xs mt-1">
+                                  {cleanReason(latestBreach.reason)}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="text-left sm:text-right shrink-0">
+                              <span className="text-[10px] text-slate-500 block font-medium">
+                                Último alerta do sistema:
+                              </span>
+                              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 font-mono">
+                                {new Date(latestBreach.createdAt).toLocaleString("pt-BR", {
+                                  dateStyle: "short",
+                                  timeStyle: "short",
+                                })}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Histórico limpo dos marcos disparados */}
+                          {slaBreaches.length > 1 && (
+                            <div className="flex flex-col gap-1.5 pt-1">
+                              <span className="text-[11px] text-[var(--text-secondary)] font-medium">
+                                Histórico dos marcos de alerta ({slaBreaches.length} notificações disparadas):
+                              </span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                                {slaBreaches.map((b) => {
+                                  const mins = parseInt(b.category.replace(/^SLA_/, ""), 10) || 0;
+                                  const label = mins === 0 ? "Prazo esgotado (0 min)" : `Alerta aos +${mins} min`;
+                                  return (
+                                    <div
+                                      key={b.id}
+                                      className="p-2.5 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-xs flex flex-col gap-0.5"
+                                    >
+                                      <div className="flex items-center justify-between gap-1">
+                                        <span className="font-semibold text-slate-800 dark:text-slate-200 text-[11px]">
+                                          {label}
+                                        </span>
+                                        <span className="text-[10px] text-muted-foreground font-mono">
+                                          {new Date(b.createdAt).toLocaleTimeString("pt-BR", {
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                          })}
+                                        </span>
+                                      </div>
+                                      <span className="text-[11px] text-slate-600 dark:text-slate-400 line-clamp-1">
+                                        {cleanReason(b.reason)}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </>
+                )}
+              </div>
+            )}
+          </Card>
+        );
+      })()}
 
       {/* Auditoria Append-Only */}
       <Card className="bg-[var(--surface)] rounded-[18px] p-5 shadow-none border-[var(--border-subtle)]">
@@ -774,40 +1342,99 @@ export function ManagementTaskDetailClient({
       </Card>
 
       <Dialog open={showTransferModal} onOpenChange={setShowTransferModal}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg p-7!">
           <DialogHeader>
-            <DialogTitle>Alterar responsável</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <UserCheck className="size-5 text-[var(--brand-900)]" />
+              <span>Reatribuir tarefa & renovar prazo</span>
+            </DialogTitle>
             <DialogDescription>
-              Selecione um membro da equipe com acesso autorizado à unidade. O
-              histórico anterior será preservado.
+              Selecione o colaborador responsável e defina o novo prazo para conclusão.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
             <Field>
-              <FieldLabel className="text-(length:--type-label) font-semibold text-brand-900">
-                Colaborador
+              <FieldLabel className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]">
+                Colaborador responsável *
               </FieldLabel>
-              <Select
-                items={availableMemberItems}
+              <NativeSelect
                 value={selectedMemberId}
-                onValueChange={(val) => {
-                  if (val) setSelectedMemberId(val);
-                }}
+                onChange={(e) => setSelectedMemberId(e.target.value)}
+                className="text-[length:var(--type-label)]"
               >
-                <SelectTrigger className="w-full text-(length:--type-label)">
-                  <SelectValue placeholder="Selecione um colaborador..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup >
-                    {availableMemberItems.map((m) => (
-                      <SelectItem key={m.value} value={m.value}>
-                        {m.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+                <NativeSelectOption value="">Selecione um colaborador...</NativeSelectOption>
+                {availableMembers.map((m) => {
+                  const isCurrent = m.id === primaryAssignment?.memberId;
+                  return (
+                    <NativeSelectOption key={m.id} value={m.id}>
+                      {m.name} {isCurrent ? "- Responsável atual" : ""}
+                    </NativeSelectOption>
+                  );
+                })}
+              </NativeSelect>
+            </Field>
+
+            {/* Novo Prazo */}
+            <div className="space-y-2">
+              <FieldLabel className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)] block">
+                Novo prazo para conclusão *
+              </FieldLabel>
+              <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
+                {[
+                  { id: "15", label: "+15 min" },
+                  { id: "30", label: "+30 min" },
+                  { id: "60", label: "+1 hora" },
+                  { id: "120", label: "+2 horas" },
+                  { id: "eod", label: "Fim do dia" },
+                  { id: "custom", label: "Outro" },
+                ].map((opt) => (
+                  <Button
+                    key={opt.id}
+                    type="button"
+                    variant={reassignDeadlineType === opt.id ? "default" : "outline"}
+                    className={`h-8 text-xs font-medium px-2 rounded-lg transition-all ${reassignDeadlineType === opt.id
+                      ? "bg-[var(--brand-900)] text-white font-semibold shadow-xs hover:bg-[var(--brand-800)]"
+                      : "bg-[var(--surface)] hover:bg-slate-100 text-[var(--text-secondary)]"
+                      }`}
+                    onClick={() => setReassignDeadlineType(opt.id as any)}
+                  >
+                    {opt.label}
+                  </Button>
+                ))}
+              </div>
+
+              {reassignDeadlineType === "custom" && (
+                <div className="pt-2">
+                  <Input
+                    type="datetime-local"
+                    value={reassignCustomDate}
+                    onChange={(e) => setReassignCustomDate(e.target.value)}
+                    className="text-xs h-9"
+                  />
+                </div>
+              )}
+
+              {/* Preview do novo prazo */}
+              <div className="p-2.5 rounded-lg bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 flex items-center gap-2 text-xs text-emerald-900 dark:text-emerald-300">
+                <Clock className="size-4 shrink-0 text-emerald-700" />
+                <span>
+                  <strong>Novo prazo:</strong> {getDeadlinePreview(reassignDeadlineType, reassignCustomDate)}
+                </span>
+              </div>
+            </div>
+
+            <Field>
+              <FieldLabel className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]">
+                Observação / Motivo (opcional)
+              </FieldLabel>
+              <Textarea
+                rows={2}
+                value={reassignReason}
+                onChange={(e) => setReassignReason(e.target.value)}
+                placeholder="Ex: Tarefa atrasada por falta de insumos; prazo renegociado com a equipe..."
+                className="text-sm! resize-none"
+              />
             </Field>
           </div>
 
@@ -823,9 +1450,10 @@ export function ManagementTaskDetailClient({
               type="button"
               onClick={handleTransfer}
               disabled={!selectedMemberId || loading}
+              className="bg-[var(--brand-900)] hover:bg-[var(--brand-800)] text-white font-semibold"
             >
               {loading ? <Spinner data-icon="inline-start" /> : null}
-              <span>Alterar responsável</span>
+              <span>Confirmar e renovar prazo</span>
             </Button>
           </DialogFooter>
         </DialogContent>

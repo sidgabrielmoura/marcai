@@ -3,6 +3,7 @@ import { prisma } from "@/infrastructure/database/prisma";
 import { ManagerScope, Role } from "@/domain/types";
 import { redirect } from "next/navigation";
 import { hasSecondFactorProof } from "@/infrastructure/security/totp";
+import { readManualSubscription, type ManualSubscription } from "@/application/superadmin/manual-subscription";
 
 export interface AuthenticatedContext {
   userId: string;
@@ -15,6 +16,7 @@ export interface AuthenticatedContext {
   role: Role;
   employeeCode?: string | null;
   scope?: ManagerScope;
+  subscription?: ManualSubscription | null;
 }
 
 export class UnauthorizedError extends Error {
@@ -102,6 +104,7 @@ export async function getAuthenticatedContext(
     role: member.role as Role,
     employeeCode: member.employeeCode,
     scope,
+    subscription: readManualSubscription(member.organization.settings),
   };
 }
 
@@ -140,7 +143,11 @@ export async function getSuperadminContext(
     }
     return null;
   }
-  if (session.role !== "SUPERADMIN" || !hasSecondFactorProof(user, session.secondFactorProof)) {
+  const isSuperadminAuthorized =
+    (session.role === "SUPERADMIN" || user.platformRole === "SUPERADMIN") &&
+    hasSecondFactorProof(user, session.secondFactorProof);
+
+  if (!isSuperadminAuthorized) {
     if (redirectOnFailure) redirect("/login");
     return null;
   }

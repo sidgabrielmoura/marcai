@@ -16,7 +16,7 @@ export function taskScope(context: AuthenticatedContext): Prisma.TaskWhereInput 
       assignments: { some: { memberId: context.memberId, removedAt: null } },
       AND: [
         { OR: [{ locationId: null }, { locationId: { in: context.scope?.locationIds ?? [] } }] },
-        { OR: [{ teamId: null }, { teamId: { in: context.scope?.teamIds ?? [] } }, { assignments: { some: { memberId: context.memberId, removedAt: null, type: "COLLABORATOR" } } }] },
+        { OR: [{ teamId: null }, { teamId: { in: context.scope?.teamIds ?? [] } }] },
       ],
     } : !isManagement(context) ? { id: "__denied__" } : {}),
   };

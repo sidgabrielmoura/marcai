@@ -1,5 +1,7 @@
 "use server";
 
+import { listTemplateLibrary } from "@/application/templates/template-library";
+import { processTemplateHref, templateJobs } from "@/domain/rules/reusable-template-definition";
 import { z } from "zod";
 import { prisma } from "@/infrastructure/database/prisma";
 import { getAuthenticatedContext, getSuperadminContext } from "@/application/security/auth-context";
@@ -47,5 +49,7 @@ export async function searchWorkspaceAction(query: string): Promise<SearchResult
   results.push(...teams.map(t => ({ id: t.id, group: "Equipes", title: t.name, detail: "Equipe da organização", href: `/management/teams#team-${t.id}` })));
   results.push(...people.map(m => ({ id: m.id, group: "Pessoas", title: m.user.name, detail: "Membro da organização", href: `/management/people#member-${m.id}` })));
   results.push(...evidences.map(ev => ({ id: ev.id, group: "Evidências", title: `Evidência em: ${ev.requirement.task.title}`, detail: ev.value?.slice(0, 40) ?? "Arquivo anexado", href: `/management/tasks/${ev.requirement.task.id}` })));
+  const templates = await listTemplateLibrary(c, false, true);
+  results.push(...templates.filter(t => (t.name + " " + t.description).toLocaleLowerCase("pt-BR").includes(parsed.data.toLocaleLowerCase("pt-BR"))).slice(0, 8).map(t => ({ id: t.reference, group: "Templates", title: t.name, detail: templateJobs[t.jobKey], href: processTemplateHref(t.reference) })));
   return results;
 }

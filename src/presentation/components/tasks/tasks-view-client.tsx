@@ -19,6 +19,9 @@ import {
   ChevronLeft,
   Info,
   X,
+  HelpCircle,
+  CheckSquare,
+  ListChecks,
 } from "lucide-react";
 import {
   trashTaskAction,
@@ -55,6 +58,12 @@ import {
 } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -89,6 +98,7 @@ interface TaskItem {
   teamName: string | null;
   primaryAssignee: string | null;
   slaExceeded: boolean;
+  taskType: string;
 }
 
 interface TasksViewClientProps {
@@ -102,6 +112,12 @@ const originFilterItems = [
   { label: "Todas as origens", value: "ALL" },
   { label: "Processo", value: "PROCESS" },
   { label: "Tarefa avulsa", value: "AD_HOC" },
+];
+
+const typeFilterItems = [
+  { label: "Todos", value: "ALL" },
+  { label: "Tarefas", value: "STANDARD" },
+  { label: "Com Perguntas", value: "FORM" },
 ];
 
 const statusFilterItems = [
@@ -131,7 +147,9 @@ export function TasksViewClient({
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
+  const [viewMode, setViewMode] = useState<"table" | "kanban">("kanban");
+  const [showInfoCard, setShowInfoCard] = useState(false);
+  const [filterType, setFilterType] = useState<string>("ALL");
   const [filterStatus, setFilterStatus] = useState<string>("ALL");
   const [filterPriority, setFilterPriority] = useState<string>("ALL");
   const [filterLocation, setFilterLocation] = useState<string>("ALL");
@@ -150,6 +168,7 @@ export function TasksViewClient({
 
   // Bottom Sheet de Filtros no Mobile
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [tempType, setTempType] = useState("ALL");
   const [tempStatus, setTempStatus] = useState("ALL");
   const [tempPriority, setTempPriority] = useState("ALL");
   const [tempLocation, setTempLocation] = useState("ALL");
@@ -184,10 +203,14 @@ export function TasksViewClient({
   // Resetar página ao mudar filtros
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterStatus, filterPriority, filterLocation, filterTeam, pageSize]);
+  }, [searchQuery, filterStatus, filterPriority, filterLocation, filterTeam, filterType, pageSize]);
 
   // Filtragem no cliente
   const filteredTasks = tasks.filter((task) => {
+    if (filterType !== "ALL") {
+      if (filterType === "FORM" && task.taskType !== "FORM") return false;
+      if (filterType === "STANDARD" && task.taskType === "FORM") return false;
+    }
     if (filterStatus !== "ALL") {
       if (filterStatus === "OPEN") {
         if (!["AVAILABLE", "IN_PROGRESS"].includes(task.status)) return false;
@@ -226,12 +249,14 @@ export function TasksViewClient({
   const paginatedTasks = filteredTasks.slice(startIndex, startIndex + pageSize);
 
   const activeFiltersCount =
+    (filterType !== "ALL" ? 1 : 0) +
     (filterStatus !== "ALL" ? 1 : 0) +
     (filterPriority !== "ALL" ? 1 : 0) +
     (filterLocation !== "ALL" ? 1 : 0) +
     (filterTeam !== "ALL" ? 1 : 0);
 
   function handleOpenFilterSheet() {
+    setTempType(filterType);
     setTempStatus(filterStatus);
     setTempPriority(filterPriority);
     setTempLocation(filterLocation);
@@ -240,6 +265,7 @@ export function TasksViewClient({
   }
 
   function handleApplyFilters() {
+    setFilterType(tempType);
     setFilterStatus(tempStatus);
     setFilterPriority(tempPriority);
     setFilterLocation(tempLocation);
@@ -248,10 +274,12 @@ export function TasksViewClient({
   }
 
   function handleClearFilters() {
+    setTempType("ALL");
     setTempStatus("ALL");
     setTempPriority("ALL");
     setTempLocation("ALL");
     setTempTeam("ALL");
+    setFilterType("ALL");
     setFilterStatus("ALL");
     setFilterPriority("ALL");
     setFilterLocation("ALL");
@@ -316,7 +344,20 @@ export function TasksViewClient({
     <div className="page-stack">
       {/* Cabeçalho canônico */}
       <PageHeader
-        title="Tarefas Avulsas"
+        title={
+          <div className="flex items-center gap-2">
+            <span>Tarefas Avulsas</span>
+            <button
+              type="button"
+              onClick={() => setShowInfoCard((prev) => !prev)}
+              className="inline-flex items-center justify-center size-7 rounded-full text-muted-foreground hover:text-[var(--brand-900)] hover:bg-[var(--canvas)] transition-colors cursor-pointer"
+              title={showInfoCard ? "Ocultar informações sobre tarefas avulsas" : "O que são Tarefas Avulsas?"}
+              aria-label="Ajuda sobre Tarefas Avulsas"
+            >
+              <HelpCircle className="size-4" />
+            </button>
+          </div>
+        }
         subtitle={`${filteredTasks.length} de ${tasks.length} tarefas avulsas cadastradas`}
         action={
           <div className="flex items-center gap-2">
@@ -362,67 +403,126 @@ export function TasksViewClient({
               <Trash2 className="size-4.5" />
             </Button>
 
-            <Button nativeButton={false}
-              render={<Link href="/management/tasks/new" />}
-              className="h-11 px-4 rounded-[14px] bg-[var(--brand-900)] text-white text-[length:var(--type-label)] font-semibold hover:bg-[var(--brand-700)] shadow-none transition-all flex items-center gap-1.5 shrink-0"
-            >
-              <Plus data-icon="inline-start" className="size-4" />
-              <span>Criar tarefa avulsa</span>
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button nativeButton={false} className="h-11 px-4 rounded-[14px] bg-[var(--brand-900)] text-white text-[length:var(--type-label)] font-semibold hover:bg-[var(--brand-700)] shadow-none transition-all flex items-center gap-1.5 shrink-0" />}>
+                <Plus data-icon="inline-start" className="size-4" />
+                <span>Criar</span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48 rounded-[12px] p-1.5">
+                <DropdownMenuItem render={<Link href="/management/tasks/new?type=STANDARD" />} className="rounded-[8px] cursor-pointer w-full flex items-center gap-2 text-[var(--text-primary)]">
+                  <CheckSquare className="size-4 text-[var(--text-secondary)]" />
+                  <span className="font-medium text-sm">Tarefa Avulsa</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem render={<Link href="/management/tasks/new?type=FORM" />} className="rounded-[8px] cursor-pointer w-full flex items-center gap-2 text-[var(--text-primary)]">
+                  <ListChecks className="size-4 text-[var(--text-secondary)]" />
+                  <span className="font-medium text-sm">Tarefa com Perguntas</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         }
       />
 
-      <div className="rounded-[16px] bg-amber-500/10 border border-amber-500/25 p-3.5 text-xs text-amber-950 dark:text-amber-200 flex items-start gap-3">
-        <Info className="size-4.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-        <div className="flex-1 leading-relaxed">
-          <strong className="font-semibold text-amber-900 dark:text-amber-100">Painel exclusivo para Tarefas Avulsas:</strong> Esta página lista exclusivamente demandas pontuais criadas diretamente para colaboradores ou equipes.
+      {showInfoCard && (
+        <div className="rounded-[16px] bg-amber-500/10 border border-amber-500/25 p-3.5 text-xs text-amber-950 dark:text-amber-200 flex items-start justify-between gap-3 animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="flex items-start gap-2.5">
+            <Info className="size-4.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex-1 leading-relaxed">
+              <strong className="font-semibold text-amber-900 dark:text-amber-100">Painel exclusivo para Tarefas Avulsas:</strong> Esta página lista exclusivamente demandas pontuais criadas diretamente para colaboradores ou equipes.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowInfoCard(false)}
+            className="text-amber-700 hover:text-amber-900 dark:text-amber-300 p-0.5 rounded cursor-pointer"
+            aria-label="Fechar aviso"
+          >
+            <X className="size-3.5" />
+          </button>
         </div>
-      </div>
+      )}
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
         <div className="flex-1">
           <Input
             type="text"
-            placeholder="Buscar tarefas avulsas por título ou responsável..."
+            placeholder="Buscar por título ou responsável..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full h-11 placeholder:text-green-950/50! text-(length:--type-label) px-3.5 bg-surface border-(--border-subtle) rounded-[14px] text-brand-900 shadow-none"
           />
         </div>
 
-        <Button
-          type="button"
-          variant={activeFiltersCount > 0 ? "default" : "outline"}
-          onClick={handleOpenFilterSheet}
-          className={`relative size-11 rounded-[14px] flex items-center justify-center p-0 shrink-0 ${activeFiltersCount > 0
-            ? "bg-[var(--brand-900)] text-white border-[var(--brand-900)]"
-            : "bg-[var(--surface)] text-[var(--brand-700)] border-[var(--border-subtle)] hover:bg-[var(--canvas)]"
-            }`}
-          aria-label="Abrir filtros"
-          title="Filtros avançados"
-        >
-          <SlidersHorizontal className="size-4.5" />
-          {activeFiltersCount > 0 && (
-            <span className="absolute -top-1 -right-1 size-4 rounded-full bg-[var(--sage-400)] text-[var(--brand-900)] text-[length:var(--type-caption)] font-semibold flex items-center justify-center">
-              {activeFiltersCount}
-            </span>
-          )}
-        </Button>
+        {/* Alternador Rápido: Todos / Tarefas / Tarefas com Perguntas */}
+        <div className="flex items-center gap-1 bg-[var(--surface)] p-1 rounded-[14px] border border-[var(--border-subtle)] self-start sm:self-auto shrink-0">
+          {typeFilterItems.map((item) => {
+            const active = filterType === item.value;
+            const count =
+              item.value === "ALL"
+                ? tasks.length
+                : item.value === "FORM"
+                ? tasks.filter((t) => t.taskType === "FORM").length
+                : tasks.filter((t) => t.taskType !== "FORM").length;
+            return (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() => setFilterType(item.value)}
+                className={`h-9 px-3 rounded-[10px] text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  active
+                    ? "bg-[var(--brand-900)] text-white shadow-xs"
+                    : "text-[var(--text-secondary)] hover:text-[var(--brand-900)] hover:bg-[var(--canvas)]"
+                }`}
+              >
+                <span>{item.label}</span>
+                <span
+                  className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
+                    active
+                      ? "bg-white/20 text-white"
+                      : "bg-slate-100 text-slate-600 dark:bg-muted/40 dark:text-slate-400"
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
 
-        {activeFiltersCount > 0 && (
+        <div className="flex items-center gap-2 self-end sm:self-auto">
           <Button
             type="button"
-            variant="ghost"
-            size="sm"
-            onClick={handleClearFilters}
-            className="text-(length:--type-label) text-brand-700 hover:text-red-700 font-semibold px-2 py-1 flex items-center gap-1 shrink-0"
-            title="Limpar todos os filtros"
+            variant={activeFiltersCount > 0 ? "default" : "outline"}
+            onClick={handleOpenFilterSheet}
+            className={`relative size-11 rounded-[14px] flex items-center justify-center p-0 shrink-0 ${activeFiltersCount > 0
+              ? "bg-[var(--brand-900)] text-white border-[var(--brand-900)]"
+              : "bg-[var(--surface)] text-[var(--brand-700)] border-[var(--border-subtle)] hover:bg-[var(--canvas)]"
+              }`}
+            aria-label="Abrir filtros"
+            title="Filtros avançados"
           >
-            <X data-icon="inline-start" className="size-3.5" />
-            <span className="hidden sm:inline">Limpar</span>
+            <SlidersHorizontal className="size-4.5" />
+            {activeFiltersCount > 0 && (
+              <span className="absolute -top-1 -right-1 size-4 rounded-full bg-[var(--sage-400)] text-[var(--brand-900)] text-[length:var(--type-caption)] font-semibold flex items-center justify-center">
+                {activeFiltersCount}
+              </span>
+            )}
           </Button>
-        )}
+
+          {activeFiltersCount > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleClearFilters}
+              className="text-(length:--type-label) text-brand-700 hover:text-red-700 font-semibold px-2 py-1 flex items-center gap-1 shrink-0"
+              title="Limpar todos os filtros"
+            >
+              <X data-icon="inline-start" className="size-3.5" />
+              <span className="hidden sm:inline">Limpar</span>
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Bottom Sheet de Filtros Canônico */}
@@ -434,6 +534,32 @@ export function TasksViewClient({
         onClear={handleClearFilters}
       >
         <div className="space-y-3.5">
+          <Field>
+            <FieldLabel className="text-[length:var(--type-label)] font-semibold text-[var(--brand-700)]">
+              Tipo
+            </FieldLabel>
+            <Select
+              items={typeFilterItems}
+              value={tempType}
+              onValueChange={(val) => {
+                if (val) setTempType(val);
+              }}
+            >
+              <SelectTrigger className="w-full h-11 bg-[var(--canvas)] border-[var(--border-subtle)] rounded-[14px] px-3 text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]">
+                <SelectValue placeholder="Todos os tipos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {typeFilterItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+
           <Field>
             <FieldLabel className="text-[length:var(--type-label)] font-semibold text-[var(--brand-700)]">
               Status
@@ -573,6 +699,9 @@ export function TasksViewClient({
                         </div>
 
                         <h3 className="text-sm font-semibold text-[var(--text-primary)] line-clamp-2">
+                          <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wide bg-[var(--canvas)] border border-[var(--border-subtle)] px-2 py-0.5 rounded-full mr-2 align-middle">
+                            {task.origin === "PROCESS" ? "Processo" : task.taskType === "FORM" ? "Tarefa com Perguntas" : "Tarefa Avulsa"}
+                          </span>
                           {task.title}
                         </h3>
 
@@ -603,13 +732,7 @@ export function TasksViewClient({
                         Tarefa
                       </TableHead>
                       <TableHead className="px-4 py-3.5 font-semibold text-[var(--text-primary)]">
-                        Local e Equipe
-                      </TableHead>
-                      <TableHead className="px-4 py-3.5 font-semibold text-[var(--text-primary)]">
                         Responsável
-                      </TableHead>
-                      <TableHead className="px-4 py-3.5 font-semibold text-[var(--text-primary)]">
-                        Prioridade
                       </TableHead>
                       <TableHead className="px-4 py-3.5 font-semibold text-[var(--text-primary)]">
                         Status
@@ -623,26 +746,16 @@ export function TasksViewClient({
                     {paginatedTasks.map((task) => (
                       <TableRow
                         key={task.id}
-                        className="hover:bg-[var(--canvas)]/50 transition-colors"
+                        onClick={() => openTaskDrawer(task.id)}
+                        className="hover:bg-[var(--canvas)]/60 cursor-pointer transition-colors"
                       >
                         <TableCell className="px-5 py-4">
-                          <button
-                            type="button"
-                            onClick={() => openTaskDrawer(task.id)}
-                            className="font-medium text-sm text-[var(--text-primary)] hover:text-[var(--brand-900)] hover:underline block truncate max-w-sm text-left cursor-pointer transition-colors"
-                          >
+                          <span className="font-medium text-sm text-[var(--text-primary)] hover:text-[var(--brand-900)] block truncate max-w-md transition-colors">
+                            <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wide bg-[var(--canvas)] border border-[var(--border-subtle)] px-2 py-0.5 rounded-full mr-2 align-middle">
+                              {task.origin === "PROCESS" ? "Processo" : task.taskType === "FORM" ? "Tarefa com Perguntas" : "Tarefa Avulsa"}
+                            </span>
                             {task.title}
-                          </button>
-                        </TableCell>
-
-                        <TableCell className="px-4 py-4 whitespace-nowrap text-xs text-[var(--text-secondary)]">
-                          <span>{task.locationName || "Sem unidade"}</span>
-                          {task.teamName && (
-                            <>
-                              <span className="mx-1 text-muted-foreground">·</span>
-                              <span className="text-[var(--text-primary)]">{task.teamName}</span>
-                            </>
-                          )}
+                          </span>
                         </TableCell>
 
                         <TableCell className="px-4 py-4 whitespace-nowrap text-xs text-[var(--text-secondary)]">
@@ -652,31 +765,21 @@ export function TasksViewClient({
                         </TableCell>
 
                         <TableCell className="px-4 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-1.5">
-                            <PriorityBadge priority={task.priority} size="sm" />
-                            {task.slaExceeded && (
-                              <span className="inline-flex items-center text-[10px] text-red-600 bg-red-50 border border-red-200/60 px-1.5 py-0.5 rounded font-medium">
-                                Atrasada
-                              </span>
-                            )}
-                          </div>
-                        </TableCell>
-
-                        <TableCell className="px-4 py-4 whitespace-nowrap">
                           <StatusBadge status={task.status} size="sm" />
                         </TableCell>
 
-                        <TableCell className="px-5 py-4 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-1">
+                        <TableCell className="px-5 py-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-1.5">
                             <Button
                               type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="size-8 text-[var(--text-secondary)] hover:text-[var(--brand-900)] hover:bg-[var(--canvas)] cursor-pointer"
-                              title="Ver detalhes"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 text-xs gap-1.5 text-[var(--brand-900)] border-[var(--border-subtle)] hover:bg-[var(--canvas)] cursor-pointer"
+                              title="Exibir todos os dados da tarefa"
                               onClick={() => openTaskDrawer(task.id)}
                             >
-                              <Eye className="size-4" />
+                              <Eye className="size-3.5" />
+                              <span>Exibir dados</span>
                             </Button>
                             {userRole !== "EMPLOYEE" && (
                               <>
@@ -685,7 +788,7 @@ export function TasksViewClient({
                                   variant="ghost"
                                   size="icon"
                                   onClick={() => setTaskToCancel(task.id)}
-                                  className="size-8 text-muted-foreground hover:text-amber-800 hover:bg-amber-50"
+                                  className="size-8 text-muted-foreground hover:text-amber-800 hover:bg-amber-50 cursor-pointer"
                                   title="Cancelar tarefa"
                                 >
                                   <X className="size-4" />
@@ -695,7 +798,7 @@ export function TasksViewClient({
                                   variant="ghost"
                                   size="icon"
                                   onClick={() => setTaskToTrash(task.id)}
-                                  className="size-8 text-muted-foreground hover:text-red-700 hover:bg-red-50"
+                                  className="size-8 text-muted-foreground hover:text-red-700 hover:bg-red-50 cursor-pointer"
                                   title="Mover para a lixeira"
                                 >
                                   <Trash2 className="size-4" />
@@ -837,9 +940,11 @@ export function TasksViewClient({
                           <span className="text-(length:--type-caption) uppercase font-semibold text-(--text-secondary)">
                             {task.origin === "PROCESS"
                               ? "Processo"
-                              : "Tarefa avulsa"}
+                              : task.taskType === "FORM"
+                                ? "Tarefa com perguntas"
+                                : "Tarefa avulsa"}
                           </span>
-                          <PriorityBadge priority={task.priority} size="sm" />
+                          <PriorityBadge priority={task.priority} size="sm" className="max-w-fit! px-5!" />
                         </div>
                         <button
                           type="button"

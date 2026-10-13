@@ -11,7 +11,7 @@ import {
   ArrowRight,
   ShieldCheck,
   Trash2,
-  Bell,
+  Bell, Layers,
 } from "lucide-react";
 import Link from "next/link";
 import { prisma } from "@/infrastructure/database/prisma";
@@ -31,6 +31,7 @@ export default async function ManagementMorePage() {
   const isSuperadmin = user?.platformRole === "SUPERADMIN";
 
   const menuSections = [
+    { label: "Templates de processos", desc: "Fluxos prontos e templates da operação", icon: Layers, href: "/management/templates" },
     ...(isSuperadmin
       ? [
         {

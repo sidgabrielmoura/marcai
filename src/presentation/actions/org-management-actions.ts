@@ -874,10 +874,15 @@ export async function updateOrganizationSettingsAction(formData: FormData): Prom
     if (!values.length || values.some(v => !Number.isInteger(v) || v < 1 || v > 43200)) return { error: "Use marcos de atraso em minutos, separados por vírgulas." };
     updated.delayMilestones = [...new Set(values)].sort((a, b) => a - b);
   }
-  for (const key of ["operationalRetentionMonths", "delayRetentionDays"]) if (formData.has(key)) {
-    const value = Number(formData.get(key));
-    if (!Number.isInteger(value) || value < 1 || value > 3650) return { error: "Período de retenção inválido." };
-    updated[key] = value;
+  if (formData.has("operationalRetentionMonths")) {
+    const value = Number(formData.get("operationalRetentionMonths"));
+    if (![6, 12].includes(value)) return { error: "O histórico de execuções e tarefas deve ser de 6 meses ou 1 ano (12 meses)." };
+    updated.operationalRetentionMonths = value;
+  }
+  if (formData.has("delayRetentionDays")) {
+    const value = Number(formData.get("delayRetentionDays"));
+    if (![30, 60, 90].includes(value)) return { error: "O tempo de lixeira e alertas deve ser de 30, 60 ou 90 dias." };
+    updated.delayRetentionDays = value;
   }
   if (formData.has("earlyExecutionPolicy")) {
     const policy = String(formData.get("earlyExecutionPolicy"));
@@ -887,6 +892,46 @@ export async function updateOrganizationSettingsAction(formData: FormData): Prom
   if (formData.has("hasSecuritySettings") || formData.has("allowManagersToEditSensitiveData")) {
     const val = formData.get("allowManagersToEditSensitiveData");
     updated.allowManagersToEditSensitiveData = val === "on" || val === "true" || val === "1";
+  }
+  if (formData.has("hasWhatsappSettings")) {
+    const enabled = formData.get("whatsappAlertsEnabled") === "true" || formData.get("whatsappAlertsEnabled") === "on";
+    const recipientPhone = String(formData.get("whatsappRecipientPhone") || "").trim();
+    const recipientName = String(formData.get("whatsappRecipientName") || "").trim();
+    const notificationTypesRaw = formData.get("whatsappNotificationTypes");
+    const notificationTypes = notificationTypesRaw
+      ? String(notificationTypesRaw).split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
+    const criticalityFilter = String(formData.get("whatsappCriticalityFilter") || "CRITICAL_ONLY");
+    const triggerStep = Number(formData.get("whatsappTriggerStep") ?? 3);
+    const repeatInterval = Number(formData.get("whatsappRepeatInterval") ?? 0);
+    const businessHoursOnly = formData.get("whatsappBusinessHoursOnly") === "true" || formData.get("whatsappBusinessHoursOnly") === "on";
+    const alwaysUrgent = formData.get("whatsappAlwaysUrgent") === "true" || formData.get("whatsappAlwaysUrgent") === "on";
+
+    updated.whatsappAlerts = {
+      enabled,
+      recipientPhone,
+      recipientName,
+      notificationTypes,
+      criticalityFilter: ["CRITICAL_ONLY", "HIGH_AND_CRITICAL", "ALL"].includes(criticalityFilter)
+        ? criticalityFilter
+        : "CRITICAL_ONLY",
+      triggerStep: Number.isInteger(triggerStep) ? triggerStep : 3,
+      repeatInterval: Number.isInteger(repeatInterval) ? repeatInterval : 0,
+      businessHoursOnly,
+      alwaysUrgent,
+    };
+
+    if (formData.has("wahaEndpoint")) {
+      const endpoint = String(formData.get("wahaEndpoint") || "").trim();
+      const session = String(formData.get("wahaSession") || "default").trim();
+      const apiKey = String(formData.get("wahaApiKey") || "").trim();
+
+      updated.waha = {
+        endpoint,
+        session: session || "default",
+        ...(apiKey ? { apiKey } : settings.waha?.apiKey ? { apiKey: settings.waha.apiKey } : {}),
+      };
+    }
   }
   await prisma.$transaction(async tx => {
     await tx.organization.update({ where: { id: context.organizationId }, data: { name, settings: updated } });
@@ -923,4 +968,46 @@ export async function executeRetentionPurgeAction(): Promise<ActionResult> {
   revalidatePath("/management/settings");
   revalidatePath("/management/tasks/trash");
   return { success: true, data: result };
+}
+
+/**
+ * Testa conectividade com a API do WAHA (WhatsApp HTTP API)
+ */
+export async function testWahaConnectionAction(
+  endpoint: string,
+  session?: string,
+  apiKey?: string
+): Promise<ActionResult> {
+  const context = await getAuthenticatedContext();
+  if (!context || !["OWNER", "ADMIN"].includes(context.role)) {
+    return { error: "Apenas administradores podem testar a integração." };
+  }
+
+  const cleanEndpoint = (endpoint || "").trim();
+  if (!cleanEndpoint.startsWith("http://") && !cleanEndpoint.startsWith("https://")) {
+    return { error: "Informe uma URL válida iniciando com http:// ou https://" };
+  }
+
+  const { checkWahaSessionStatus } = await import("@/infrastructure/whatsapp/waha-service");
+  const result = await checkWahaSessionStatus({
+    endpoint: cleanEndpoint,
+    session: (session || "default").trim(),
+    apiKey: (apiKey || "").trim() || undefined,
+  });
+
+  if (!result.connected) {
+    return {
+      success: false,
+      error:
+        result.status === "UNREACHABLE"
+          ? `Servidor WAHA inacessível em ${cleanEndpoint}. Verifique se o container está rodando.`
+          : `Sessão WAHA retornou status: ${result.status}. Conecte o QR Code no painel do WAHA.`,
+      data: result,
+    };
+  }
+
+  return {
+    success: true,
+    data: result,
+  };
 }

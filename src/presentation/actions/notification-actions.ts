@@ -4,6 +4,7 @@ import { getAuthenticatedContext } from "@/application/security/auth-context";
 import { prisma } from "@/infrastructure/database/prisma";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getSubscriptionNotice, type SubscriptionNotice } from "@/application/superadmin/manual-subscription";
 
 const NOTIFICATION_REVALIDATE_PATHS = [
   "/notifications",
@@ -78,9 +79,9 @@ export async function markNotificationReadAndNavigateAction(form: FormData) {
 /**
  * Marca todas as notificações não lidas da organização atual como lidas.
  */
-export async function markAllNotificationsReadAction() {
+export async function markAllNotificationsReadAction(_formData?: FormData): Promise<void> {
   const c = await getAuthenticatedContext();
-  if (!c) return { error: "Não autenticado." };
+  if (!c) return;
 
   await prisma.notification.updateMany({
     where: {
@@ -92,7 +93,6 @@ export async function markAllNotificationsReadAction() {
   });
 
   revalidateNotificationPaths();
-  return { success: true };
 }
 
 /**
@@ -173,6 +173,7 @@ export async function getCurrentUserSummaryAction(): Promise<{
   role: string;
   organizationId: string;
   unreadCount: number;
+  subscriptionNotice?: SubscriptionNotice | null;
 } | null> {
   const c = await getAuthenticatedContext(false);
   if (!c) return null;
@@ -189,6 +190,7 @@ export async function getCurrentUserSummaryAction(): Promise<{
     role: c.role,
     organizationId: c.organizationId,
     unreadCount,
+    subscriptionNotice: getSubscriptionNotice(c.subscription ?? null),
   };
 }
 

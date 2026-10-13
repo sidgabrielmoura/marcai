@@ -1,3 +1,5 @@
+import { materializeProcessTasks } from "./materialize-tasks";
+import type { DispatchNotificationAsyncParams } from "@/infrastructure/notifications/notification-service";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma";
 import type { AuthenticatedContext } from "@/application/security/auth-context";
@@ -8,7 +10,8 @@ import { nextOccurrence } from "@/domain/rules/schedule";
 import { dispatchNotificationAsync } from "@/infrastructure/notifications/notification-service";
 
 export async function generateRoutineExecution(routineId: string, context: AuthenticatedContext, now = new Date(), automatic = false) {
-  return prisma.$transaction(async tx => {
+  const notifications: DispatchNotificationAsyncParams[] = [];
+  const result = await prisma.$transaction(async tx => {
     // Serialize generation by routine so concurrent clicks cannot duplicate occurrences.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${routineId}))`;
     const routine = await tx.routine.findFirst({ where: { id: routineId, process: processScope(context) }, include: {
@@ -19,7 +22,12 @@ export async function generateRoutineExecution(routineId: string, context: Authe
     const definition = readProcessDefinition(routine.process.sourceTemplateVersion?.definition);
     if (!definition) return { error: "Este processo ainda não tem etapas configuradas. Abra Editar processo e salve as tarefas antes de gerar uma execução." };
     if (context.role === "MANAGER" && definition.tasks.some(t => !context.scope?.teamIds.includes(t.teamId))) return { error: "O processo contém equipes fora do seu escopo." };
-    const check = canGenerateExecutionForRoutine(routine.pendingPreviousPolicy, routine.executions[0]);
+    // Repeated clicks return the already scheduled next occurrence rather than adding more.
+    if (routine.executions[0]?.scheduledAt && routine.executions[0].scheduledAt > now) {
+      return { success: true, generated: false, data: { id: routine.executions[0].id } };
+    }
+
+    const check = canGenerateExecutionForRoutine(routine.pendingPreviousPolicy, routine.executions[0], now);
     if (!check.shouldGenerate) {
       if (check.action === "SKIP") {
         return { success: true, generated: false, skipped: true, reason: check.reason };
@@ -30,8 +38,6 @@ export async function generateRoutineExecution(routineId: string, context: Authe
     const scheduledAt = nextOccurrence(routine.recurrenceRule, routine.startsAt, routine.endsAt, routine.timezone, floor);
     if (!scheduledAt || routine.process.validUntil && scheduledAt > routine.process.validUntil) return { error: "Não há próxima ocorrência dentro da validade do processo e da rotina." };
     if (automatic && scheduledAt.getTime() > now.getTime() + routine.generationLeadTime * 60000) return { error: "Fora da janela de geração antecipada." };
-    // Repeated clicks return the already scheduled next occurrence rather than adding more.
-    if (routine.executions[0]?.scheduledAt && routine.executions[0].scheduledAt > now) return { success: true, generated: false, data: { id: routine.executions[0].id } };
     const isNowOrPast = scheduledAt <= now;
     const initialStatus = resolveExecutionInitialStatus(scheduledAt, now);
     const execution = await tx.processExecution.create({ data: {
@@ -40,59 +46,10 @@ export async function generateRoutineExecution(routineId: string, context: Authe
       startedAt: isNowOrPast ? now : null,
       definitionSnapshot: definition as unknown as Prisma.InputJsonValue,
     } });
-    const taskIds = new Map<string, string>();
-    for (const t of definition.tasks) {
-      const blocked = t.dependsOn.length > 0 && t.dependencyType !== "INFORMATIVE";
-      const taskStatus = blocked ? "BLOCKED" : (isNowOrPast ? "IN_PROGRESS" : "AVAILABLE");
-      const task = await tx.task.create({ data: {
-        organizationId: context.organizationId, processId: routine.processId, executionId: execution.id, locationId: routine.process.locationId,
-        origin: "PROCESS", teamId: t.teamId, title: t.title, instructions: t.instructions, required: t.required, criticality: definition.criticality, priority: definition.criticality,
-        estimatedDuration: t.estimatedDuration, slaDurationMinutes: t.slaMinutes, slaStartEvent: "ON_AVAILABLE",
-        scheduledDate: scheduledAt, deadlineAt: new Date(scheduledAt.getTime() + t.slaMinutes * 60000),
-        slaDueAt: !blocked && isNowOrPast ? new Date(now.getTime() + t.slaMinutes * 60000) : null,
-        status: taskStatus,
-        startedAt: !blocked && isNowOrPast ? now : null,
-        ...(t.evidenceType ? { evidenceRequirements: { create: { type: t.evidenceType, required: true, minQuantity: 1, maxQuantity: 1 } } } : {}),
-        ...(t.approverIds.length ? { approvalWorkflow: { create: { mode: t.approvalMode, steps: { create: t.approverIds.map((id, i) => ({ sequence: i + 1, approverMemberId: id })) } } } } : {}),
-      } });
-      taskIds.set(t.id, task.id);
-      if (t.primaryMemberId) {
-        const member = await tx.organizationMember.findFirst({ where: { id: t.primaryMemberId, organizationId: context.organizationId, status: "ACTIVE", user: { status: "ACTIVE" }, teamMemberships: { some: { teamId: t.teamId } }, locationAccesses: { some: { locationId: definition.locationId, AND: [{ OR: [{ startsAt: null }, { startsAt: { lte: scheduledAt } }] }, { OR: [{ expiresAt: null }, { expiresAt: { gt: scheduledAt } }] }] } } } });
-        if (member) {
-          await tx.taskAssignment.create({ data: { taskId: task.id, memberId: member.id, type: "PRIMARY", assignedBy: context.memberId || null } });
-          if (!blocked && isNowOrPast) {
-            await tx.taskExecutionSession.create({ data: { taskId: task.id, memberId: member.id, startedAt: now } });
-          }
-          if (!blocked) {
-            await tx.notification.create({
-              data: {
-                organizationId: context.organizationId,
-                userId: member.userId,
-                type: "TASK_ASSIGNED",
-                priority: definition.criticality,
-                title: "Você recebeu uma tarefa de rotina",
-                message: t.title,
-                data: { taskId: task.id, executionId: execution.id },
-              },
-            });
-
-            void dispatchNotificationAsync({
-              organizationId: context.organizationId,
-              userIds: [member.userId],
-              type: "TASK_ASSIGNED",
-              priority: definition.criticality,
-              title: "Você recebeu uma tarefa de rotina",
-              message: t.title,
-              data: { taskId: task.id, executionId: execution.id },
-              clickAction: `/tasks/${task.id}`,
-              forcePush: true,
-            });
-          }
-        }
-      }
-    }
-    for (const t of definition.tasks) for (const id of t.dependsOn) await tx.taskDependency.create({ data: { taskId: taskIds.get(t.id)!, dependsOnId: taskIds.get(id)!, type: t.dependencyType, logic: t.dependencyLogic } });
+    notifications.push(...await materializeProcessTasks(tx, context, execution, definition, now));
     await tx.activityLog.create({ data: { organizationId: context.organizationId, actorId: context.memberId || null, action: "EXECUTION_GENERATED", entityType: "EXECUTION", entityId: execution.id, metadata: { scheduledAt: scheduledAt.toISOString(), templateVersion: routine.process.sourceTemplateVersion?.version ?? 1 } } });
     return { success: true, generated: true, data: { id: execution.id } };
   }, { timeout: 30000 });
+  for (const n of notifications) void dispatchNotificationAsync(n);
+  return result;
 }

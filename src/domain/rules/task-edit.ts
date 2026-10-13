@@ -8,7 +8,6 @@ export const taskEditSchema = z.object({
   criticality: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
   required: z.boolean(),
   deadlineAt: z.iso.datetime().nullable(),
-  estimatedDuration: z.number().int().min(1).max(43200).nullable(),
 }).strict();
 export type TaskEditInput = z.infer<typeof taskEditSchema>;
 

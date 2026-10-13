@@ -20,3 +20,24 @@ export async function getLoginChallenge(): Promise<LoginChallenge | null> {
   catch { return null; }
 }
 export async function clearLoginChallenge() { (await cookies()).delete(cookie); }
+
+export async function refreshLoginChallengeWithNewSecret(): Promise<string | null> {
+  const challenge = await getLoginChallenge();
+  if (!challenge) return null;
+  const newSecret = generateTotpSecret();
+  const payload: LoginChallenge = { ...challenge, enrollSecret: newSecret };
+  const token = await new EncryptJWT({ ...payload })
+    .setProtectedHeader({ alg: "dir", enc: "A256GCM" })
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .setAudience("marcai-login")
+    .encrypt(securityKey());
+  (await cookies()).set(cookie, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    path: "/",
+    maxAge: 300,
+  });
+  return newSecret;
+}

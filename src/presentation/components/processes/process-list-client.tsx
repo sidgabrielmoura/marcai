@@ -21,6 +21,8 @@ import {
   ChevronRight,
   Layers,
 } from "lucide-react";
+import { TemplatePicker } from "@/presentation/components/templates/template-picker";
+import { SaveProcessTemplateButton } from "@/presentation/components/templates/save-process-template";
 import { PageHeader, EmptyState, StatusBadge, Modal } from "../shared";
 import { toggleProcessStatusAction } from "@/presentation/actions/process-actions";
 import { Button } from "@/components/ui/button";
@@ -148,14 +150,15 @@ export function ProcessListClient({
         title="Processos"
         subtitle="Acompanhe os fluxos da sua operação. Clique em qualquer processo para visualizar e configurar seu calendário e cronograma."
         actions={
-          <Button
-            nativeButton={false}
-            render={<Link href="/management/processes/new" />}
-            className="bg-[var(--brand-900)] hover:bg-[var(--brand-700)] text-white shadow-none gap-1.5"
-          >
-            <Plus data-icon="inline-start" className="size-4" />
-            Criar processo
-          </Button>
+          <div className="flex flex-wrap gap-2"><TemplatePicker canManage={["OWNER", "ADMIN"].includes(userRole)} />
+            <Button
+              nativeButton={false}
+              render={<Link href="/management/processes/new" />}
+              className="bg-[var(--brand-900)] hover:bg-[var(--brand-700)] text-white shadow-none gap-1.5"
+            >
+              <Plus data-icon="inline-start" className="size-4" />
+              Criar do zero
+            </Button></div>
         }
       />
 
@@ -198,27 +201,13 @@ export function ProcessListClient({
         </div>
       </div>
 
-      {/* Search & Filter Bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1 max-w-2xl">
-          <InputGroup className="flex-1 py-4.5!">
-            <InputGroupAddon>
-              <Search className="size-4 text-muted-foreground" />
-            </InputGroupAddon>
-            <InputGroupInput
-              aria-label="Buscar processo"
-              placeholder="Buscar por nome ou unidade"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="text-xs sm:text-sm!"
-            />
-          </InputGroup>
-
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1 max-w-md">
           <NativeSelect
             aria-label="Filtrar processos por status"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="sm:w-44 text-xs h-10"
+            className="w-full text-xs h-10"
           >
             <NativeSelectOption value="ALL">Todos os status</NativeSelectOption>
             <NativeSelectOption value="ACTIVE">Apenas ativos</NativeSelectOption>
@@ -279,7 +268,7 @@ export function ProcessListClient({
                 </Link>
 
                 {/* Right Actions */}
-                <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                <div className="flex flex-wrap items-center justify-end gap-2 self-end sm:self-center shrink-0 max-w-full">
                   <Button
                     size="sm"
                     variant="outline"
@@ -291,6 +280,7 @@ export function ProcessListClient({
                     <ChevronRight className="size-3.5 text-muted-foreground" />
                   </Button>
 
+                  {["OWNER", "ADMIN"].includes(userRole) && <SaveProcessTemplateButton processId={p.id} name={p.name} />}
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={

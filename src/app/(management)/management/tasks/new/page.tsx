@@ -3,9 +3,15 @@ import { prisma } from "@/infrastructure/database/prisma";
 import { ManagementShell } from "@/presentation/components/mobile/management-shell";
 import { CreateTaskForm } from "@/presentation/components/tasks/create-task-form";
 
-export default async function NewTaskPage() {
+export default async function NewTaskPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ type?: string }>;
+}) {
   const context = await getManagementContext();
   if (!context) return null;
+
+  const { type } = await searchParams;
 
   const [locations, teams, members] = await Promise.all([
     prisma.location.findMany({
@@ -51,6 +57,7 @@ export default async function NewTaskPage() {
           name: m.user.name,
           email: m.user.email,
         }))}
+        initialTaskType={type === "FORM" ? "FORM" : "STANDARD"}
       />
     </ManagementShell>
   );

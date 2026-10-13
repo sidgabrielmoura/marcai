@@ -28,10 +28,28 @@ export function defaultSchedule(): ScheduleDefinition {
   return { frequency: "DAILY", interval: 1, weekdays: ["MO", "TU", "WE", "TH", "FR"], monthDay: 1, times: ["07:00"], startsAt: new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }), endsAt: "", timezone: "America/Sao_Paulo", generationLeadTime: 1440, pendingPreviousPolicy: "CREATE_NEW", skipDates: [] };
 }
 
+export const formFieldSchema = z.object({
+  id: z.string().min(1).max(100),
+  type: z.enum(["SHORT_TEXT", "LONG_TEXT", "RATING", "MULTIPLE_CHOICE", "BOOLEAN", "PHOTO", "VIDEO", "FILE"]),
+  question: z.string().trim().min(3, "A pergunta deve ter pelo menos 3 caracteres.").max(500),
+  required: z.boolean().default(true),
+  options: z.array(z.string().trim().min(1).max(300)).max(20).optional().default([])
+}).strict();
+export type FormFieldDefinition = z.infer<typeof formFieldSchema>;
+
 export const processTaskSchema = z.object({
-  id: z.string().min(1).max(100), title: z.string().trim().min(3, "Cada tarefa precisa de um nome com pelo menos 3 caracteres.").max(200),
-  instructions: z.string().max(5000), teamId: z.string().min(1, "Escolha a equipe de cada tarefa."), primaryMemberId: z.string(),
-  estimatedDuration: z.number().int().min(1).max(43200), slaMinutes: z.number().int().min(1).max(43200),
+  id: z.string().min(1).max(100),
+  taskType: z.enum(["STANDARD", "FORM"]).optional().default("STANDARD"),
+  title: z.string().trim().min(3, "Cada tarefa precisa de um nome com pelo menos 3 caracteres.").max(200),
+  objective: z.string().max(2000).optional().default(""),
+  instructions: z.string().max(5000),
+  formFields: z.array(formFieldSchema).max(50).optional().default([]),
+  teamId: z.string().min(1, "Escolha a equipe de cada tarefa."), primaryMemberId: z.string(),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional().default("MEDIUM"),
+  criticality: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional().default("MEDIUM"),
+  deadlineAt: z.string().optional().default(""),
+  slaMinutes: z.number().int().min(0).max(43200).optional().default(60),
+  toleranceMinutes: z.number().int().min(0).max(1440).optional().default(20),
   required: z.boolean(), evidenceType: z.enum(["", "PHOTO", "VIDEO", "FILE", "TEXT", "NUMBER", "SIGNATURE", "LOCATION"]),
   dependsOn: z.array(z.string().min(1)).max(100).refine(values => new Set(values).size === values.length, "Não repita as dependências."), dependencyType: z.enum(["BLOCKING", "INFORMATIVE", "APPROVAL_CONDITION"]), dependencyLogic: z.enum(["AND", "OR"]),
   approverIds: z.array(z.string().min(1)).max(10).refine(values => new Set(values).size === values.length, "Não repita os aprovadores."), approvalMode: z.enum(["SEQUENTIAL", "PARALLEL"]),
@@ -56,6 +74,12 @@ export const processDefinitionSchema = z.object({
   };
   if (p.tasks.some(t => !visit(t.id))) ctx.addIssue({ code: "custom", message: "As dependências têm um ciclo ou apontam para uma tarefa removida." });
   for (const t of p.tasks) if (t.dependencyType === "APPROVAL_CONDITION" && t.dependsOn.some(id => !p.tasks.find(parent => parent.id === id)?.approverIds.length)) ctx.addIssue({ code: "custom", message: "Uma dependência por aprovação precisa de aprovadores na tarefa anterior." });
+  for (const t of p.tasks) {
+    if (new Set(t.formFields.map(f => f.id)).size !== t.formFields.length) ctx.addIssue({ code: "custom", message: "As perguntas precisam de identificadores únicos." });
+    if (t.taskType === "FORM" && !t.formFields.length) ctx.addIssue({ code: "custom", message: "Adicione pelo menos uma pergunta ao formulário." });
+    if (t.formFields.some(f => f.type === "MULTIPLE_CHOICE" && (f.options.length < 2 || new Set(f.options).size !== f.options.length))) ctx.addIssue({ code: "custom", message: "Escolhas precisam de pelo menos duas opções diferentes." });
+    if (t.deadlineAt && Number.isNaN(new Date(t.deadlineAt).getTime())) ctx.addIssue({ code: "custom", message: "Prazo da tarefa inválido." });
+  }
 });
 export type ProcessDefinition = z.infer<typeof processDefinitionSchema>;
 export type ProcessTaskDefinition = z.infer<typeof processTaskSchema>;

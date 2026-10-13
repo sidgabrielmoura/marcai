@@ -42,12 +42,12 @@ export default async function ManagementTaskDetailPage({ params }: PageProps) {
             },
           },
         },
-        sessions: {
-          include: {
-            pauses: true,
-          },
-        },
+
         occurrences: {
+          where: {
+            type: { not: "PAUSE_ALERT" },
+            category: { notIn: ["LONG_PAUSE", "INTERVALO"] },
+          },
           orderBy: { createdAt: "desc" },
         },
         approvalWorkflow: {
@@ -131,7 +131,6 @@ export default async function ManagementTaskDetailPage({ params }: PageProps) {
     select: { id: true, user: { select: { name: true } } },
   });
   const actorNames = new Map(actors.map(actor => [actor.id, actor.user.name]));
-  const pauses = task.sessions.flatMap((s) => s.pauses);
   const ownTeams = await prisma.teamMember.findMany({ where: { organizationMemberId: context.memberId }, select: { teamId: true } });
 
   return (
@@ -146,6 +145,9 @@ export default async function ManagementTaskDetailPage({ params }: PageProps) {
           title: task.title,
           description: task.description,
           instructions: task.instructions,
+          taskType: task.taskType || "STANDARD",
+          formFields: task.formFields,
+          formAnswers: task.formAnswers,
           origin: task.origin,
           status: task.status,
           startedAt: task.startedAt,
@@ -156,7 +158,7 @@ export default async function ManagementTaskDetailPage({ params }: PageProps) {
           slaDurationMinutes: task.slaDurationMinutes,
           slaDueAt: task.slaDueAt,
           slaExceededAt: task.slaExceededAt,
-          estimatedDuration: task.estimatedDuration,
+
           actualDuration: task.actualDuration,
           locationName: task.location?.name || null,
           teamName: task.team?.name || null,
@@ -191,13 +193,6 @@ export default async function ManagementTaskDetailPage({ params }: PageProps) {
             logic: d.logic,
             dependsOnTask: d.dependsOnTask,
           })),
-          pauses: pauses.map((p) => ({
-            id: p.id,
-            reasonCategoryId: p.reasonCategoryId,
-            note: p.note,
-            startedAt: p.startedAt,
-            endedAt: p.endedAt,
-          })),
           occurrences: task.occurrences.map((o) => ({
             id: o.id,
             type: o.type,
@@ -225,7 +220,7 @@ export default async function ManagementTaskDetailPage({ params }: PageProps) {
                   canDecide: task.status === "SUBMITTED" && s.status === "PENDING" &&
                     (s.approverMemberId === context.memberId || ownTeams.some(t => t.teamId === s.approverTeamId) || s.fallbackMemberId === context.memberId && !!s.deadlineAt && s.deadlineAt <= new Date()) &&
                     (task.approvalWorkflow!.mode !== "SEQUENTIAL" || task.approvalWorkflow!.steps.every(prior => prior.sequence >= s.sequence || prior.status === "APPROVED")),
-                  decisions: s.decisions.map((dec) => ({
+                  decisions: s.decisions.map((dec: any) => ({
                     id: dec.id,
                     decision: dec.decision,
                     note: dec.note,

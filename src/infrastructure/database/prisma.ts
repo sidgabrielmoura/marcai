@@ -19,8 +19,8 @@ if (process.env.NODE_ENV !== "production") {
 
 const adapter = new PrismaPg(pool);
 
-// Invalida cliente em memória se estiver desatualizado em relação aos modelos recentes (ex: taskDependency)
-if (globalForPrisma.prisma && !("taskDependency" in globalForPrisma.prisma)) {
+// Invalida o cliente em memória quando faltam modelos adicionados ao projeto.
+if (globalForPrisma.prisma && (!("platformPlan" in globalForPrisma.prisma) || !("reusableProcessTemplate" in globalForPrisma.prisma))) {
   globalForPrisma.prisma = undefined;
 }
 

@@ -1,34 +1,12 @@
-import { timingSafeEqual } from "node:crypto";
+import { validateCronRequest } from "@/infrastructure/security/cron-auth";
 import { operationalTick } from "@/application/processes/operational-tick";
 
 export const maxDuration = 60;
 
 async function handleOperationalCron(request: Request) {
-  const configured = process.env.CRON_SECRET;
-  if (!configured || configured.length < 16) {
-    return Response.json(
-      { error: "Agendador não configurado. Defina a variável CRON_SECRET no ambiente com no mínimo 16 caracteres." },
-      { status: 503 }
-    );
-  }
-
-  const url = new URL(request.url);
-  const querySecret = url.searchParams.get("secret") ?? url.searchParams.get("key") ?? "";
-
-  const authHeader = request.headers.get("authorization") ?? "";
-  const customHeader = request.headers.get("x-cron-secret") ?? "";
-
-  const receivedToken = (
-    authHeader.startsWith("Bearer ")
-      ? authHeader.slice(7)
-      : (customHeader || querySecret)
-  ).trim();
-
-  const expected = Buffer.from(configured);
-  const received = Buffer.from(receivedToken);
-
-  if (expected.length === 0 || expected.length !== received.length || !timingSafeEqual(expected, received)) {
-    return Response.json({ error: "Acesso não autorizado ao job operacional." }, { status: 401 });
+  const auth = validateCronRequest(request);
+  if (!auth.authorized) {
+    return Response.json({ error: auth.error }, { status: auth.status });
   }
 
   const result = await operationalTick();

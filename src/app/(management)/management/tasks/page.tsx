@@ -72,6 +72,7 @@ export default async function ManagementTasksPage() {
     locationName: t.location?.name || null,
     teamName: t.team?.name || null,
     primaryAssignee: t.assignments[0]?.member?.user?.name || null,
+    taskType: t.taskType,
     slaExceeded: Boolean(
       t.slaExceededAt ||
         (t.slaDueAt && t.slaDueAt < now && t.status !== "COMPLETED"),

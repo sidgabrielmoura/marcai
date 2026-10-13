@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { nextOccurrence } from "../src/domain/rules/schedule";
-import { processDefinitionSchema, scheduleSchema, type ScheduleDefinition, type ProcessTaskDefinition } from "../src/domain/rules/process-definition";
+import { processDefinitionSchema, processTaskSchema, scheduleSchema, type ScheduleDefinition, type ProcessTaskDefinition } from "../src/domain/rules/process-definition";
 import { taskTiming } from "../src/domain/rules/task-metrics";
 import { canStartTask, canCompleteTask, canAccessTask, canEditTask } from "../src/domain/rules/task-rules";
 import { evaluateTaskDependencies, type DependencyCheckItem } from "../src/domain/rules/dependency-rules";
@@ -39,7 +39,7 @@ test("data impossível é rejeitada", () => assert.equal(scheduleSchema.safePars
 test("exceção vazia é rejeitada", () => assert.equal(scheduleSchema.safeParse({ ...base, skipDates: [""] }).success, false));
 test("horários repetidos são rejeitados", () => assert.equal(scheduleSchema.safeParse({ ...base, times: ["07:00", "07:00"] }).success, false));
 
-const task: ProcessTaskDefinition = { id: "one", title: "Conferir caixa", instructions: "", teamId: "team", primaryMemberId: "", estimatedDuration: 10, slaMinutes: 20, required: true, evidenceType: "PHOTO", dependsOn: [], dependencyType: "BLOCKING", dependencyLogic: "AND", approverIds: [], approvalMode: "SEQUENTIAL" };
+const task: ProcessTaskDefinition = processTaskSchema.parse({ id: "one", title: "Conferir caixa", instructions: "", teamId: "team", primaryMemberId: "", slaMinutes: 20, required: true, evidenceType: "PHOTO", dependsOn: [], dependencyType: "BLOCKING", dependencyLogic: "AND", approverIds: [], approvalMode: "SEQUENTIAL" });
 function validTasks(tasks: ProcessTaskDefinition[]) { return processDefinitionSchema.safeParse({ name: "Abertura da loja", description: "", locationId: "location", criticality: "HIGH", validFrom: "", validUntil: "", schedule: base, tasks }).success; }
 test("fluxo acíclico válido é aceito", () => assert.equal(validTasks([task, { ...task, id: "two", dependsOn: ["one"] }]), true));
 test("ciclo é rejeitado", () => assert.equal(validTasks([{ ...task, dependsOn: ["two"] }, { ...task, id: "two", dependsOn: ["one"] }]), false));
@@ -70,8 +70,36 @@ test("atraso SLA usa vencimento do SLA, não prazo geral", () => assert.equal(ta
 test("conclusão congela tempo medido", () => assert.equal(taskTiming({ ...late, status: "COMPLETED", completedAt: new Date("2026-09-24T11:15:00Z") }, now).delayMinutes, 15));
 test("data futura produz execução programada", () => assert.equal(resolveExecutionInitialStatus(new Date(now.getTime() + 1), now), "SCHEDULED"));
 test("horário atingido produz execução em andamento", () => assert.equal(resolveExecutionInitialStatus(now, now), "IN_PROGRESS"));
-test("política bloqueia execução anterior pendente", () => assert.equal(canGenerateExecutionForRoutine("BLOCK_NEW", { id: "old", status: "PENDING_REVIEW", scheduledAt: now }).shouldGenerate, false));
-test("cancelada não bloqueia próxima execução", () => assert.equal(canGenerateExecutionForRoutine("SKIP_IF_PENDING", { id: "old", status: "CANCELLED", scheduledAt: now }).shouldGenerate, true));
+test("BLOCK_NEW bloqueia geração se execução anterior estiver pendente", () => {
+  const result = canGenerateExecutionForRoutine("BLOCK_NEW", { id: "old", status: "PENDING_REVIEW" as any, scheduledAt: now });
+  assert.equal(result.shouldGenerate, false);
+  assert.equal(result.action, "BLOCK");
+});
+test("BLOCK_NEW libera geração se execução anterior estiver concluída", () => {
+  const result = canGenerateExecutionForRoutine("BLOCK_NEW", { id: "old", status: "COMPLETED" as any, scheduledAt: now });
+  assert.equal(result.shouldGenerate, true);
+  assert.equal(result.action, "GENERATE");
+});
+test("SKIP_IF_PENDING pula geração se execução anterior estiver pendente", () => {
+  const result = canGenerateExecutionForRoutine("SKIP_IF_PENDING", { id: "old", status: "IN_PROGRESS" as any, scheduledAt: now });
+  assert.equal(result.shouldGenerate, false);
+  assert.equal(result.action, "SKIP");
+});
+test("SKIP_IF_PENDING libera geração se execução anterior foi cancelada", () => {
+  const result = canGenerateExecutionForRoutine("SKIP_IF_PENDING", { id: "old", status: "CANCELLED" as any, scheduledAt: now });
+  assert.equal(result.shouldGenerate, true);
+  assert.equal(result.action, "GENERATE");
+});
+test("CREATE_NEW gera normalmente mesmo com execução anterior pendente", () => {
+  const result = canGenerateExecutionForRoutine("CREATE_NEW", { id: "old", status: "IN_PROGRESS" as any, scheduledAt: now });
+  assert.equal(result.shouldGenerate, true);
+  assert.equal(result.action, "GENERATE");
+});
+test("Sem execução anterior, todas as políticas geram normalmente", () => {
+  assert.equal(canGenerateExecutionForRoutine("BLOCK_NEW", null).shouldGenerate, true);
+  assert.equal(canGenerateExecutionForRoutine("SKIP_IF_PENDING", null).shouldGenerate, true);
+  assert.equal(canGenerateExecutionForRoutine("CREATE_NEW", null).shouldGenerate, true);
+});
 
 if (!process.env.OPERATIONAL_TEST_WORKER) {
   for (const timezone of ["UTC", "America/Sao_Paulo", "Asia/Tokyo"]) {
