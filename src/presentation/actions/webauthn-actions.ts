@@ -14,7 +14,7 @@ import { beginLoginChallenge } from "@/infrastructure/security/login-challenge";
 
 // Configuration for WebAuthn
 const rpName = "Marcai";
-const rpID = process.env.NODE_ENV === "development" ? "localhost" : "marcai.com"; // TODO: Configure prod domain
+const rpID = process.env.NODE_ENV === "development" ? "localhost" : "marcai-coral.vercel.app"; // TODO: Configure prod domain
 const origin = process.env.NODE_ENV === "development" ? "http://localhost:3000" : `https://${rpID}`;
 
 export async function generateWebAuthnRegistration() {
@@ -218,10 +218,10 @@ export async function verifyWebAuthnAuthentication(response: any, mobileAuthToke
     if (activeMembers.length === 0) {
       return { error: "Usuário não possui vínculos ativos." };
     }
-    
+
     // Choose the first active member as the logged in identity
     const memberId = activeMembers[0].id;
-    
+
     await prisma.mobileAuthSession.update({
       where: { token: mobileAuthToken },
       data: {
