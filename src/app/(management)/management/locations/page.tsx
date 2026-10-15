@@ -69,7 +69,12 @@ export default async function ManagementLocationsPage() {
       orgName={context.organizationName}
       role={context.role}
     >
-      <LocationsClient locations={formatted} teams={allTeams} userRole={context.role} />
+      <LocationsClient
+        locations={formatted}
+        teams={allTeams}
+        userRole={context.role}
+        subscription={context.subscription}
+      />
     </ManagementShell>
   );
 }

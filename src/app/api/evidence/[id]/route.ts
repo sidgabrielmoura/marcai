@@ -7,5 +7,5 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const { id } = await params;
   const submission = await prisma.evidenceSubmission.findFirst({ where: { id, validationStatus: "VALID", requirement: { task: { ...taskScope(c), deletedAt: null } } } });
   if (!submission?.storageKey) return new Response(null, { status: 404 });
-  try { const bytes = await readEvidence(submission.storageKey); return new Response(bytes, { headers: { "Content-Type": "application/octet-stream", "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(submission.value || "evidencia")}`, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } }); } catch { return new Response(null, { status: 404 }); }
+  try { const bytes = await readEvidence(submission.storageKey); return new Response(new Uint8Array(bytes), { headers: { "Content-Type": "application/octet-stream", "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(submission.value || "evidencia")}`, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } }); } catch { return new Response(null, { status: 404 }); }
 }

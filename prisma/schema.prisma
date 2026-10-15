@@ -7,6 +7,8 @@ datasource db {
 }
 
 model User {
+  nativeSessions NativeSession[]
+  nativeInstallations NativeInstallation[]
   mobileAuthSessions     MobileAuthSession[]
   id                     String                   @id @default(cuid())
   name                   String
@@ -31,6 +33,7 @@ model User {
 }
 
 model Organization {
+  nativeInstallations NativeInstallation[]
   id                 String               @id @default(cuid())
   name               String
   slug               String               @unique
@@ -57,6 +60,7 @@ model Organization {
 }
 
 model OrganizationMember {
+  nativeSessions NativeSession[]
   id                     String                 @id @default(cuid())
   organizationId         String
   userId                 String
@@ -332,6 +336,8 @@ model ProcessExecution {
 }
 
 model Task {
+  nativeUploads NativeUpload[]
+  nativeAlertCycles NativeAlertCycle[]
   id                   String                    @id @default(cuid())
   organizationId       String
   executionId          String?
@@ -526,6 +532,8 @@ model TaskOccurrence {
 }
 
 model Notification {
+  nativeOutbox NativePushOutbox?
+  nativeDeliveries NativePushDelivery[]
   id             String                 @id @default(cuid())
   organizationId String
   userId         String
@@ -853,4 +861,163 @@ model MobileAuthSession {
   @@index([token])
   @@index([userId])
   @@map("mobile_auth_sessions")
+}
+
+model NativeSession {
+ id String @id @db.Uuid
+ userId String @map("user_id")
+ memberId String @map("member_id")
+ installationId String @map("installation_id") @db.Uuid
+ proof String?
+ credentialVersion String @map("credential_version")
+ expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+ revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+ createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade,onUpdate:NoAction)
+ member OrganizationMember @relation(fields:[memberId],references:[id],onDelete:Cascade,onUpdate:NoAction)
+ refreshTokens NativeRefreshToken[]
+ installations NativeInstallation[]
+ @@index([userId],map:"mobile_sessions_user")
+ @@map("mobile_sessions")
+}
+model NativeRefreshToken {
+ hash String @id
+ sessionId String @map("session_id") @db.Uuid
+ consumedAt DateTime? @map("consumed_at") @db.Timestamptz(6)
+ requestKey String? @map("request_key") @db.Uuid
+ response String?
+ createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+ session NativeSession @relation(fields:[sessionId],references:[id],onDelete:Cascade,onUpdate:NoAction)
+ @@map("mobile_refresh_tokens")
+}
+model NativeChallenge {
+ id String @id @db.Uuid
+ kind String
+ payload Json
+ expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+ consumedAt DateTime? @map("consumed_at") @db.Timestamptz(6)
+ createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+ @@map("mobile_challenges")
+}
+model NativeRateLimit {
+ key String @id
+ windowAt DateTime @default(now()) @map("window_at") @db.Timestamptz(6)
+ attempts Int @default(0)
+ @@map("mobile_rate_limits")
+}
+model NativeInstallation {
+ id String @id @db.Uuid
+ userId String @map("user_id")
+ organizationId String @map("organization_id")
+ sessionId String? @map("session_id") @db.Uuid
+ platform String
+ environment String
+ token String @unique
+ addressType String @default("token") @map("address_type")
+ permission String
+ appVersion String @map("app_version")
+ lastSyncAt DateTime @default(now()) @map("last_sync_at") @db.Timestamptz(6)
+ revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade,onUpdate:NoAction)
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Cascade,onUpdate:NoAction)
+ session NativeSession? @relation(fields:[sessionId],references:[id],onDelete:Cascade,onUpdate:NoAction)
+ @@map("mobile_installations")
+}
+model NativeRequest {
+ userId String @map("user_id")
+ organizationId String @map("organization_id")
+ key String @db.Uuid
+ fingerprint String
+ response Json
+ createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+ @@id([userId,organizationId,key])
+ @@map("mobile_requests")
+}
+model NativeBlob {
+ key String @id @db.Uuid
+ bytes Bytes
+ createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+ @@map("mobile_blobs")
+}
+model NativeUpload {
+ id String @id @db.Uuid
+ userId String @map("user_id")
+ organizationId String @map("organization_id")
+ taskId String @map("task_id")
+ fieldId String? @map("field_id")
+ requirementId String? @map("requirement_id")
+ roundId String @map("round_id")
+ name String
+ mime String
+ size Int
+ expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+ attachment Json?
+ createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+ task Task @relation(fields:[taskId],references:[id],onDelete:Cascade,onUpdate:NoAction)
+ chunks NativeUploadChunk[]
+ @@map("mobile_uploads")
+}
+model NativeUploadChunk {
+ uploadId String @map("upload_id") @db.Uuid
+ part Int
+ bytes Bytes
+ upload NativeUpload @relation(fields:[uploadId],references:[id],onDelete:Cascade,onUpdate:NoAction)
+ @@id([uploadId,part])
+ @@map("mobile_upload_chunks")
+}
+model NativeEvent {
+ id BigInt @id @default(autoincrement())
+ transactionId BigInt @default(dbgenerated("txid_current()")) @map("transaction_id")
+ organizationId String @map("organization_id")
+ userId String? @map("user_id")
+ taskId String? @map("task_id")
+ executionId String? @map("execution_id")
+ kind String
+ createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+ @@index([organizationId,transactionId],map:"mobile_events_replay")
+ @@map("mobile_events")
+}
+model NativePushOutbox {
+ id String @id
+ state String @default("QUEUED")
+ attempts Int @default(0)
+ availableAt DateTime @default(now()) @map("available_at") @db.Timestamptz(6)
+ leaseId String? @map("lease_id") @db.Uuid
+ leaseUntil DateTime? @map("lease_until") @db.Timestamptz(6)
+ createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+ lastError String? @map("last_error")
+ notification Notification @relation(fields:[id],references:[id],onDelete:Cascade,onUpdate:NoAction)
+ @@index([state,availableAt],map:"mobile_push_due")
+ @@map("mobile_push_outbox")
+}
+model NativePushDelivery {
+ notificationId String @map("notification_id")
+ installationId String @map("installation_id")
+ tokenHash String @map("token_hash")
+ state String @default("QUEUED")
+ attempts Int @default(0)
+ providerId String? @map("provider_id")
+ errorCode String? @map("error_code")
+ acceptedAt DateTime? @map("accepted_at") @db.Timestamptz(6)
+ receivedAt DateTime? @map("received_at") @db.Timestamptz(6)
+ openedAt DateTime? @map("opened_at") @db.Timestamptz(6)
+ notification Notification @relation(fields:[notificationId],references:[id],onDelete:Cascade,onUpdate:NoAction)
+ @@id([notificationId,installationId])
+ @@map("mobile_push_deliveries")
+}
+model NativeAlertCycle {
+ taskId String @map("task_id")
+ cycle String
+ milestone String
+ createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+ task Task @relation(fields:[taskId],references:[id],onDelete:Cascade,onUpdate:NoAction)
+ @@id([taskId,cycle,milestone])
+ @@map("mobile_alert_cycles")
+}
+
+model MobileJobCursor {
+ job String @id
+ cursor String @default("")
+ touchedAt DateTime @default(now()) @map("touched_at") @db.Timestamptz(6)
+ @@map("mobile_job_cursors")
 }

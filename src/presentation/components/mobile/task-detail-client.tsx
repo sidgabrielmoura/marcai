@@ -109,6 +109,7 @@ interface TaskDetailClientProps {
     evidenceRequirements: TaskEvidenceRequirement[];
     taskType?: string | null;
     formFields?: any;
+    formAnswers?: any;
   };
 }
 
@@ -119,7 +120,7 @@ export function TaskDetailClient({ task }: TaskDetailClientProps) {
   const [reason, setReason] = useState("");
   const [category, setCategory] = useState("OUTROS");
   const [evidenceDrafts, setEvidenceDrafts] = useState<Record<string, EvidenceDraft>>({});
-  const [formAnswers, setFormAnswers] = useState<Record<string, any>>({});
+  const [formAnswers, setFormAnswers] = useState<Record<string, any>>(task.formAnswers ?? {});
   const [occurrencesOpen, setOccurrencesOpen] = useState(false);
 
   const terminal = ["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status);

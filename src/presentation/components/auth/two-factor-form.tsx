@@ -114,7 +114,7 @@ export function TwoFactorForm({ secret, qrCodeDataUrl, userEmail }: TwoFactorFor
         <p className="text-xs text-[var(--text-muted)]">
           {showRecovery
             ? "Digite o código de recuperação"
-            : "Escaneie no app ou digite os 6 dígitos"}
+            : secret ? "Cadastre no autenticador e digite os 6 dígitos" : "Digite os 6 dígitos do seu autenticador"}
         </p>
       </div>
 

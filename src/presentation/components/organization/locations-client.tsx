@@ -15,6 +15,8 @@ import {
 import { saveLocationAction } from "@/presentation/actions/org-management-actions";
 
 import { PageHeader, EmptyState } from "@/presentation/components/shared";
+import type { ManualSubscription } from "@/application/superadmin/manual-subscription";
+import { checkLocationLimit } from "@/domain/rules/subscription-limits";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -70,12 +72,14 @@ interface LocationsClientProps {
   locations: LocationItem[];
   teams?: Array<{ id: string; name: string }>;
   userRole: string;
+  subscription?: ManualSubscription | null;
 }
 
 export function LocationsClient({
   locations,
   teams = [],
   userRole,
+  subscription,
 }: LocationsClientProps) {
   const router = useRouter();
   const [editing, setEditing] = useState<LocationItem | null>(null);
@@ -92,7 +96,24 @@ export function LocationsClient({
     "SAT",
   ]);
 
+  const locationLimitCheck = checkLocationLimit({
+    subscription: subscription ?? null,
+    currentActiveLocationsCount: locations.length,
+  });
+  const locationLimit = subscription?.locationLimit ?? null;
+  const isLimitReached = !locationLimitCheck.allowed;
+
   function openCreateModal() {
+    if (isLimitReached) {
+      toast.add({
+        title: "Limite do plano atingido",
+        description:
+          locationLimitCheck.reason ||
+          "Seu plano atual atingiu o limite de unidades operacionais. Faça upgrade para adicionar mais unidades.",
+        type: "warning",
+      });
+      return;
+    }
     setEditing(null);
     setSelectedTimezone("America/Sao_Paulo");
     setSelectedTeamIds([]);
@@ -186,14 +207,36 @@ export function LocationsClient({
         subtitle="Organize os locais de trabalho e seus horários."
         actions={
           ["OWNER", "ADMIN"].includes(userRole) ? (
-            <Button
-              type="button"
-              onClick={openCreateModal}
-              className="bg-[var(--brand-primary)] text-white hover:bg-[var(--brand-secondary)] shadow-none"
-            >
-              <Plus className="size-4" data-icon="inline-start" />
-              <span>Criar unidade</span>
-            </Button>
+            <div className="flex items-center gap-2">
+              {locationLimit != null && (
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "text-xs font-semibold px-2.5 py-1 rounded-lg border",
+                    isLimitReached
+                      ? "bg-amber-50 text-amber-900 border-amber-300 dark:bg-amber-950/40 dark:text-amber-200"
+                      : "bg-muted/50 text-muted-foreground border-border"
+                  )}
+                >
+                  {locations.length} / {locationLimit} {locationLimit === 1 ? "unidade" : "unidades"}
+                </Badge>
+              )}
+              <Button
+                type="button"
+                onClick={openCreateModal}
+                disabled={isLimitReached}
+                title={isLimitReached ? locationLimitCheck.reason : undefined}
+                className={cn(
+                  "shadow-none",
+                  isLimitReached
+                    ? "opacity-60 cursor-not-allowed bg-muted text-muted-foreground"
+                    : "bg-[var(--brand-primary)] text-white hover:bg-[var(--brand-secondary)]"
+                )}
+              >
+                <Plus className="size-4" data-icon="inline-start" />
+                <span>Criar unidade</span>
+              </Button>
+            </div>
           ) : undefined
         }
       />
@@ -532,6 +575,12 @@ export function LocationsClient({
               </Field>
             )}
 
+            {!editing && isLimitReached && (
+              <div className="p-3 my-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+                {locationLimitCheck.reason}
+              </div>
+            )}
+
             <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-border/60">
               <Button
                 type="button"
@@ -544,7 +593,7 @@ export function LocationsClient({
               </Button>
               <Button
                 type="submit"
-                disabled={loading}
+                disabled={loading || (!editing && isLimitReached)}
                 className="bg-[var(--brand-primary)] text-white hover:bg-[var(--brand-secondary)] text-xs h-9 shadow-none"
               >
                 {loading && (

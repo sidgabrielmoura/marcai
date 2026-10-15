@@ -1,62 +1,26 @@
-import { NextRequest } from "next/server";
-import { getSession } from "@/infrastructure/security/session";
-import { eventBus, DomainEvent } from "@/infrastructure/events/event-bus";
-
-export const dynamic = "force-dynamic";
-
-/**
- * Endpoint de Server-Sent Events (SSE) para entrega de eventos em tempo real aos clientes (Item 36).
- * Valida a sessão e o tenant ativo para isolamento total.
- */
-export async function GET(req: NextRequest) {
-  const session = await getSession();
-  if (!session || !session.activeOrgId) {
-    return new Response("Unauthorized", { status: 401 });
-  }
-
-  const orgId = session.activeOrgId;
-  const encoder = new TextEncoder();
-
-  let unsubscribe: (() => void) | null = null;
-  let keepAliveTimer: NodeJS.Timeout | null = null;
-
-  const stream = new ReadableStream({
-    start(controller) {
-      // Envia evento inicial de conexão estabelecida
-      controller.enqueue(
-        encoder.encode(`event: connected\ndata: ${JSON.stringify({ time: new Date().toISOString() })}\n\n`)
-      );
-
-      // Assina eventos do eventBus no canal da organização
-      unsubscribe = eventBus.subscribe(orgId, (event: DomainEvent) => {
-        try {
-          const message = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
-          controller.enqueue(encoder.encode(message));
-        } catch {
-          // Stream fechada pelo cliente
-        }
-      });
-
-      // Keep-alive a cada 15 segundos para evitar timeouts de proxies
-      keepAliveTimer = setInterval(() => {
-        try {
-          controller.enqueue(encoder.encode(": keepalive\n\n"));
-        } catch {
-          if (keepAliveTimer) clearInterval(keepAliveTimer);
-        }
-      }, 15000);
-    },
-    cancel() {
-      if (unsubscribe) unsubscribe();
-      if (keepAliveTimer) clearInterval(keepAliveTimer);
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-    },
-  });
+import {getAuthenticatedContext} from '@/application/security/auth-context';
+import {replay} from '@/application/mobile/notifications';
+export const runtime='nodejs';
+export const dynamic='force-dynamic';
+export const maxDuration=60;
+export async function GET(req:Request) {
+ const context=await getAuthenticatedContext(false);
+ if(!context)return new Response(null,{status:401});
+ const encoder=new TextEncoder(),abort=new AbortController();
+ req.signal.addEventListener('abort',()=>abort.abort(),{once:true});
+ let scopeVersion:string|null=null;
+ let cursor=new URL(req.url).searchParams.get('cursor'),closed=false;
+ const stream=new ReadableStream({async start(out){
+ const started=Date.now();
+ try{while(!abort.signal.aborted&&Date.now()-started<25000){
+ const current=await getAuthenticatedContext(false);
+ if(!current||current.organizationId!==context.organizationId)break;
+ const result=await replay(current,cursor);cursor=result.nextCursor;
+ if(result.events.length||result.requiresSnapshot||scopeVersion!==result.scopeVersion)out.enqueue(encoder.encode('event: SYNC_REQUIRED\ndata: '+JSON.stringify({type:'SYNC_REQUIRED',payload:{cursor,requiresSnapshot:result.requiresSnapshot}})+'\n\n'));
+ else out.enqueue(encoder.encode(': keepalive\n\n'));
+ scopeVersion=result.scopeVersion;
+ await new Promise(resolve=>setTimeout(resolve,2000));
+ }}finally{if(!closed){closed=true;try{out.close();}catch{}}}
+ },cancel(){closed=true;abort.abort();}});
+ return new Response(stream,{headers:{'Content-Type':'text/event-stream','Cache-Control':'private, no-store, no-transform','X-Accel-Buffering':'no'}});
 }

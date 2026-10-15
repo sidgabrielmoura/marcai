@@ -9,6 +9,10 @@ import { revalidatePath } from "next/cache";
 import { updateMemberAccess } from "@/application/security/update-member-access";
 import { canManageMember } from "@/domain/rules/member-access";
 import { executeRetentionPurge } from "@/application/jobs/retention-purge";
+import {
+  assertCanCreateLocation,
+  assertCanAddMember,
+} from "@/domain/rules/subscription-limits";
 
 export type ActionResult = {
   success?: boolean;
@@ -68,86 +72,94 @@ export async function inviteMemberAction(formData: FormData): Promise<ActionResu
   if (previousUser && await prisma.organizationMember.findUnique({ where: { organizationId_userId: { organizationId: context.organizationId, userId: previousUser.id } } })) return { error: "Esta pessoa já pertence à organização." };
   const defaultPasswordHash = password ? await bcrypt.hash(password, 12) : null;
 
-  const result = await prisma.$transaction(async (tx) => {
-    // 1. Localizar ou criar usuário
-    let user = email ? await tx.user.findUnique({ where: { email } }) : null;
-    if (!user) {
-      user = await tx.user.create({
-        data: {
-          name,
-          email,
-          passwordHash: defaultPasswordHash,
-          status: "ACTIVE",
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      // 0. Bloqueador por limites de plano (pessoas / colaboradores)
+      await assertCanAddMember(tx, context.organizationId);
+
+      // 1. Localizar ou criar usuário
+      let user = email ? await tx.user.findUnique({ where: { email } }) : null;
+      if (!user) {
+        user = await tx.user.create({
+          data: {
+            name,
+            email,
+            passwordHash: defaultPasswordHash,
+            status: "ACTIVE",
+          },
+        });
+      }
+
+      // 2. Verificar se já é membro desta organização
+      const existing = await tx.organizationMember.findUnique({
+        where: {
+          organizationId_userId: {
+            organizationId: context.organizationId,
+            userId: user.id,
+          },
         },
       });
-    }
 
-    // 2. Verificar se já é membro desta organização
-    const existing = await tx.organizationMember.findUnique({
-      where: {
-        organizationId_userId: {
+      if (existing) {
+        throw new Error("Este usuário já faz parte desta organização.");
+      }
+
+      // 3. Criar vínculo OrganizationMember
+      const member = await tx.organizationMember.create({
+        data: {
           organizationId: context.organizationId,
           userId: user.id,
-        },
-      },
-    });
-
-    if (existing) {
-      throw new Error("Este usuário já faz parte desta organização.");
-    }
-
-    // 3. Criar vínculo OrganizationMember
-    const member = await tx.organizationMember.create({
-      data: {
-        organizationId: context.organizationId,
-        userId: user.id,
-        role,
-        status: MemberStatus.ACTIVE,
-        employeeCode: employeeCode || `EMP-${Date.now().toString().slice(-4)}`,
-        pinHash,
-      },
-    });
-
-    // 4. Vincular Unidade Principal se informada
-    if (primaryLocationId) {
-      await tx.memberLocationAccess.create({
-        data: {
-          memberId: member.id,
-          locationId: primaryLocationId,
-          type: LocationAccessType.PRIMARY,
-          grantedBy: context.memberId,
+          role,
+          status: MemberStatus.ACTIVE,
+          employeeCode: employeeCode || `EMP-${Date.now().toString().slice(-4)}`,
+          pinHash,
         },
       });
-    }
 
-    // 5. Vincular Equipe se informada
-    if (teamId) {
-      await tx.teamMember.create({
+      // 4. Vincular Unidade Principal se informada
+      if (primaryLocationId) {
+        await tx.memberLocationAccess.create({
+          data: {
+            memberId: member.id,
+            locationId: primaryLocationId,
+            type: LocationAccessType.PRIMARY,
+            grantedBy: context.memberId,
+          },
+        });
+      }
+
+      // 5. Vincular Equipe se informada
+      if (teamId) {
+        await tx.teamMember.create({
+          data: {
+            teamId,
+            organizationMemberId: member.id,
+            isPrimary: true,
+          },
+        });
+      }
+
+      // 6. Auditoria append-only
+      await tx.activityLog.create({
         data: {
-          teamId,
-          organizationMemberId: member.id,
-          isPrimary: true,
+          organizationId: context.organizationId,
+          actorId: context.memberId,
+          action: "MEMBER_INVITED",
+          entityType: "USER",
+          entityId: member.id,
+          metadata: { name, role, employeeCode },
         },
       });
-    }
 
-    // 6. Auditoria append-only
-    await tx.activityLog.create({
-      data: {
-        organizationId: context.organizationId,
-        actorId: context.memberId,
-        action: "MEMBER_INVITED",
-        entityType: "USER",
-        entityId: member.id,
-        metadata: { name, role, employeeCode },
-      },
+      return member;
     });
 
-    return member;
-  });
-
-  revalidatePath("/management/people");
-  return { success: true, data: { id: result.id } };
+    revalidatePath("/management/people");
+    return { success: true, data: { id: result.id } };
+  } catch (err: any) {
+    console.error("[inviteMemberAction] Erro:", err);
+    return { error: err?.message || "Não foi possível cadastrar o colaborador." };
+  }
 }
 
 /**
@@ -176,26 +188,36 @@ export async function updateMemberStatusAction(
     return { error: "Você não possui permissão para alterar o status desta pessoa." };
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.organizationMember.update({
-      where: { id: member.id },
-      data: { status: newStatus as MemberStatus },
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Bloqueador de plano ao reativar membro
+      if (newStatus === "ACTIVE" && member.status !== "ACTIVE") {
+        await assertCanAddMember(tx, context.organizationId);
+      }
+
+      await tx.organizationMember.update({
+        where: { id: member.id },
+        data: { status: newStatus as MemberStatus },
+      });
+
+      await tx.activityLog.create({
+        data: {
+          organizationId: context.organizationId,
+          actorId: context.memberId,
+          action: `MEMBER_STATUS_${newStatus}`,
+          entityType: "USER",
+          entityId: member.id,
+          metadata: { previousStatus: member.status, newStatus },
+        },
+      });
     });
 
-    await tx.activityLog.create({
-      data: {
-        organizationId: context.organizationId,
-        actorId: context.memberId,
-        action: `MEMBER_STATUS_${newStatus}`,
-        entityType: "USER",
-        entityId: member.id,
-        metadata: { previousStatus: member.status, newStatus },
-      },
-    });
-  });
-
-  revalidatePath("/management/people");
-  return { success: true };
+    revalidatePath("/management/people");
+    return { success: true };
+  } catch (err: any) {
+    console.error("[updateMemberStatusAction] Erro:", err);
+    return { error: err?.message || "Não foi possível alterar o status do membro." };
+  }
 }
 
 /**
@@ -591,8 +613,14 @@ export async function saveLocationAction(formData: FormData): Promise<ActionResu
   if (!operatingDays.split(",").every(day => ["MON","TUE","WED","THU","FRI","SAT","SUN"].includes(day))) return { error: "Dias de operação inválidos." };
   const locationId = String(formData.get("locationId") || "");
   if (locationId && !await prisma.location.findFirst({ where: { id: locationId, organizationId: context.organizationId } })) return { error: "Unidade não encontrada nesta organização." };
-  const location = await prisma.$transaction(async (tx) => {
-    const data = {
+  try {
+    const location = await prisma.$transaction(async (tx) => {
+      // Se estiver criando uma nova unidade (não editando), valida limite do plano
+      if (!locationId) {
+        await assertCanCreateLocation(tx, context.organizationId);
+      }
+
+      const data = {
         organizationId: context.organizationId,
         name,
         address,
@@ -601,39 +629,45 @@ export async function saveLocationAction(formData: FormData): Promise<ActionResu
         closingTime,
         operatingDays,
         status: "ACTIVE",
-    };
-    const loc = locationId ? await tx.location.update({ where: { id: locationId, organizationId: context.organizationId }, data }) : await tx.location.create({ data });
+      };
+      const loc = locationId
+        ? await tx.location.update({ where: { id: locationId, organizationId: context.organizationId }, data })
+        : await tx.location.create({ data });
 
-    if (formData.has("teamIds")) {
-      const teamIds = String(formData.get("teamIds")).split(",").map(s => s.trim()).filter(Boolean);
-      await tx.teamLocation.deleteMany({ where: { locationId: loc.id } });
-      if (teamIds.length > 0) {
-        await tx.teamLocation.createMany({
-          data: teamIds.map(tId => ({
-            teamId: tId,
-            locationId: loc.id,
-          })),
-          skipDuplicates: true,
-        });
+      if (formData.has("teamIds")) {
+        const teamIds = String(formData.get("teamIds")).split(",").map(s => s.trim()).filter(Boolean);
+        await tx.teamLocation.deleteMany({ where: { locationId: loc.id } });
+        if (teamIds.length > 0) {
+          await tx.teamLocation.createMany({
+            data: teamIds.map(tId => ({
+              teamId: tId,
+              locationId: loc.id,
+            })),
+            skipDuplicates: true,
+          });
+        }
       }
-    }
 
-    await tx.activityLog.create({
-      data: {
-        organizationId: context.organizationId,
-        actorId: context.memberId,
-        action: locationId ? "LOCATION_UPDATED" : "LOCATION_CREATED",
-        entityType: "LOCATION",
-        entityId: loc.id,
-        metadata: { name, openingTime, closingTime },
-      },
+      await tx.activityLog.create({
+        data: {
+          organizationId: context.organizationId,
+          actorId: context.memberId,
+          action: locationId ? "LOCATION_UPDATED" : "LOCATION_CREATED",
+          entityType: "LOCATION",
+          entityId: loc.id,
+          metadata: { name, openingTime, closingTime },
+        },
+      });
+
+      return loc;
     });
 
-    return loc;
-  });
-
-  revalidatePath("/management/locations");
-  return { success: true, data: { id: location.id } };
+    revalidatePath("/management/locations");
+    return { success: true, data: { id: location.id } };
+  } catch (err: any) {
+    console.error("[saveLocationAction] Erro:", err);
+    return { error: err?.message || "Não foi possível salvar a unidade operacional." };
+  }
 }
 
 /**

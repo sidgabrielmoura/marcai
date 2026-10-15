@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -40,6 +40,8 @@ import { Brand } from "./brand";
 import { OrganizationSwitcher } from "./organization-switcher";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import { PlatformButton, PlatformForm, usePlatformActivityContext } from "../superadmin/platform-async";
 import {
   Dialog,
   DialogContent,
@@ -149,7 +151,7 @@ const platformNav: NavItem[] = [
     group: "Plataforma",
   },
   {
-    label: "Planos e assinaturas",
+    label: "assinaturas",
     href: "/superadmin?view=subscriptions",
     icon: CalendarClock,
     group: "Plataforma",
@@ -201,6 +203,41 @@ export function AppShell({
   initialSubscriptionNotice?: SubscriptionNotice | null;
 }) {
   const pathname = usePathname();
+  const platformActivity = usePlatformActivityContext();
+  const ShellForm = mode === "platform" ? PlatformForm : "form";
+  const ShellButton = mode === "platform" ? PlatformButton : Button;
+  const shellFormOptions = mode === "platform" ? { standalone: true } : {};
+  function navigateShell(href: string) {
+    if (mode === "platform" && platformActivity) {
+      if (platformActivity.locked()) return;
+      setSearchOpen(false);
+      platformActivity.navigate(href);
+    } else {
+      setSearchOpen(false);
+      window.location.href = href;
+    }
+  }
+  const mobileNavigationRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (mode !== "platform") return;
+    const navigation = mobileNavigationRef.current;
+    const active = navigation?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!navigation || !active) return;
+    let mounted = true;
+    const centerActive = () => {
+      if (!mounted || !navigation.clientWidth) return;
+      const bounds = active.getBoundingClientRect();
+      const containerBounds = navigation.getBoundingClientRect();
+      const left = navigation.scrollLeft + bounds.left - containerBounds.left - (navigation.clientWidth - bounds.width) / 2;
+      navigation.scrollTo({ left: Math.max(0, left), behavior: "instant" });
+    };
+    const observer = new ResizeObserver(centerActive);
+    observer.observe(navigation);
+    void document.fonts.ready.then(centerActive);
+    centerActive();
+    return () => { mounted = false; observer.disconnect(); };
+  }, [activeView, mode]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [currentUserId, setCurrentUserId] = useState<string | undefined>(userId);
   const [subscriptionNotice, setSubscriptionNotice] = useState<SubscriptionNotice | null | undefined>(
@@ -231,6 +268,7 @@ export function AppShell({
   const [organizacaoOpen, setOrganizacaoOpen] = useState(false);
 
   useEffect(() => {
+    if (mode === "platform") return;
     let active = true;
     getCurrentUserSummaryAction()
       .then((summary) => {
@@ -246,7 +284,7 @@ export function AppShell({
     return () => {
       active = false;
     };
-  }, [pathname]);
+  }, [pathname, mode]);
 
   useRealtimeEvents((eventType, payload) => {
     if (eventType === "NOTIFICATION_CREATED" && payload) {
@@ -278,7 +316,7 @@ export function AppShell({
         }
       }
     }
-  });
+  }, mode !== "platform");
 
   useEffect(() => {
     let current = true;
@@ -361,9 +399,8 @@ export function AppShell({
         key={item.href}
         href={item.href}
         onClick={() => setSearchOpen(false)}
-        className={`sidebar-link !min-h-[38px] !py-2 pl-7! text-[length:var(--type-label)] ${
-          isActive(item) ? "is-active" : ""
-        }`}
+        className={`sidebar-link min-h-9.5! py-2! pl-7! text-(length:--type-label) ${isActive(item) ? "is-active" : ""
+          }`}
         aria-current={isActive(item) ? "page" : undefined}
       >
         <item.icon size={16} strokeWidth={1.7} />
@@ -414,11 +451,10 @@ export function AppShell({
               <button
                 type="button"
                 onClick={() => setOperacaoOpen((prev) => !prev)}
-                className={`flex items-center justify-between w-full px-3 py-2 rounded-[9px] text-[length:var(--type-label)] font-semibold transition-all cursor-pointer select-none group ${
-                  !operacaoOpen && isOperacaoActive
-                    ? "bg-[#e8efe9] text-[#164d36]"
-                    : "text-[var(--text-secondary)] hover:text-[#164d36] hover:bg-[#eaf0eb]"
-                }`}
+                className={`flex items-center justify-between w-full px-3 py-2 rounded-[9px] text-[length:var(--type-label)] font-semibold transition-all cursor-pointer select-none group ${!operacaoOpen && isOperacaoActive
+                  ? "bg-[#e8efe9] text-[#164d36]"
+                  : "text-[var(--text-secondary)] hover:text-[#164d36] hover:bg-[#eaf0eb]"
+                  }`}
                 aria-expanded={operacaoOpen}
                 aria-label="Alternar módulo de Operação"
               >
@@ -426,11 +462,10 @@ export function AppShell({
                   <Workflow
                     size={17}
                     strokeWidth={1.8}
-                    className={`shrink-0 transition-colors ${
-                      !operacaoOpen && isOperacaoActive
-                        ? "text-[#164d36]"
-                        : "text-[var(--brand-700)] group-hover:text-[#164d36]"
-                    }`}
+                    className={`shrink-0 transition-colors ${!operacaoOpen && isOperacaoActive
+                      ? "text-[#164d36]"
+                      : "text-[var(--brand-700)] group-hover:text-[#164d36]"
+                      }`}
                   />
                   <span className="tracking-tight">Operação</span>
                 </span>
@@ -444,19 +479,17 @@ export function AppShell({
                   <ChevronDown
                     size={15}
                     strokeWidth={2}
-                    className={`shrink-0 transition-transform duration-200 text-[var(--text-secondary)] group-hover:text-[#164d36] ${
-                      !operacaoOpen ? "-rotate-90" : ""
-                    }`}
+                    className={`shrink-0 transition-transform duration-200 text-[var(--text-secondary)] group-hover:text-[#164d36] ${!operacaoOpen ? "-rotate-90" : ""
+                      }`}
                   />
                 </div>
               </button>
 
               <div
-                className={`overflow-hidden transition-all duration-200 ease-in-out ${
-                  operacaoOpen
-                    ? "max-h-96 opacity-100"
-                    : "max-h-0 opacity-0 pointer-events-none"
-                }`}
+                className={`overflow-hidden transition-all duration-200 ease-in-out ${operacaoOpen
+                  ? "max-h-96 opacity-100"
+                  : "max-h-0 opacity-0 pointer-events-none"
+                  }`}
               >
                 <div className="space-y-0.5 pt-0.5">
                   {managementNav
@@ -474,11 +507,10 @@ export function AppShell({
                 <button
                   type="button"
                   onClick={() => setOrganizacaoOpen((prev) => !prev)}
-                  className={`flex items-center justify-between w-full px-3 py-2 rounded-[9px] text-[length:var(--type-label)] font-semibold transition-all cursor-pointer select-none group ${
-                    !organizacaoOpen && isOrganizacaoActive
-                      ? "bg-[#e8efe9] text-[#164d36]"
-                      : "text-[var(--text-secondary)] hover:text-[#164d36] hover:bg-[#eaf0eb]"
-                  }`}
+                  className={`flex items-center justify-between w-full px-3 py-2 rounded-[9px] text-[length:var(--type-label)] font-semibold transition-all cursor-pointer select-none group ${!organizacaoOpen && isOrganizacaoActive
+                    ? "bg-[#e8efe9] text-[#164d36]"
+                    : "text-[var(--text-secondary)] hover:text-[#164d36] hover:bg-[#eaf0eb]"
+                    }`}
                   aria-expanded={organizacaoOpen}
                   aria-label="Alternar módulo de Organização"
                 >
@@ -486,11 +518,10 @@ export function AppShell({
                     <Building2
                       size={17}
                       strokeWidth={1.8}
-                      className={`shrink-0 transition-colors ${
-                        !organizacaoOpen && isOrganizacaoActive
-                          ? "text-[#164d36]"
-                          : "text-[var(--brand-700)] group-hover:text-[#164d36]"
-                      }`}
+                      className={`shrink-0 transition-colors ${!organizacaoOpen && isOrganizacaoActive
+                        ? "text-[#164d36]"
+                        : "text-[var(--brand-700)] group-hover:text-[#164d36]"
+                        }`}
                     />
                     <span className="tracking-tight">Organização</span>
                   </span>
@@ -504,19 +535,17 @@ export function AppShell({
                     <ChevronDown
                       size={15}
                       strokeWidth={2}
-                      className={`shrink-0 transition-transform duration-200 text-[var(--text-secondary)] group-hover:text-[#164d36] ${
-                        !organizacaoOpen ? "-rotate-90" : ""
-                      }`}
+                      className={`shrink-0 transition-transform duration-200 text-[var(--text-secondary)] group-hover:text-[#164d36] ${!organizacaoOpen ? "-rotate-90" : ""
+                        }`}
                     />
                   </div>
                 </button>
 
                 <div
-                  className={`overflow-hidden transition-all duration-200 ease-in-out ${
-                    organizacaoOpen
-                      ? "max-h-96 opacity-100"
-                      : "max-h-0 opacity-0 pointer-events-none"
-                  }`}
+                  className={`overflow-hidden transition-all duration-200 ease-in-out ${organizacaoOpen
+                    ? "max-h-96 opacity-100"
+                    : "max-h-0 opacity-0 pointer-events-none"
+                    }`}
                 >
                   <div className="space-y-0.5 pt-0.5">
                     {managementNav
@@ -529,12 +558,11 @@ export function AppShell({
               <Link
                 href="/management/settings"
                 onClick={() => setSearchOpen(false)}
-                className={`sidebar-link ${
-                  pathname === "/management/settings" ||
+                className={`sidebar-link ${pathname === "/management/settings" ||
                   pathname.startsWith("/management/settings/")
-                    ? "is-active"
-                    : ""
-                }`}
+                  ? "is-active"
+                  : ""
+                  }`}
                 aria-current={
                   pathname.startsWith("/management/settings")
                     ? "page"
@@ -544,16 +572,16 @@ export function AppShell({
                 <Settings size={18} strokeWidth={1.7} />
                 <span>Configurações</span>
               </Link>
-              <form action={logoutAction}>
-                <Button
+              <ShellForm action={logoutAction} {...shellFormOptions}>
+                <ShellButton
                   variant="ghost"
                   type="submit"
                   className="sidebar-link w-full justify-start font-medium h-auto py-2.5 shadow-none cursor-pointer text-[var(--text-secondary)] hover:text-red-700 hover:bg-red-50/60 dark:hover:bg-red-950/20"
                 >
                   <LogOut size={18} strokeWidth={1.7} />
                   <span>Sair da conta</span>
-                </Button>
-              </form>
+                </ShellButton>
+              </ShellForm>
             </div>
           </nav>
         ) : (
@@ -571,16 +599,16 @@ export function AppShell({
                   {items.filter((item) => item.group === group).map(renderNav)}
                 </div>
               ))}
-              <form action={logoutAction}>
-                <Button
+              <ShellForm action={logoutAction} {...shellFormOptions}>
+                <ShellButton
                   variant="ghost"
                   type="submit"
                   className="sidebar-link w-full justify-start font-medium h-auto py-2.5 shadow-none"
                 >
                   <LogOut size={18} strokeWidth={1.7} />
                   <span>Sair da conta</span>
-                </Button>
-              </form>
+                </ShellButton>
+              </ShellForm>
             </nav>
             <div className="sidebar-note">
               {mode === "platform" ? (
@@ -688,7 +716,7 @@ export function AppShell({
           {children}
         </main>
       </div>
-      <nav className="mobile-navigation" aria-label="Navegação móvel">
+      <nav ref={mobileNavigationRef} className="mobile-navigation" aria-label="Navegação móvel">
         {mode === "management" ? (
           <>
             {managementNav.slice(0, 2).map((item) => (
@@ -777,16 +805,16 @@ export function AppShell({
           <p className="text-[length:var(--type-label)] text-[var(--text-secondary)]">
             {roles[role]}
           </p>
-          <form action={logoutAction} className="pt-4 flex justify-end">
-            <Button
+          <ShellForm action={logoutAction} {...shellFormOptions} className="pt-4 flex justify-end">
+            <ShellButton
               variant="outline"
               type="submit"
               className="gap-2 text-red-700 hover:text-red-800 hover:bg-red-50 border-red-200"
             >
               <LogOut data-icon="inline-start" />
               Sair da conta
-            </Button>
-          </form>
+            </ShellButton>
+          </ShellForm>
         </DialogContent>
       </Dialog>
 
@@ -818,10 +846,7 @@ export function AppShell({
                   <CommandItem
                     key={item.href}
                     value={item.label}
-                    onSelect={() => {
-                      setSearchOpen(false);
-                      window.location.href = item.href;
-                    }}
+                    onSelect={() => navigateShell(item.href)}
                     className="flex items-center gap-2 px-3 py-2 rounded-[10px] cursor-pointer text-[length:var(--type-label)] font-medium text-[var(--brand-900)] hover:bg-[var(--canvas)]"
                   >
                     <item.icon className="size-4 text-[var(--brand-700)]" />
@@ -829,10 +854,10 @@ export function AppShell({
                   </CommandItem>
                 ))}
             </CommandGroup>
-            {searchBusy && <p className="px-3 py-2 text-sm text-muted-foreground" role="status">Buscando no seu acesso…</p>}
+            {searchBusy && <p className="px-3 py-2 text-sm text-muted-foreground flex items-center gap-2" role="status"><Spinner aria-hidden="true" />Buscando no seu acesso…</p>}
             {searchError && <p className="px-3 py-2 text-sm text-destructive" role="alert">{searchError}</p>}
             {Array.from(new Set(searchResults.map(result => result.group))).map(group => <CommandGroup heading={group} key={group}>
-              {searchResults.filter(result => result.group === group).map(result => <CommandItem key={`${group}-${result.id}`} value={`${group}-${result.id}`} onSelect={() => { setSearchOpen(false); window.location.href = result.href; }} className="flex flex-col items-start gap-1 px-3 py-2 cursor-pointer">
+              {searchResults.filter(result => result.group === group).map(result => <CommandItem key={`${group}-${result.id}`} value={`${group}-${result.id}`} onSelect={() => navigateShell(result.href)} className="flex flex-col items-start gap-1 px-3 py-2 cursor-pointer">
                 <span className="font-medium">{result.title}</span><span className="text-caption text-muted-foreground">{result.detail}</span>
               </CommandItem>)}
             </CommandGroup>)}

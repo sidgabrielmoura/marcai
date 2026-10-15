@@ -5,6 +5,7 @@ import {
   readManualSubscription,
   DEFAULT_PLATFORM_PLANS,
   type PlatformPlanModel,
+  getSubscriptionNotice,
 } from "@/application/superadmin/manual-subscription";
 import {
   SuperadminDashboardClient,
@@ -13,10 +14,11 @@ import {
   type GlobalUser,
   type PlatformView,
 } from "@/presentation/components/superadmin/superadmin-dashboard-client";
+import type { PlatformOverviewData } from "@/presentation/components/superadmin/platform-overview";
 
 const views: PlatformView[] = ["overview", "organizations", "users", "subscriptions", "usage", "audit", "support"];
 
-const pageSize = 20;
+const pageSize = 10;
 
 export default async function SuperadminPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const actor = await getSuperadminContext(true);
@@ -61,14 +63,22 @@ export default async function SuperadminPage({ searchParams }: { searchParams: P
     users = rows.map((user) => ({ ...user, createdAt: user.createdAt.toISOString(), memberships: user.memberships.map((member) => ({ organizationId: member.organization.id, organizationName: member.organization.name, role: member.role, status: member.status })) }));
   } else if (isLogView) {
     const rows = await prisma.activityLog.findMany({ where: logWhere, ...paging, orderBy: [{ createdAt: "desc" }, { id: "asc" }], include: { organization: { select: { name: true } } } });
-    const actors = await prisma.user.findMany({ where: { id: { in: [...new Set(rows.flatMap((row) => row.actorId ? [row.actorId] : []))] } }, select: { id: true, name: true } });
-    const actorNames = new Map(actors.map((user) => [user.id, user.name]));
+    const actorIds = [...new Set(rows.flatMap((row) => row.actorId ? [row.actorId] : []))];
+    // Administrative events store user IDs; operational events store membership IDs.
+    const [actors, actorMemberships] = await Promise.all([
+      prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } }),
+      prisma.organizationMember.findMany({ where: { id: { in: actorIds } }, select: { id: true, user: { select: { name: true } } } }),
+    ]);
+    const actorNames = new Map([
+      ...actors.map((user) => [user.id, user.name] as const),
+      ...actorMemberships.map((member) => [member.id, member.user.name] as const),
+    ]);
     logs = rows.map((row) => {
       const metadata = row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata) ? row.metadata : {};
       return { id: row.id, action: row.action, entityType: row.entityType, entityId: row.entityId, createdAt: row.createdAt.toISOString(), organizationId: row.organizationId, orgName: row.organization.name, actorName: row.actorId ? actorNames.get(row.actorId) ?? "Usuário removido" : "Sistema", note: typeof metadata.note === "string" ? metadata.note : typeof metadata.reason === "string" ? metadata.reason : null, supportStatus: typeof metadata.status === "string" ? metadata.status : null };
     });
   } else {
-    const rows = await prisma.organization.findMany({ where: orgWhere, ...paging, orderBy: [{ createdAt: "desc" }, { id: "asc" }], include: { _count: { select: { members: { where: { status: "ACTIVE", user: { status: "ACTIVE" } } }, locations: { where: { status: "ACTIVE" } }, processes: true, tasks: { where: { deletedAt: null } }, executions: true } } } });
+    const rows = await prisma.organization.findMany({ where: view === "overview" ? {} : orgWhere, ...(view === "overview" ? { skip: 0, take: 4 } : paging), orderBy: [{ createdAt: "desc" }, { id: "asc" }], include: { _count: { select: { members: { where: { status: "ACTIVE", user: { status: "ACTIVE" } } }, locations: { where: { status: "ACTIVE" } }, processes: true, tasks: { where: { deletedAt: null } }, executions: true } } } });
     organizations = rows.map((org) => ({ id: org.id, name: org.name, slug: org.slug, status: org.status, createdAt: org.createdAt.toISOString(), membersCount: org._count.members, locationsCount: org._count.locations, processesCount: org._count.processes, tasksCount: org._count.tasks, executionsCount: org._count.executions, subscription: readManualSubscription(org.settings) }));
   }
 
@@ -76,6 +86,34 @@ export default async function SuperadminPage({ searchParams }: { searchParams: P
     select: { id: true, name: true, slug: true, status: true },
     orderBy: { name: "asc" },
   });
+
+  // Overview aggregates cover the entire platform, independently of list filters.
+  let overviewData: PlatformOverviewData | undefined;
+  if (view === "overview") {
+    const overviewRows = await prisma.organization.findMany({
+      select: {
+        id: true, name: true, settings: true,
+        _count: { select: {
+          members: { where: { status: "ACTIVE", user: { status: "ACTIVE" } } },
+          locations: { where: { status: "ACTIVE" } },
+        } },
+      },
+    });
+    const summaries = overviewRows.map((org) => ({ ...org, subscription: readManualSubscription(org.settings) }));
+    overviewData = {
+      contractedOrganizations: summaries.filter((org) => org.subscription !== null).length,
+      expiringOrganizations: summaries.filter((org) => {
+        const notice = getSubscriptionNotice(org.subscription);
+        return notice && (notice.isExpired || notice.daysRemaining <= 7);
+      }).length,
+      overLimitOrganizations: summaries.filter((org) =>
+        (org.subscription?.memberLimit != null && org._count.members > org.subscription.memberLimit) ||
+        (org.subscription?.locationLimit != null && org._count.locations > org.subscription.locationLimit)
+      ).length,
+      largestOrganizations: summaries.sort((a, b) => b._count.members - a._count.members || a.name.localeCompare(b.name, "pt-BR"))
+        .slice(0, 6).map((org) => ({ id: org.id, name: org.name, membersCount: org._count.members })),
+    };
+  }
 
   let rawPlans: Array<any> = [];
   if (prisma.platformPlan) {
@@ -126,6 +164,7 @@ export default async function SuperadminPage({ searchParams }: { searchParams: P
       logs={logs}
       allOrganizations={allOrganizations}
       platformPlans={platformPlans}
+      overviewData={overviewData}
       pagination={{ page, pages, total, pageSize }}
     />
   );

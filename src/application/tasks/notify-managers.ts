@@ -1,4 +1,5 @@
 import type { Prisma, Priority } from "@prisma/client";
+import { eligibleMember } from "@/application/security/operational-scope";
 import { dispatchNotificationAsync } from "@/infrastructure/notifications/notification-service";
 
 export interface NotifyOptions {
@@ -35,6 +36,7 @@ export async function notifyManagers(
           locationAccesses: {
             some: {
               locationId: task.locationId ?? "__none__",
+              location: {organizationId:task.organizationId,status:"ACTIVE"},
               AND: [
                 { OR: [{ startsAt: null }, { startsAt: { lte: new Date() } }] },
                 { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
@@ -42,7 +44,7 @@ export async function notifyManagers(
             },
           },
           teamMemberships: {
-            some: { teamId: task.teamId ?? "__none__" },
+            some: { teamId: task.teamId ?? "__none__",team:{organizationId:task.organizationId,status:"ACTIVE"} },
           },
         },
       ],
@@ -110,15 +112,17 @@ export async function notifyTaskAssignees(
       task: { organizationId: task.organizationId },
     },
     include: {
+      task:{select:{locationId:true,teamId:true}},
       member: {
         select: { userId: true, status: true },
       },
     },
   });
 
+  const eligibleAssignments=[];for(const a of assignments){if(await eligibleMember(task.organizationId,a.memberId,a.task.locationId,a.task.teamId,tx))eligibleAssignments.push(a);}
   const recipientUserIds = [
     ...new Set(
-      assignments
+      eligibleAssignments
         .filter((a) => a.member.status === "ACTIVE")
         .map((a) => a.member.userId)
         .filter((uid) => !options?.excludeUserId || uid !== options.excludeUserId)
@@ -185,6 +189,8 @@ export async function notifyApprovers(
         id: step.approverMemberId,
         organizationId: task.organizationId,
         status: "ACTIVE",
+        OR:[{role:{in:["OWNER","ADMIN"]}},{role:"MANAGER",teamMemberships:{some:{teamId:task.teamId??"__none__",team:{organizationId:task.organizationId,status:"ACTIVE"}}},locationAccesses:{some:{locationId:task.locationId??"__none__",location:{organizationId:task.organizationId,status:"ACTIVE"},AND:[{OR:[{startsAt:null},{startsAt:{lte:new Date()}}]},{OR:[{expiresAt:null},{expiresAt:{gt:new Date()}}]}]}}}],
+        user:{status:"ACTIVE"},
       },
       select: { userId: true },
     });
@@ -195,8 +201,8 @@ export async function notifyApprovers(
     const teamMembers = await tx.teamMember.findMany({
       where: {
         teamId: step.approverTeamId,
-        team: { organizationId: task.organizationId },
-        member: { status: "ACTIVE" },
+        team: { organizationId: task.organizationId,status:"ACTIVE" },
+        member: { organizationId:task.organizationId,status: "ACTIVE",user:{status:"ACTIVE"},OR:[{role:{in:["OWNER","ADMIN"]}},{role:"MANAGER",teamMemberships:{some:{teamId:task.teamId??"__none__",team:{organizationId:task.organizationId,status:"ACTIVE"}}},locationAccesses:{some:{locationId:task.locationId??"__none__",location:{organizationId:task.organizationId,status:"ACTIVE"},AND:[{OR:[{startsAt:null},{startsAt:{lte:new Date()}}]},{OR:[{expiresAt:null},{expiresAt:{gt:new Date()}}]}]}}}], },
       },
       include: {
         member: { select: { userId: true } },
@@ -257,6 +263,6 @@ export async function notifyApprovers(
     message,
     data: (options?.data ?? { taskId: task.id, stepId: step.id }) as Record<string, unknown>,
     clickAction: `/tasks/${task.id}`,
-    forcePush: true, // Aprovação de gestor é prioritária (Web Push garantido)
+    forcePush: true, // O processamento persistente revalida destinatários antes do envio.
   });
 }

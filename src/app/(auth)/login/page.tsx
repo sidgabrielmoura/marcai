@@ -20,7 +20,8 @@ import {
   UserCircle,
   ArrowRight,
   HelpCircle,
-  ScanFace,
+  Fingerprint,
+  QrCode,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -47,11 +48,15 @@ import { cn } from "@/lib/utils";
 import { QRCodeSVG } from "qrcode.react";
 
 export default function LoginPage() {
-  const [tab, setTab] = useState<"pin" | "password" | "faceid">("pin");
-  const [isFaceIdPending, setIsFaceIdPending] = useState(false);
+  const [tab, setTab] = useState<"pin" | "password" | "biometrics">("pin");
+  const [isBiometricsPending, setIsBiometricsPending] = useState(false);
   
-  // Mobile QR Auth State
+  // Mobile & Platform compatibility state
   const [isMobile, setIsMobile] = useState(true);
+  const [isPlatformBiometricAvailable, setIsPlatformBiometricAvailable] = useState<boolean | null>(null);
+  const [showQrOnDesktop, setShowQrOnDesktop] = useState(false);
+
+  // QR Auth State
   const [qrToken, setQrToken] = useState<string | null>(null);
   const [qrUrl, setQrUrl] = useState<string>("");
   const [isQrLoading, setIsQrLoading] = useState(false);
@@ -76,6 +81,19 @@ export default function LoginPage() {
       );
     };
     setIsMobile(checkIsMobile());
+
+    // Check platform biometric support on current device/computer
+    if (
+      typeof window !== "undefined" &&
+      window.PublicKeyCredential &&
+      typeof window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === "function"
+    ) {
+      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+        .then((available) => setIsPlatformBiometricAvailable(available))
+        .catch(() => setIsPlatformBiometricAvailable(false));
+    } else {
+      setIsPlatformBiometricAvailable(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -98,11 +116,16 @@ export default function LoginPage() {
     }
   }, [passwordState]);
 
-  // Handle QR code token generation and polling
+  // Handle QR code token generation and polling on desktop when applicable
   useEffect(() => {
     let intervalId: NodeJS.Timeout;
 
-    if (tab === "faceid" && !isMobile && !qrToken) {
+    const shouldShowQR =
+      tab === "biometrics" &&
+      !isMobile &&
+      (isPlatformBiometricAvailable === false || showQrOnDesktop);
+
+    if (shouldShowQR && !qrToken) {
       const initQR = async () => {
         setIsQrLoading(true);
         try {
@@ -120,7 +143,7 @@ export default function LoginPage() {
       initQR();
     }
 
-    if (qrToken) {
+    if (qrToken && shouldShowQR) {
       intervalId = setInterval(async () => {
         try {
           const status = await checkMobileAuthTokenAction(qrToken);
@@ -134,10 +157,14 @@ export default function LoginPage() {
                 description: result.error,
                 type: "error",
               });
+            } else if (result?.redirectUrl) {
+              window.location.href = result.redirectUrl;
             }
           }
-        } catch (e) {
-          console.error(e);
+        } catch (e: any) {
+          if (!e?.digest?.startsWith("NEXT_REDIRECT") && e?.message !== "NEXT_REDIRECT") {
+            console.error(e);
+          }
         }
       }, 2000);
     }
@@ -145,10 +172,10 @@ export default function LoginPage() {
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
-  }, [tab, isMobile, qrToken]);
+  }, [tab, isMobile, qrToken, isPlatformBiometricAvailable, showQrOnDesktop]);
 
-  const handleFaceIdLogin = async () => {
-    setIsFaceIdPending(true);
+  const handleBiometricsLogin = async () => {
+    setIsBiometricsPending(true);
     try {
       const options = await generateWebAuthnAuthentication();
       const asseResp = await startAuthentication({ optionsJSON: options });
@@ -160,8 +187,14 @@ export default function LoginPage() {
           description: verification.error,
           type: "error",
         });
+      } else if (verification?.redirectUrl) {
+        window.location.href = verification.redirectUrl;
+        return;
       }
     } catch (err: any) {
+      if (err?.digest?.startsWith("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+        return;
+      }
       if (err.name === "NotAllowedError") {
         toast.add({
           title: "Autenticação cancelada",
@@ -171,12 +204,12 @@ export default function LoginPage() {
       } else {
         toast.add({
           title: "Erro inesperado",
-          description: "Não foi possível iniciar o Face ID.",
+          description: "Não foi possível iniciar a biometria.",
           type: "error",
         });
       }
     } finally {
-      setIsFaceIdPending(false);
+      setIsBiometricsPending(false);
     }
   };
 
@@ -239,8 +272,13 @@ export default function LoginPage() {
             value={[tab]}
             onValueChange={(val) => {
               const selected = Array.isArray(val) ? val[val.length - 1] : val;
-              if (selected === "pin" || selected === "password" || selected === "faceid") {
-                setTab(selected);
+              if (
+                selected === "pin" ||
+                selected === "password" ||
+                selected === "biometrics" ||
+                selected === "faceid"
+              ) {
+                setTab(selected === "faceid" ? "biometrics" : selected);
               }
             }}
             className="grid grid-cols-3 p-1 bg-canvas border border-(--border-subtle) rounded-[14px] mb-6 w-full gap-1"
@@ -270,16 +308,16 @@ export default function LoginPage() {
               <span>Senha</span>
             </ToggleGroupItem>
             <ToggleGroupItem
-              value="faceid"
+              value="biometrics"
               className={cn(
                 "h-[44px] text-[length:var(--type-label)] font-semibold rounded-[10px] transition-all flex items-center justify-center gap-2 cursor-pointer border-0",
-                tab === "faceid"
+                tab === "biometrics"
                   ? "bg-[var(--surface)] text-[var(--brand-900)] shadow-none border border-[var(--border-subtle)] data-[state=on]:bg-[var(--surface)] data-[state=on]:text-[var(--brand-900)] hover:bg-[var(--surface)]"
                   : "text-[var(--text-secondary)] hover:text-[var(--brand-900)]",
               )}
             >
-              <ScanFace className="size-4 text-[var(--brand-700)] hidden sm:block" />
-              <span>Face ID</span>
+              <Fingerprint className="size-4 text-[var(--brand-700)] hidden sm:block" />
+              <span>Biometria</span>
             </ToggleGroupItem>
           </ToggleGroup>
 
@@ -289,26 +327,21 @@ export default function LoginPage() {
                 <Field>
                   <FieldLabel
                     htmlFor="organizationSlug"
-                    className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]"
+                    className="text-[length:var(--type-label)] font-bold text-[var(--text-primary)]"
                   >
-                    Código da empresa
+                    Identificador da Empresa
                   </FieldLabel>
-                  <InputGroup className="h-[50px] rounded-[14px] bg-[var(--surface)] border-[var(--border-subtle)] px-3 focus-within:border-[var(--brand-900)] focus-within:ring-1 focus-within:ring-[var(--brand-900)]">
-                    <InputGroupAddon align="inline-start">
-                      <Building2 className="size-5 text-[var(--brand-700)] pointer-events-none" />
+                  <InputGroup className="h-12 bg-[var(--surface)] border-[var(--border-subtle)] rounded-[12px] focus-within:ring-2 focus-within:ring-[var(--brand-700)] focus-within:border-[var(--brand-700)]">
+                    <InputGroupAddon className="text-[var(--text-secondary)] pl-3">
+                      <Building2 className="size-5" />
                     </InputGroupAddon>
                     <InputGroupInput
                       id="organizationSlug"
                       name="organizationSlug"
                       type="text"
+                      placeholder="Ex: padaria-central"
                       required
-                      defaultValue={
-                        process.env.NODE_ENV === "development"
-                          ? "alpha-varejo"
-                          : ""
-                      }
-                      placeholder="ex: alpha-varejo"
-                      className="text-[16px] text-[var(--text-primary)] placeholder:text-muted-foreground pl-1"
+                      className="text-[length:var(--type-body)] placeholder:text-[var(--text-secondary)] font-medium"
                     />
                   </InputGroup>
                 </Field>
@@ -316,24 +349,21 @@ export default function LoginPage() {
                 <Field>
                   <FieldLabel
                     htmlFor="employeeCode"
-                    className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]"
+                    className="text-[length:var(--type-label)] font-bold text-[var(--text-primary)]"
                   >
                     Matrícula
                   </FieldLabel>
-                  <InputGroup className="h-[50px] rounded-[14px] bg-[var(--surface)] border-[var(--border-subtle)] px-3 focus-within:border-[var(--brand-900)] focus-within:ring-1 focus-within:ring-[var(--brand-900)]">
-                    <InputGroupAddon align="inline-start">
-                      <UserCircle className="size-5 text-[var(--brand-700)] pointer-events-none" />
+                  <InputGroup className="h-12 bg-[var(--surface)] border-[var(--border-subtle)] rounded-[12px] focus-within:ring-2 focus-within:ring-[var(--brand-700)] focus-within:border-[var(--brand-700)]">
+                    <InputGroupAddon className="text-[var(--text-secondary)] pl-3">
+                      <UserCircle className="size-5" />
                     </InputGroupAddon>
                     <InputGroupInput
                       id="employeeCode"
                       name="employeeCode"
                       type="text"
+                      placeholder="Ex: 1001"
                       required
-                      defaultValue={
-                        process.env.NODE_ENV === "development" ? "EMP-001" : ""
-                      }
-                      placeholder="ex: EMP-001"
-                      className="text-[16px] text-[var(--text-primary)] placeholder:text-muted-foreground pl-1"
+                      className="text-[length:var(--type-body)] placeholder:text-[var(--text-secondary)] font-medium"
                     />
                   </InputGroup>
                 </Field>
@@ -341,28 +371,24 @@ export default function LoginPage() {
                 <Field>
                   <FieldLabel
                     htmlFor="pin"
-                    className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]"
+                    className="text-[length:var(--type-label)] font-bold text-[var(--text-primary)]"
                   >
-                    PIN de acesso (6 dígitos)
+                    PIN de Acesso
                   </FieldLabel>
-                  <InputGroup className="h-[50px] rounded-[14px] bg-[var(--surface)] border-[var(--border-subtle)] px-3 focus-within:border-[var(--brand-900)] focus-within:ring-1 focus-within:ring-[var(--brand-900)]">
-                    <InputGroupAddon align="inline-start">
-                      <KeyRound className="size-5 text-[var(--brand-700)] pointer-events-none" />
+                  <InputGroup className="h-12 bg-[var(--surface)] border-[var(--border-subtle)] rounded-[12px] focus-within:ring-2 focus-within:ring-[var(--brand-700)] focus-within:border-[var(--brand-700)]">
+                    <InputGroupAddon className="text-[var(--text-secondary)] pl-3">
+                      <Lock className="size-5" />
                     </InputGroupAddon>
                     <InputGroupInput
                       id="pin"
                       name="pin"
                       type="password"
                       inputMode="numeric"
-                      pattern="[0-9]{6}"
-                      minLength={6}
-                      maxLength={6}
+                      pattern="[0-9]*"
+                      maxLength={8}
+                      placeholder="••••"
                       required
-                      defaultValue={
-                        process.env.NODE_ENV === "development" ? "123456" : ""
-                      }
-                      placeholder="••••••"
-                      className="text-[16px] font-mono tracking-widest text-[var(--text-primary)] placeholder:text-muted-foreground pl-1"
+                      className="text-[length:var(--type-body)] placeholder:text-[var(--text-secondary)] tracking-widest font-mono text-center font-bold"
                     />
                   </InputGroup>
                 </Field>
@@ -371,16 +397,16 @@ export default function LoginPage() {
               <Button
                 type="submit"
                 disabled={isPinPending}
-                className="mt-2 w-full h-[50px] bg-[var(--brand-900)] hover:bg-[var(--brand-700)] text-white font-semibold text-[16px] rounded-[14px] shadow-none"
+                className="mt-2 w-full h-[50px] bg-[var(--brand-900)] hover:bg-[var(--brand-700)] text-white font-semibold text-[16px] rounded-[14px] shadow-none flex items-center justify-center gap-2 cursor-pointer"
               >
                 {isPinPending ? (
                   <>
                     <Spinner data-icon="inline-start" />
-                    <span>Validando PIN...</span>
+                    <span>Entrando...</span>
                   </>
                 ) : (
                   <>
-                    <span>Entrar com PIN</span>
+                    <span>Entrar no sistema</span>
                     <ArrowRight data-icon="inline-end" />
                   </>
                 )}
@@ -394,27 +420,21 @@ export default function LoginPage() {
                 <Field>
                   <FieldLabel
                     htmlFor="email"
-                    className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]"
+                    className="text-[length:var(--type-label)] font-bold text-[var(--text-primary)]"
                   >
-                    E-mail corporativo
+                    E-mail
                   </FieldLabel>
-                  <InputGroup className="h-[50px] rounded-[14px] bg-[var(--surface)] border-[var(--border-subtle)] px-3 focus-within:border-[var(--brand-900)] focus-within:ring-1 focus-within:ring-[var(--brand-900)]">
-                    <InputGroupAddon align="inline-start">
-                      <Mail className="size-5 text-[var(--brand-700)] pointer-events-none" />
+                  <InputGroup className="h-12 bg-[var(--surface)] border-[var(--border-subtle)] rounded-[12px] focus-within:ring-2 focus-within:ring-[var(--brand-700)] focus-within:border-[var(--brand-700)]">
+                    <InputGroupAddon className="text-[var(--text-secondary)] pl-3">
+                      <Mail className="size-5" />
                     </InputGroupAddon>
                     <InputGroupInput
-                      autoComplete="username"
                       id="email"
                       name="email"
                       type="email"
+                      placeholder="seu@email.com"
                       required
-                      defaultValue={
-                        process.env.NODE_ENV === "development"
-                          ? "carlos@alphavarejo.com"
-                          : ""
-                      }
-                      placeholder="nome@empresa.com"
-                      className="text-[16px] text-[var(--text-primary)] placeholder:text-muted-foreground pl-1"
+                      className="text-[length:var(--type-body)] placeholder:text-[var(--text-secondary)] font-medium"
                     />
                   </InputGroup>
                 </Field>
@@ -422,39 +442,58 @@ export default function LoginPage() {
                 <Field>
                   <FieldLabel
                     htmlFor="password"
-                    className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]"
+                    className="text-[length:var(--type-label)] font-bold text-[var(--text-primary)]"
                   >
                     Senha
                   </FieldLabel>
-                  <InputGroup className="h-[50px] rounded-[14px] bg-[var(--surface)] border-[var(--border-subtle)] px-3 focus-within:border-[var(--brand-900)] focus-within:ring-1 focus-within:ring-[var(--brand-900)]">
-                    <InputGroupAddon align="inline-start">
-                      <Lock className="size-5 text-[var(--brand-700)] pointer-events-none" />
+                  <InputGroup className="h-12 bg-[var(--surface)] border-[var(--border-subtle)] rounded-[12px] focus-within:ring-2 focus-within:ring-[var(--brand-700)] focus-within:border-[var(--brand-700)]">
+                    <InputGroupAddon className="text-[var(--text-secondary)] pl-3">
+                      <Lock className="size-5" />
                     </InputGroupAddon>
                     <InputGroupInput
-                      autoComplete="current-password"
                       id="password"
                       name="password"
                       type="password"
+                      placeholder="••••••••"
                       required
-                      defaultValue={
-                        process.env.NODE_ENV === "development" ? "senha123" : ""
-                      }
-                      placeholder="Sua senha"
-                      className="text-[16px] text-[var(--text-primary)] placeholder:text-muted-foreground pl-1"
+                      className="text-[length:var(--type-body)] placeholder:text-[var(--text-secondary)] font-medium"
                     />
                   </InputGroup>
                 </Field>
+
+                <Collapsible className="w-full">
+                  <CollapsibleTrigger className="text-xs text-[var(--text-secondary)] hover:text-[var(--brand-900)] flex items-center gap-1 font-semibold cursor-pointer select-none">
+                    <Building2 className="size-3.5" />
+                    <span>Entrar em organização específica (opcional)</span>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-2">
+                    <Field>
+                      <InputGroup className="h-11 bg-[var(--surface)] border-[var(--border-subtle)] rounded-[10px] focus-within:ring-2 focus-within:ring-[var(--brand-700)] focus-within:border-[var(--brand-700)]">
+                        <InputGroupAddon className="text-[var(--text-secondary)] pl-3 text-xs">
+                          Empresa:
+                        </InputGroupAddon>
+                        <InputGroupInput
+                          id="companySlug"
+                          name="organizationSlug"
+                          type="text"
+                          placeholder="slug-da-empresa"
+                          className="text-xs placeholder:text-[var(--text-secondary)] font-medium"
+                        />
+                      </InputGroup>
+                    </Field>
+                  </CollapsibleContent>
+                </Collapsible>
               </FieldGroup>
 
               <Button
                 type="submit"
                 disabled={isPasswordPending}
-                className="mt-2 w-full h-[50px] bg-[var(--brand-900)] hover:bg-[var(--brand-700)] text-white font-semibold text-[16px] rounded-[14px] shadow-none"
+                className="mt-2 w-full h-[50px] bg-[var(--brand-900)] hover:bg-[var(--brand-700)] text-white font-semibold text-[16px] rounded-[14px] shadow-none flex items-center justify-center gap-2 cursor-pointer"
               >
                 {isPasswordPending ? (
                   <>
                     <Spinner data-icon="inline-start" />
-                    <span>Entrando...</span>
+                    <span>Autenticando...</span>
                   </>
                 ) : (
                   <>
@@ -466,20 +505,121 @@ export default function LoginPage() {
             </form>
           )}
 
-          {tab === "faceid" && (
+          {tab === "biometrics" && (
             <div className="flex flex-col items-center gap-4 py-8">
-              {!isMobile ? (
+              {isMobile ? (
+                <>
+                  <div className="size-16 rounded-full bg-brand-50 flex items-center justify-center mb-2">
+                    <Fingerprint className="size-8 text-brand-700" />
+                  </div>
+                  <p className="text-center text-[var(--text-secondary)] text-[length:var(--type-body)] max-w-[280px]">
+                    Acesse rapidamente usando a biometria cadastrada no seu aparelho.
+                  </p>
+                  <Button
+                    onClick={handleBiometricsLogin}
+                    disabled={isBiometricsPending}
+                    className="mt-4 w-full h-[50px] bg-[var(--brand-900)] hover:bg-[var(--brand-700)] text-white font-semibold text-[16px] rounded-[14px] shadow-none flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    {isBiometricsPending ? (
+                      <>
+                        <Spinner data-icon="inline-start" />
+                        <span>Aguardando biometria...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Fingerprint data-icon="inline-start" />
+                        <span>Autenticar com biometria</span>
+                      </>
+                    )}
+                  </Button>
+                </>
+              ) : isPlatformBiometricAvailable ? (
+                // Computador com suporte nativo a biometria/digital (ex: Mac Touch ID, Windows Hello)
+                <>
+                  {!showQrOnDesktop ? (
+                    <>
+                      <div className="size-16 rounded-full bg-brand-50 flex items-center justify-center mb-2">
+                        <Fingerprint className="size-8 text-brand-700" />
+                      </div>
+                      <div className="text-center">
+                        <h2 className="text-lg font-semibold text-gray-900">
+                          Biometria neste computador
+                        </h2>
+                        <p className="text-sm text-gray-500 mt-1 max-w-[320px]">
+                          Use o leitor de digital ou reconhecimento do seu computador para entrar em 1 clique.
+                        </p>
+                      </div>
+
+                      <Button
+                        onClick={handleBiometricsLogin}
+                        disabled={isBiometricsPending}
+                        className="mt-2 w-full h-[50px] bg-[var(--brand-900)] hover:bg-[var(--brand-700)] text-white font-semibold text-[16px] rounded-[14px] shadow-none flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        {isBiometricsPending ? (
+                          <>
+                            <Spinner data-icon="inline-start" />
+                            <span>Aguardando biometria...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Fingerprint data-icon="inline-start" />
+                            <span>Entrar com digital neste computador</span>
+                          </>
+                        )}
+                      </Button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowQrOnDesktop(true)}
+                        className="mt-2 text-xs text-brand-700 hover:text-brand-900 font-semibold underline underline-offset-4 cursor-pointer"
+                      >
+                        Prefere entrar escaneando QR Code com o celular?
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-center mb-2">
+                        <h2 className="text-lg font-semibold text-gray-900">
+                          Acesse com a biometria do celular
+                        </h2>
+                        <p className="text-sm text-gray-500 mt-1 max-w-[280px]">
+                          Escaneie o QR code com a câmera do seu celular para fazer login.
+                        </p>
+                      </div>
+
+                      <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-center min-h-[200px]">
+                        {isQrLoading || !qrUrl ? (
+                          <div className="flex flex-col items-center gap-2">
+                            <Spinner />
+                            <span className="text-sm text-gray-500">Gerando QR Code...</span>
+                          </div>
+                        ) : (
+                          <QRCodeSVG value={qrUrl} size={200} />
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowQrOnDesktop(false)}
+                        className="mt-2 text-xs text-brand-700 hover:text-brand-900 font-semibold underline underline-offset-4 cursor-pointer"
+                      >
+                        Voltar para biometria no computador
+                      </button>
+                    </>
+                  )}
+                </>
+              ) : (
+                // Computador sem suporte a leitor biométrico nativo (apenas desktop tradicional)
                 <>
                   <div className="text-center mb-2">
                     <h2 className="text-lg font-semibold text-gray-900">
-                      Acesse com Face ID
+                      Acesse com a biometria do celular
                     </h2>
-                    <p className="text-sm text-gray-500 mt-1 max-w-[280px]">
-                      Escaneie o QR code com a câmera do seu celular para fazer
-                      login.
+                    <p className="text-sm text-gray-500 mt-1 max-w-[300px]">
+                      Este computador não possui leitor de digital. Escaneie o QR code com a câmera do seu celular para entrar.
                     </p>
                   </div>
-                  
+
                   <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-center min-h-[200px]">
                     {isQrLoading || !qrUrl ? (
                       <div className="flex flex-col items-center gap-2">
@@ -490,32 +630,6 @@ export default function LoginPage() {
                       <QRCodeSVG value={qrUrl} size={200} />
                     )}
                   </div>
-                </>
-              ) : (
-                <>
-                  <div className="size-16 rounded-full bg-brand-50 flex items-center justify-center mb-2">
-                    <ScanFace className="size-8 text-brand-700" />
-                  </div>
-                  <p className="text-center text-(--text-secondary) text-(length:--type-body) max-w-[280px]">
-                    Acesse rapidamente usando o Face ID ou a biometria do seu aparelho.
-                  </p>
-                  <Button
-                    onClick={handleFaceIdLogin}
-                    disabled={isFaceIdPending}
-                    className="mt-4 w-full h-[50px] bg-[var(--brand-900)] hover:bg-[var(--brand-700)] text-white font-semibold text-[16px] rounded-[14px] shadow-none"
-                  >
-                    {isFaceIdPending ? (
-                      <>
-                        <Spinner data-icon="inline-start" />
-                        <span>Aguardando biometria...</span>
-                      </>
-                    ) : (
-                      <>
-                        <ScanFace data-icon="inline-start" />
-                        <span>Autenticar agora</span>
-                      </>
-                    )}
-                  </Button>
                 </>
               )}
             </div>

@@ -209,6 +209,8 @@ export function EmployeeProcessDetailDrawer({
           if (file) {
             const formData = new FormData();
             formData.set("file", file);
+            formData.set("taskId", selectedTask.id);
+            formData.set("fieldId", field.id);
             formData.set("fileType", field.type);
             const uploadRes = await uploadTaskFormFileAction(formData);
             if (uploadRes.error || !uploadRes.storageKey) {

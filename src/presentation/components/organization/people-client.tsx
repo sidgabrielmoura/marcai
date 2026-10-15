@@ -33,6 +33,8 @@ import {
 } from "@/presentation/actions/org-management-actions";
 
 import { PageHeader, EmptyState } from "@/presentation/components/shared";
+import type { ManualSubscription } from "@/application/superadmin/manual-subscription";
+import { checkMemberLimit } from "@/domain/rules/subscription-limits";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -100,6 +102,7 @@ interface PeopleClientProps {
   userRole: string;
   currentMemberId: string;
   allowManagersToEditSensitiveData?: boolean;
+  subscription?: ManualSubscription | null;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -124,10 +127,36 @@ export function PeopleClient({
   userRole,
   currentMemberId,
   allowManagersToEditSensitiveData = false,
+  subscription,
 }: PeopleClientProps) {
   const router = useRouter();
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showPinModal, setShowPinModal] = useState<string | null>(null);
+
+  const activeMembersCount = useMemo(
+    () => members.filter((m) => m.status === "ACTIVE").length,
+    [members]
+  );
+  const memberLimitCheck = checkMemberLimit({
+    subscription: subscription ?? null,
+    currentActiveMembersCount: activeMembersCount,
+  });
+  const memberLimit = subscription?.memberLimit ?? null;
+  const isMemberLimitReached = !memberLimitCheck.allowed;
+
+  function handleOpenInviteModal() {
+    if (isMemberLimitReached) {
+      toast.add({
+        title: "Limite do plano atingido",
+        description:
+          memberLimitCheck.reason ||
+          "Seu plano atual atingiu o limite de colaboradores. Faça upgrade para adicionar mais colaboradores.",
+        type: "warning",
+      });
+      return;
+    }
+    setShowInviteModal(true);
+  }
   const [accessMember, setAccessMember] = useState<MemberItem | null>(null);
   const [newPin, setNewPin] = useState("");
   const [loading, setLoading] = useState(false);
@@ -388,14 +417,36 @@ export function PeopleClient({
         subtitle="Gerencie colaboradores, equipes e permissões de acesso da empresa."
         actions={
           ["OWNER", "ADMIN"].includes(userRole) ? (
-            <Button
-              type="button"
-              onClick={() => setShowInviteModal(true)}
-              className="bg-[var(--brand-primary)] text-white hover:bg-[var(--brand-secondary)] shadow-none"
-            >
-              <Plus className="size-4" data-icon="inline-start" />
-              <span>Adicionar pessoa</span>
-            </Button>
+            <div className="flex items-center gap-2">
+              {memberLimit != null && (
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "text-xs font-semibold px-2.5 py-1 rounded-lg border",
+                    isMemberLimitReached
+                      ? "bg-amber-50 text-amber-900 border-amber-300 dark:bg-amber-950/40 dark:text-amber-200"
+                      : "bg-muted/50 text-muted-foreground border-border"
+                  )}
+                >
+                  {activeMembersCount} / {memberLimit} {memberLimit === 1 ? "colaborador" : "colaboradores"}
+                </Badge>
+              )}
+              <Button
+                type="button"
+                onClick={handleOpenInviteModal}
+                disabled={isMemberLimitReached}
+                title={isMemberLimitReached ? memberLimitCheck.reason : undefined}
+                className={cn(
+                  "shadow-none",
+                  isMemberLimitReached
+                    ? "opacity-60 cursor-not-allowed bg-muted text-muted-foreground"
+                    : "bg-[var(--brand-primary)] text-white hover:bg-[var(--brand-secondary)]"
+                )}
+              >
+                <Plus className="size-4" data-icon="inline-start" />
+                <span>Adicionar pessoa</span>
+              </Button>
+            </div>
           ) : undefined
         }
       />
@@ -1119,6 +1170,12 @@ export function PeopleClient({
               </Field>
             </div>
 
+            {isMemberLimitReached && (
+              <div className="p-3 my-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+                {memberLimitCheck.reason}
+              </div>
+            )}
+
             <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-[var(--border-subtle)]">
               <Button
                 type="button"
@@ -1130,7 +1187,7 @@ export function PeopleClient({
               </Button>
               <Button
                 type="submit"
-                disabled={loading}
+                disabled={loading || isMemberLimitReached}
                 className="bg-[var(--brand-900)] text-white text-[length:var(--type-label)] hover:bg-[var(--brand-700)] shadow-none"
               >
                 {loading && (

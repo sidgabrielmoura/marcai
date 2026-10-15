@@ -11,7 +11,7 @@ import { uiLabel } from "@/presentation/components/shared/ui-labels";
 import { prisma } from "@/infrastructure/database/prisma";
 import { calculateMemberAvailability } from "@/domain/rules/member-availability";
 import { isLocationOpenAt } from "@/domain/rules/operating-hours";
-import { FaceIdSetup } from "@/presentation/components/shared/face-id-setup";
+import { BiometricSetup } from "@/presentation/components/shared/face-id-setup";
 
 export default async function EmployeeAccountPage() {
   const context = await getAuthenticatedContext();
@@ -30,7 +30,7 @@ export default async function EmployeeAccountPage() {
     },
   });
 
-  const hasFaceIdEnabled = (member?.user.passkeys.length ?? 0) > 0;
+  const hasBiometricsEnabled = (member?.user.passkeys.length ?? 0) > 0;
 
   const primaryLoc =
     member?.locationAccesses.find((l) => l.type === "PRIMARY")?.location ??
@@ -110,7 +110,7 @@ export default async function EmployeeAccountPage() {
             </CardContent>
           </Card>
 
-          <FaceIdSetup hasFaceIdEnabled={hasFaceIdEnabled} />
+          <BiometricSetup hasBiometricsEnabled={hasBiometricsEnabled} />
 
           <form action={logoutAction} className="pt-2">
             <Button

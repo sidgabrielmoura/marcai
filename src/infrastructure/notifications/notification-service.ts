@@ -19,6 +19,13 @@ export interface SendNotificationParams {
 
 export const PUSH_ELIGIBLE_TYPES = new Set([
   "TASK_ASSIGNED",
+  "TASK_UNBLOCKED",
+  "TASK_TOLERANCE_EXCEEDED",
+  "APPROVAL_UPDATED",
+  "APPROVAL_OVERDUE",
+  "TASK_CANCELLED",
+  "TASK_TRANSFERRED_OUT",
+  "EXECUTION_COMPLETED",
   "TASK_OVERDUE",
   "TASK_EXPIRING_SOON",
   "SLA_BREACH",
@@ -77,7 +84,7 @@ export async function dispatchNotificationAsync(params: DispatchNotificationAsyn
   }
 
   // 2. Se a ação for de alta importância, dispara Web Push via Firebase Cloud Messaging
-  if (shouldSendPush) {
+  if (shouldSendPush && process.env.MOBILE_OUTBOX_ENABLED !== "1") {
     try {
       const userTokens = await prisma.userDeviceToken.findMany({
         where: { userId: { in: uniqueUsers } },
@@ -189,8 +196,8 @@ export async function sendNotification(params: SendNotificationParams) {
       deliveries: {
         create: channels.map((channel) => ({
           channel,
-          status: "SENT",
-          sentAt: new Date(),
+          status: channel === "PUSH" && process.env.MOBILE_OUTBOX_ENABLED === "1" ? "QUEUED" : "SENT",
+          sentAt: channel === "PUSH" && process.env.MOBILE_OUTBOX_ENABLED === "1" ? null : new Date(),
         })),
       },
     },
@@ -209,7 +216,7 @@ export async function sendNotification(params: SendNotificationParams) {
   });
 
   // Disparo de Web Push Notification via Firebase Cloud Messaging
-  if (channels.includes("PUSH")) {
+  if (channels.includes("PUSH") && process.env.MOBILE_OUTBOX_ENABLED !== "1") {
     try {
       const userTokens = await prisma.userDeviceToken.findMany({
         where: { userId: params.userId },

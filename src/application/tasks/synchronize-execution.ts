@@ -22,7 +22,7 @@ export async function synchronizeExecution(tx: Prisma.TransactionClient, organiz
     const dependency = evaluateTaskDependencies(task.dependencies.map(d => ({ dependsOnTaskId: d.dependsOnId, dependsOnStatus: d.dependsOnTask.status, dependsOnApprovalStatus: d.dependsOnTask.approvalWorkflow?.status, type: d.type, logic: d.logic })));
     if (dependency.isBlocked) continue;
     const eligibility = [];
-    for (const assignment of task.assignments) eligibility.push(await eligibleMember(organizationId, assignment.memberId, task.locationId, assignment.type === "COLLABORATOR" ? null : task.teamId, tx, now));
+    for (const assignment of task.assignments) eligibility.push(await eligibleMember(organizationId, assignment.memberId, task.locationId, task.teamId, tx, now));
     if (eligibility.some(member => !member)) continue;
 
     const hasAssignee = task.assignments.length > 0;
@@ -98,6 +98,7 @@ export async function synchronizeExecution(tx: Prisma.TransactionClient, organiz
           { role: { in: ["OWNER", "ADMIN"] } },
           {
             role: "MANAGER",
+            teamMemberships:{some:{team:{organizationId,status:"ACTIVE"},teamId:{in:execution.tasks.flatMap(t=>t.teamId?[t.teamId]:[])}}},
             ...(execution.locationId
               ? {
                   locationAccesses: {
@@ -117,6 +118,9 @@ export async function synchronizeExecution(tx: Prisma.TransactionClient, organiz
       select: { userId: true },
     });
 
+    const executors=await tx.taskAssignment.findMany({where:{removedAt:null,task:{executionId,organizationId,deletedAt:null}},include:{task:{select:{locationId:true,teamId:true}},member:{select:{userId:true,status:true}}}});
+    const executorUsers=new Set<string>();for(const a of executors){if(await eligibleMember(organizationId,a.memberId,a.task.locationId,a.task.teamId,tx,now))executorUsers.add(a.member.userId);}
+    if(executorUsers.size)await tx.notification.createMany({data:[...executorUsers].map(userId=>({organizationId,userId,type:"EXECUTION_COMPLETED",priority:"LOW" as const,title:"Etapas obrigatórias concluídas",message:"As etapas obrigatórias desta execução foram concluídas. Confira o contexto e as etapas opcionais.",data:{executionId}}))});
     const managerUserIds = [...new Set(managers.map(m => m.userId))];
     if (managerUserIds.length > 0) {
       await tx.notification.createMany({
@@ -126,7 +130,7 @@ export async function synchronizeExecution(tx: Prisma.TransactionClient, organiz
           type: "EXECUTION_COMPLETED",
           priority: "LOW" as const,
           title: "Rotina concluída",
-          message: "Todas as tarefas desta execução foram finalizadas com sucesso.",
+          message: "As etapas obrigatórias e suas aprovações foram concluídas. Confira as etapas opcionais.",
           data: { executionId },
         })),
       });

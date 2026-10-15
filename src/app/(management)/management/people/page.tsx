@@ -101,6 +101,7 @@ export default async function ManagementPeoplePage() {
         userRole={context.role}
         currentMemberId={context.memberId}
         allowManagersToEditSensitiveData={allowManagersToEditSensitiveData}
+        subscription={context.subscription}
       />
     </ManagementShell>
   );

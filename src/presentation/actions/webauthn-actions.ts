@@ -12,10 +12,62 @@ import { Role } from "@/domain/types";
 import { redirect } from "next/navigation";
 import { beginLoginChallenge } from "@/infrastructure/security/login-challenge";
 
-// Configuration for WebAuthn
-const rpName = "Marcai";
-const rpID = process.env.NODE_ENV === "development" ? "localhost" : "marcai-coral.vercel.app"; // TODO: Configure prod domain
-const origin = process.env.NODE_ENV === "development" ? "http://localhost:3000" : `https://${rpID}`;
+// Helper to dynamically resolve WebAuthn RP configuration & allowed origins
+async function getWebAuthnConfig() {
+  let hostname = "localhost";
+  let proto = "http";
+  let host = "";
+
+  try {
+    const { headers } = await import("next/headers");
+    const reqHeaders = await headers();
+    host = reqHeaders.get("x-forwarded-host") || reqHeaders.get("host") || "";
+    hostname = host.split(":")[0];
+    proto = reqHeaders.get("x-forwarded-proto") || (process.env.NODE_ENV === "production" ? "https" : "http");
+  } catch {
+    // Fallback outside request context
+  }
+
+  let rpID = "localhost";
+  if (process.env.NODE_ENV === "production") {
+    const envUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL;
+    if (envUrl) {
+      try {
+        rpID = new URL(envUrl).hostname;
+      } catch {}
+    } else if (hostname && hostname !== "localhost") {
+      rpID = hostname;
+    } else {
+      rpID = "marcai-coral.vercel.app";
+    }
+  } else {
+    rpID = hostname || "localhost";
+  }
+
+  const origins = new Set<string>();
+  if (host) {
+    origins.add(`${proto}://${host}`);
+  }
+  // Standard development origins
+  origins.add("http://localhost:3000");
+  origins.add("http://localhost:3001");
+  origins.add("http://127.0.0.1:3000");
+  origins.add("http://127.0.0.1:3001");
+
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL;
+  if (envUrl) {
+    try {
+      origins.add(new URL(envUrl).origin);
+    } catch {}
+  }
+  origins.add("https://marcai-coral.vercel.app");
+
+  return {
+    rpName: "Marcai",
+    rpID,
+    origins: Array.from(origins),
+  };
+}
 
 export async function generateWebAuthnRegistration() {
   const session = await getSession();
@@ -29,6 +81,8 @@ export async function generateWebAuthnRegistration() {
   });
 
   if (!user) throw new Error("Usuário não encontrado");
+
+  const { rpName, rpID } = await getWebAuthnConfig();
 
   const options = await generateRegistrationOptions({
     rpName,
@@ -69,12 +123,14 @@ export async function verifyWebAuthnRegistration(response: any) {
 
   if (!user || !user.webauthnChallenge) throw new Error("Desafio não encontrado");
 
+  const { rpID, origins } = await getWebAuthnConfig();
+
   let verification;
   try {
     verification = await verifyRegistrationResponse({
       response,
       expectedChallenge: user.webauthnChallenge,
-      expectedOrigin: origin,
+      expectedOrigin: origins,
       expectedRPID: rpID,
       requireUserVerification: false,
     });
@@ -121,6 +177,7 @@ export async function verifyWebAuthnRegistration(response: any) {
 
 // Generate options for login (No specific user since it's a passkey discoverable credential)
 export async function generateWebAuthnAuthentication() {
+  const { rpID } = await getWebAuthnConfig();
   const options = await generateAuthenticationOptions({
     rpID,
     userVerification: "preferred",
@@ -170,12 +227,14 @@ export async function verifyWebAuthnAuthentication(response: any, mobileAuthToke
     return { error: "Credencial não encontrada ou inválida." };
   }
 
+  const { rpID, origins } = await getWebAuthnConfig();
+
   let verification;
   try {
     verification = await verifyAuthenticationResponse({
       response,
       expectedChallenge,
-      expectedOrigin: origin,
+      expectedOrigin: origins,
       expectedRPID: rpID,
       credential: {
         id: authenticator.credentialID,
@@ -238,7 +297,7 @@ export async function verifyWebAuthnAuthentication(response: any, mobileAuthToke
   if (user.platformRole === "SUPERADMIN" || user.twoFactorEnabled) {
     await clearSession();
     await beginLoginChallenge(user, null);
-    redirect("/verify-access");
+    return { success: true, redirectUrl: "/verify-access" };
   }
 
   if (user.memberships.length === 0) {
@@ -256,8 +315,10 @@ export async function verifyWebAuthnAuthentication(response: any, mobileAuthToke
       role: member.role as Role,
       employeeCode: member.employeeCode,
     });
-    if (member.role === "EMPLOYEE") redirect("/tasks");
-    else redirect("/overview");
+    return {
+      success: true,
+      redirectUrl: member.role === "EMPLOYEE" ? "/tasks" : "/overview",
+    };
   }
 
   const primaryMember = user.memberships[0];
@@ -271,5 +332,5 @@ export async function verifyWebAuthnAuthentication(response: any, mobileAuthToke
     employeeCode: primaryMember.employeeCode,
   });
 
-  redirect("/select-org");
+  return { success: true, redirectUrl: "/select-org" };
 }

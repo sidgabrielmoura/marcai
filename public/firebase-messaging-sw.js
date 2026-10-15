@@ -1,3 +1,12 @@
+self.addEventListener('notificationclick',event=>{
+ event.stopImmediatePropagation();event.notification.close();
+ const data=event.notification.data||{};const remote=data.FCM_MSG||{};const payload=remote.data||data;
+ let destination='/notifications';
+ if(typeof payload.taskId==='string'&&/^[a-zA-Z0-9_-]{1,128}$/.test(payload.taskId))destination='/tasks/'+payload.taskId;
+ else {try{const link=new URL(data.url||remote.fcmOptions?.link||'/notifications',self.location.origin);if(link.origin===self.location.origin&&/^\/(tasks\/[a-zA-Z0-9_-]{1,128}|notifications)$/.test(link.pathname))destination=link.pathname;}catch{}}
+ const target=new URL(destination,self.location.origin).href;
+ event.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(async windows=>{for(const client of windows){if(new URL(client.url).origin===self.location.origin&&'focus' in client){await client.focus();return client.navigate(target);}}return clients.openWindow(target);}));
+});
 /* eslint-disable no-undef */
 importScripts("https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging-compat.js");
@@ -12,56 +21,11 @@ firebase.initializeApp({
   measurementId: "G-QGS249Z717",
 });
 
-const messaging = firebase.messaging();
-
-// Intercepta mensagens em segundo plano quando a aba/PWA está fechada ou em background
-messaging.onBackgroundMessage((payload) => {
-  console.log("[firebase-messaging-sw.js] Mensagem recebida em segundo plano:", payload);
-
-  const title = payload.notification?.title || payload.data?.title || "Marcaí";
-  const body = payload.notification?.body || payload.data?.body || payload.data?.message || "Nova atualização disponível.";
-  const icon = payload.notification?.icon || payload.data?.icon || "/brand-icon.svg";
-  const clickAction = payload.fcmOptions?.link || payload.data?.clickAction || payload.data?.link || "/";
-
-  const notificationOptions = {
-    body,
-    icon,
-    badge: "/brand-icon.svg",
-    vibrate: [200, 100, 200],
-    data: {
-      url: clickAction,
-      ...payload.data,
-    },
-    tag: payload.data?.notificationId || "marcai-notification",
-    renotify: true,
-  };
-
-  return self.registration.showNotification(title, notificationOptions);
-});
-
-// Ação de clique na notificação para direcionar o usuário à tarefa ou tela correta
-self.addEventListener("notificationclick", (event) => {
-  event.notification.close();
-  const urlToOpen = event.notification.data?.url || "/";
-
-  event.waitUntil(
-    clients
-      .matchAll({ type: "window", includeUncontrolled: true })
-      .then((windowClients) => {
-        // Se uma janela já está aberta, foca nela e navega
-        for (const client of windowClients) {
-          if (client.url.includes(self.location.origin) && "focus" in client) {
-            client.focus();
-            if ("navigate" in client) {
-              return client.navigate(urlToOpen);
-            }
-            return client;
-          }
-        }
-        // Se nenhuma janela está aberta, abre uma nova
-        if (clients.openWindow) {
-          return clients.openWindow(urlToOpen);
-        }
-      })
-  );
+const messaging=firebase.messaging();
+messaging.onBackgroundMessage(payload=>{
+ // FCM owns presentation of notification payloads. No second local alert.
+ if(payload.notification)return;
+ const data=payload.data||{};
+ const safeId=typeof data.notificationId==='string'&&/^[a-zA-Z0-9_-]{1,128}$/.test(data.notificationId)?data.notificationId:undefined;
+ return self.registration.showNotification(data.title||'Marcaí',{body:data.body||data.message||'Há uma atualização para você.',icon:'/brand-icon.svg',badge:'/brand-icon.svg',data,tag:safeId,renotify:false});
 });

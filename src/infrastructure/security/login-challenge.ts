@@ -23,7 +23,7 @@ export async function clearLoginChallenge() { (await cookies()).delete(cookie); 
 
 export async function refreshLoginChallengeWithNewSecret(): Promise<string | null> {
   const challenge = await getLoginChallenge();
-  if (!challenge) return null;
+  if (!challenge || !challenge.enrollSecret) return null;
   const newSecret = generateTotpSecret();
   const payload: LoginChallenge = { ...challenge, enrollSecret: newSecret };
   const token = await new EncryptJWT({ ...payload })

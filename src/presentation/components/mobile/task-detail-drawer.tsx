@@ -125,6 +125,7 @@ export function EmployeeTaskDetailDrawer({
         setTask(null);
       } else if (res.task) {
         setTask(res.task);
+        setFormAnswers(res.task.formAnswers ?? {});
       }
     } catch {
       toast.add({

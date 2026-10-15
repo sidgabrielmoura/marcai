@@ -11,6 +11,10 @@ import {
   DEFAULT_PLATFORM_PLANS,
   type PlatformPlanInput,
 } from "@/application/superadmin/manual-subscription";
+import {
+  createDefaultTrialSubscription,
+  assertCanAddMember,
+} from "@/domain/rules/subscription-limits";
 import { revalidatePath } from "next/cache";
 
 export type ActionResult = {
@@ -71,6 +75,7 @@ export async function createOrganizationAction(input: {
     }
 
     const created = await prisma.$transaction(async (tx) => {
+      const trialSubscription = createDefaultTrialSubscription();
       const org = await tx.organization.create({
         data: {
           name,
@@ -81,6 +86,7 @@ export async function createOrganizationAction(input: {
             operationalRetentionMonths: 6,
             delayRetentionDays: 60,
             earlyExecutionPolicy: "ALLOW_AND_LOG",
+            platformSubscription: trialSubscription,
           },
         },
       });
@@ -750,6 +756,9 @@ export async function addOrganizationMemberAction(input: {
     const pinHash = pin ? await bcrypt.hash(pin, 10) : null;
 
     await prisma.$transaction(async (tx) => {
+      // Valida limite de colaboradores antes de vincular novo membro no superadmin
+      await assertCanAddMember(tx, organizationId);
+
       await tx.organizationMember.create({
         data: {
           organizationId,

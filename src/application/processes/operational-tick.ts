@@ -113,6 +113,7 @@ export async function operationalTick(now = new Date()) {
         failures.push({ kind: "synchronize_execution_query", id: "query" });
     }
 
+    if(process.env.MOBILE_OUTBOX_ENABLED !== "1") {
     let taskCursor = "";
     while (true) {
         const overdue = await prisma.task.findMany({ where: { id: { gt: taskCursor }, deletedAt: null, slaDueAt: { lt: now }, status: { in: ["AVAILABLE", "IN_PROGRESS", "PAUSED", "SUBMITTED", "NEEDS_CORRECTION"] }, organization: { status: "ACTIVE" } }, select: { id: true, organizationId: true }, take: 500, orderBy: { id: "asc" } });
@@ -354,6 +355,7 @@ export async function operationalTick(now = new Date()) {
 
 
 
+    }
     // 5. Alerta de tarefas sem responsável aguardando além do tempo limite (Item 17)
     let unassignedCursor = "";
     while (true) {

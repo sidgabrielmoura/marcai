@@ -575,7 +575,7 @@ export async function submitApprovalDecisionAction(stepId: string, decision: "AP
       await tx.task.update({ where: { id: task.id }, data: { status: allApproved ? "COMPLETED" : "NEEDS_CORRECTION", completedAt: allApproved ? new Date() : null } });
       const owner = task.assignments.find(a => a.type === "PRIMARY");
       if (owner) {
-        await tx.notification.create({ data: { organizationId: context.organizationId, userId: owner.member.userId, type: "APPROVAL_UPDATED", priority: allApproved ? "LOW" : "HIGH", title: allApproved ? "Entrega aprovada" : "Correção solicitada", message: task.title + (note ? ": " + note : ""), data: { taskId: task.id } } });
+        await tx.notification.create({ data: { organizationId: context.organizationId, userId: owner.member.userId, type: allApproved ? "APPROVAL_UPDATED" : "TASK_CORRECTION_REQUESTED", priority: allApproved ? "LOW" : "HIGH", title: allApproved ? "Entrega aprovada" : "Correção solicitada", message: task.title + (note ? ": " + note : ""), data: { taskId: task.id } } });
         void dispatchNotificationAsync({
           organizationId: context.organizationId,
           userIds: [owner.member.userId],

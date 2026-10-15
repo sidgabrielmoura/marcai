@@ -4,7 +4,7 @@ import { getLoginChallenge } from "@/infrastructure/security/login-challenge";
 import { Brand } from "@/presentation/components/shared/brand";
 import { TwoFactorForm } from "@/presentation/components/auth/two-factor-form";
 import { prisma } from "@/infrastructure/database/prisma";
-import { buildTotpUri, openTotp } from "@/infrastructure/security/totp";
+import { buildTotpUri } from "@/infrastructure/security/totp";
 
 export default async function VerifyAccessPage() {
   const challenge = await getLoginChallenge();
@@ -16,14 +16,6 @@ export default async function VerifyAccessPage() {
   });
 
   let activeSecret: string | null = challenge.enrollSecret;
-  if (!activeSecret && user?.twoFactorSecret) {
-    try {
-      activeSecret = openTotp(user.twoFactorSecret).secret;
-    } catch {
-      activeSecret = null;
-    }
-  }
-
   let qrCodeDataUrl: string | null = null;
   if (activeSecret) {
     const account = user?.email || user?.name || "usuario";

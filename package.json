@@ -13,6 +13,8 @@
     "test:regressions": "tsx scripts/verify-workflow-regressions.ts",
     "test:templates": "tsx scripts/verify-template-library.ts",
     "test:templates:ui": "tsx scripts/verify-template-ui.ts",
+    "test:superadmin:ui": "tsx scripts/verify-superadmin-ui.ts",
+    "test:superadmin:async": "tsx scripts/verify-superadmin-async.ts",
     "db:templates": "prisma db execute --file prisma/templates-library.sql"
   },
   "dependencies": {

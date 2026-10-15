@@ -187,5 +187,82 @@ assert(sorted[0].availability === "AVAILABLE", "Prioridade 1 de atribuição é 
 assert(sorted[1].availability === "BUSY", "Prioridade 2 de atribuição é BUSY");
 assert(sorted[2].availability === "UNAVAILABLE", "Prioridade 3 de atribuição é UNAVAILABLE");
 
+// 8. Invariante: Bloqueadores por Plano de Assinatura e Piloto de 30 dias
+import {
+  createDefaultTrialSubscription,
+  isSubscriptionExpired,
+  checkLocationLimit,
+  checkMemberLimit,
+} from "../src/domain/rules/subscription-limits";
+
+// Piloto Gratuito (30 dias)
+const trial = createDefaultTrialSubscription(new Date("2026-10-01T12:00:00Z"));
+assert(trial.planName === "Piloto Gratuito (30 dias)", "Piloto gratuito tem nome correto");
+assert(trial.status === "TRIAL", "Piloto gratuito tem status TRIAL");
+assert(trial.memberLimit === 5, "Piloto gratuito tem limite de 5 pessoas");
+assert(trial.locationLimit === 1, "Piloto gratuito tem limite de 1 unidade");
+assert(trial.startsOn === "2026-10-01", "Piloto gratuito inicia na data correta");
+assert(trial.endsOn === "2026-10-31", "Piloto gratuito encerra exatamente 30 dias depois");
+
+// Expiração de vigência
+assert(
+  isSubscriptionExpired(trial, new Date("2026-10-15T12:00:00Z")) === false,
+  "Piloto de 30 dias não está expirado no 15º dia"
+);
+assert(
+  isSubscriptionExpired(trial, new Date("2026-11-01T12:00:00Z")) === true,
+  "Piloto de 30 dias está expirado após o 30º dia"
+);
+assert(
+  isSubscriptionExpired({ ...trial, status: "CANCELLED" }, new Date("2026-10-15T12:00:00Z")) === true,
+  "Assinatura CANCELLED é tratada como expirada/bloqueada"
+);
+
+// Bloqueio de Unidades
+assert(
+  checkLocationLimit({ subscription: trial, currentActiveLocationsCount: 0 }).allowed === true,
+  "Pode criar primeira unidade quando tem 0 de 1 unidade utilizada"
+);
+assert(
+  checkLocationLimit({ subscription: trial, currentActiveLocationsCount: 1 }).allowed === false,
+  "Bloqueia criação de unidade quando limite do plano é atingido (1/1)"
+);
+assert(
+  checkLocationLimit({
+    subscription: trial,
+    currentActiveLocationsCount: 0,
+    now: new Date("2026-11-05T12:00:00Z"),
+  }).allowed === false,
+  "Bloqueia criação de unidade quando o plano estiver expirado"
+);
+const enterpriseSub = { ...trial, locationLimit: null, memberLimit: null };
+assert(
+  checkLocationLimit({ subscription: enterpriseSub, currentActiveLocationsCount: 100 }).allowed === true,
+  "Plano ilimitado permite criar unidades sem restrição de contagem"
+);
+
+// Bloqueio de Pessoas / Colaboradores
+assert(
+  checkMemberLimit({ subscription: trial, currentActiveMembersCount: 4 }).allowed === true,
+  "Pode adicionar membro quando tem 4 de 5 pessoas"
+);
+assert(
+  checkMemberLimit({ subscription: trial, currentActiveMembersCount: 5 }).allowed === false,
+  "Bloqueia adição de colaborador quando limite de pessoas é atingido (5/5)"
+);
+assert(
+  checkMemberLimit({
+    subscription: trial,
+    currentActiveMembersCount: 2,
+    now: new Date("2026-11-05T12:00:00Z"),
+  }).allowed === false,
+  "Bloqueia adição de colaborador quando plano estiver expirado"
+);
+assert(
+  checkMemberLimit({ subscription: enterpriseSub, currentActiveMembersCount: 500 }).allowed === true,
+  "Plano ilimitado permite adicionar colaboradores sem restrição de contagem"
+);
+
 console.log("=== TODOS OS TESTES DE REGRAS DE DOMÍNIO PASSARAM COM SUCESSO! ===");
+
 

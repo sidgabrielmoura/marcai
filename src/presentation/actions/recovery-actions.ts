@@ -7,6 +7,7 @@ import { prisma } from "@/infrastructure/database/prisma";
 import { getAuthenticatedContext } from "@/application/security/auth-context";
 import { Role } from "@/domain/types";
 import { sendPasswordResetEmail, sendMemberInviteEmail } from "@/infrastructure/email";
+import { assertCanAddMember } from "@/domain/rules/subscription-limits";
 
 export type ActionResult<T = unknown> = { success?: boolean; error?: string; data?: T };
 
@@ -128,6 +129,13 @@ export async function createMemberInviteAction(email: string, role: Role = Role.
   }
 
   const targetEmail = parsedEmail.data.toLowerCase().trim();
+
+  try {
+    await assertCanAddMember(prisma, context.organizationId);
+  } catch (err: any) {
+    return { error: err?.message || "Não é possível enviar convite no momento devido aos limites do plano." };
+  }
+
   const token = randomBytes(24).toString("hex");
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 dias
 
@@ -211,57 +219,66 @@ export async function acceptMemberInviteAction(
     pinHash = await bcrypt.hash(parsed.data, 10);
   }
 
-  await prisma.$transaction(async (tx) => {
-    // Procura ou cria usuário
-    let user = await tx.user.findUnique({ where: { email: invite.email } });
-    if (!user) {
-      user = await tx.user.create({
-        data: {
-          name: name.trim(),
-          email: invite.email,
-          passwordHash,
-          status: "ACTIVE",
-        },
-      });
-    } else if (passwordHash) {
-      await tx.user.update({
-        where: { id: user.id },
-        data: { passwordHash },
-      });
-    }
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Procura ou cria usuário
+      let user = await tx.user.findUnique({ where: { email: invite.email } });
+      if (!user) {
+        user = await tx.user.create({
+          data: {
+            name: name.trim(),
+            email: invite.email,
+            passwordHash,
+            status: "ACTIVE",
+          },
+        });
+      } else if (passwordHash) {
+        await tx.user.update({
+          where: { id: user.id },
+          data: { passwordHash },
+        });
+      }
 
-    // Cria ou ativa membro
-    const existingMember = await tx.organizationMember.findUnique({
-      where: {
-        organizationId_userId: {
-          organizationId: invite.organizationId,
-          userId: user.id,
+      // Cria ou ativa membro
+      const existingMember = await tx.organizationMember.findUnique({
+        where: {
+          organizationId_userId: {
+            organizationId: invite.organizationId,
+            userId: user.id,
+          },
         },
-      },
+      });
+
+      if (!existingMember) {
+        await assertCanAddMember(tx, invite.organizationId);
+        await tx.organizationMember.create({
+          data: {
+            organizationId: invite.organizationId,
+            userId: user.id,
+            role: invite.role,
+            status: "ACTIVE",
+            pinHash,
+          },
+        });
+      } else {
+        if (existingMember.status !== "ACTIVE") {
+          await assertCanAddMember(tx, invite.organizationId);
+        }
+        await tx.organizationMember.update({
+          where: { id: existingMember.id },
+          data: { status: "ACTIVE", pinHash: pinHash ?? existingMember.pinHash },
+        });
+      }
+
+      await tx.memberInvite.update({
+        where: { id: invite.id },
+        data: { usedAt: new Date() },
+      });
     });
 
-    if (!existingMember) {
-      await tx.organizationMember.create({
-        data: {
-          organizationId: invite.organizationId,
-          userId: user.id,
-          role: invite.role,
-          status: "ACTIVE",
-          pinHash,
-        },
-      });
-    } else {
-      await tx.organizationMember.update({
-        where: { id: existingMember.id },
-        data: { status: "ACTIVE", pinHash: pinHash ?? existingMember.pinHash },
-      });
-    }
-
-    await tx.memberInvite.update({
-      where: { id: invite.id },
-      data: { usedAt: new Date() },
-    });
-  });
-
-  return { success: true };
+    return { success: true };
+  } catch (err: any) {
+    console.error("[acceptMemberInviteAction] Erro:", err);
+    return { error: err?.message || "Não foi possível aceitar o convite." };
+  }
 }

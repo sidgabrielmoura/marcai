@@ -12,6 +12,7 @@ export interface RealtimeEventHandler {
  * Automaticamente atualiza as rotas quando tarefas/execuções forem alteradas por outros usuários.
  */
 const DOMAIN_EVENT_TYPES = [
+  "SYNC_REQUIRED",
   "TASK_STARTED",
   "TASK_COMPLETED",
   "TASK_PAUSED",
@@ -27,12 +28,13 @@ const DOMAIN_EVENT_TYPES = [
   "MEMBER_AVAILABILITY_CHANGED",
 ];
 
-export function useRealtimeEvents(onEvent?: RealtimeEventHandler) {
+export function useRealtimeEvents(onEvent?: RealtimeEventHandler, enabled = true) {
   const router = useRouter();
   const handlerRef = useRef(onEvent);
   handlerRef.current = onEvent;
 
   useEffect(() => {
+    if (!enabled) return;
     let source: EventSource | null = null;
     let retryTimeout: NodeJS.Timeout | null = null;
 
@@ -82,5 +84,6 @@ export function useRealtimeEvents(onEvent?: RealtimeEventHandler) {
       if (source) source.close();
       if (retryTimeout) clearTimeout(retryTimeout);
     };
-  }, [router]);
+  }, [router, enabled]);
 }
+

@@ -11,6 +11,9 @@ const pool =
   globalForPrisma.pgPool ??
   new Pool({
     connectionString: process.env.DATABASE_URL,
+    // PrismaPg normalizes timestamptz results as UTC; keep every connection in UTC.
+    // Operational display and business rules still use each location timezone.
+    options: "-c timezone=UTC",
   });
 
 if (process.env.NODE_ENV !== "production") {

@@ -1,5 +1,7 @@
 "use server";
 
+import { headers } from "next/headers";
+import { rate } from "@/application/mobile/security";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/infrastructure/database/prisma";
@@ -26,6 +28,8 @@ const LoginPinSchema = z.object({
   pin: z.string().regex(/^\d{6}$/, "O PIN deve conter exatamente 6 dígitos numéricos"),
 });
 
+async function loginRate(kind:string,identity:string):Promise<string|null>{try{const h=await headers();const ip=h.get("x-vercel-forwarded-for")?.split(",")[0]??"unknown";await rate("web-ip:"+kind+":"+ip,120);await rate("web-identity:"+kind+":"+identity.toLowerCase().trim(),10);return null;}catch{return "Muitas tentativas ou serviço indisponível. Aguarde alguns minutos.";}}
+
 export type AuthState = {
   success?: boolean;
   error?: string;
@@ -45,11 +49,13 @@ export async function loginWithPasswordAction(
   }
 
   const { email, password } = parsed.data;
+  const rateError = await loginRate("password",email);if(rateError)return {error:rateError};
 
   // Busca do usuário
   const user = await prisma.user.findUnique({
     where: { email: email.toLowerCase().trim() },
     include: {
+      passkeys: { select: { id: true } },
       memberships: {
         where: { status: "ACTIVE", organization: { status: "ACTIVE" } },
         include: { organization: true },
@@ -93,10 +99,11 @@ export async function loginWithPasswordAction(
       employeeCode: member.employeeCode,
     });
 
-    if (member.role === "EMPLOYEE") {
-      redirect("/tasks");
+    const destination = member.role === "EMPLOYEE" ? "/tasks" : "/overview";
+    if (user.passkeys.length === 0) {
+      redirect(`/setup-biometrics?next=${encodeURIComponent(destination)}`);
     } else {
-      redirect("/overview");
+      redirect(destination);
     }
   }
 
@@ -112,7 +119,12 @@ export async function loginWithPasswordAction(
     employeeCode: primaryMember.employeeCode,
   });
 
-  redirect("/select-org");
+  const destination = "/select-org";
+  if (user.passkeys.length === 0) {
+    redirect(`/setup-biometrics?next=${encodeURIComponent(destination)}`);
+  } else {
+    redirect(destination);
+  }
 }
 
 export async function loginWithPinAction(
@@ -130,6 +142,7 @@ export async function loginWithPinAction(
   }
 
   const { organizationSlug, employeeCode, pin } = parsed.data;
+  const rateError = await loginRate("pin",organizationSlug+":"+employeeCode);if(rateError)return {error:rateError};
 
   // Busca da organização
   const org = await prisma.organization.findUnique({
@@ -141,16 +154,24 @@ export async function loginWithPinAction(
   }
 
   // Busca do membro com matrícula
-  const member = await prisma.organizationMember.findFirst({
+  const matches = await prisma.organizationMember.findMany({
     where: {
       organizationId: org.id,
       employeeCode: employeeCode.trim(),
       status: "ACTIVE",
     },
+    take: 2,
     include: {
-      user: true,
+      user: {
+        include: {
+          passkeys: {
+            select: { id: true },
+          },
+        },
+      },
     },
   });
+  const member = matches.length === 1 ? matches[0] : null;
 
   if (!member || !member.pinHash || member.user.status !== "ACTIVE") {
     return { error: "Matrícula ou PIN inválido para esta organização." };
@@ -177,11 +198,12 @@ export async function loginWithPinAction(
     employeeCode: member.employeeCode,
   });
 
-  if (member.role === "EMPLOYEE") {
-    redirect("/tasks");
-  } else {
-    redirect("/overview");
+  const destination = member.role === "EMPLOYEE" ? "/tasks" : "/overview";
+  if (member.user.passkeys.length === 0) {
+    redirect(`/setup-biometrics?next=${encodeURIComponent(destination)}`);
   }
+
+  redirect(destination);
 }
 
 export async function switchOrganizationAction(targetOrgId: string) {
@@ -287,7 +309,7 @@ export async function loginWithMobileSessionAction(token: string) {
   });
 
   if (!mobileSession || mobileSession.status !== "APPROVED" || !mobileSession.userId || !mobileSession.memberId) {
-    return { error: "Sess�o inv�lida ou n�o aprovada." };
+    return { error: "Sessão inválida ou não aprovada." };
   }
 
   const user = await prisma.user.findUnique({
@@ -295,12 +317,15 @@ export async function loginWithMobileSessionAction(token: string) {
     include: {
       memberships: {
         where: { id: mobileSession.memberId },
-      }
-    }
+      },
+      passkeys: {
+        select: { id: true },
+      },
+    },
   });
 
   if (!user || user.memberships.length === 0) {
-    return { error: "Usu�rio ou v�nculo n�o encontrado." };
+    return { error: "Usuário ou vínculo não encontrado." };
   }
 
   const member = user.memberships[0];
@@ -308,7 +333,7 @@ export async function loginWithMobileSessionAction(token: string) {
   if (user.platformRole === "SUPERADMIN" || user.twoFactorEnabled) {
     await clearSession();
     await beginLoginChallenge(user, null);
-    redirect("/verify-access");
+    return { success: true, redirectUrl: "/verify-access" };
   }
 
   await createSession({
@@ -323,6 +348,13 @@ export async function loginWithMobileSessionAction(token: string) {
 
   await prisma.mobileAuthSession.delete({ where: { id: mobileSession.id } });
 
-  if (member.role === "EMPLOYEE") redirect("/tasks");
-  else redirect("/overview");
+  const destination = member.role === "EMPLOYEE" ? "/tasks" : "/overview";
+  if (user.passkeys.length === 0) {
+    return {
+      success: true,
+      redirectUrl: `/setup-biometrics?next=${encodeURIComponent(destination)}`,
+    };
+  }
+
+  return { success: true, redirectUrl: destination };
 }

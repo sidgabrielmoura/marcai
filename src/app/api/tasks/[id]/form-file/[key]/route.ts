@@ -45,7 +45,7 @@ export async function GET(
 
   try {
     const bytes = await readEvidence(key);
-    return new Response(bytes, {
+    return new Response(new Uint8Array(bytes), {
       headers: {
         "Content-Type": foundMime,
         "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(foundFileName)}`,

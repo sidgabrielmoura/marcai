@@ -1,50 +1,37 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { unstable_rethrow } from "next/navigation";
+import { PlatformButton as Button, PlatformForm, PlatformActivityBoundary, usePlatformActivity } from "./platform-async";
+import { PlatformPagination } from "./platform-pagination";
+import { TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { TableRow, TableCell } from "@/components/ui/table";
+import { PlatformOverview, type PlatformOverviewData } from "./platform-overview";
+import {
+  SuperadminModal as Modal,
+  PlatformPage,
+  PlatformPanel,
+  PlatformIdentity,
+  PlatformStatus,
+  PlatformActions,
+  PlatformTable,
+  PlatformQuota,
+} from "./superadmin-ui";
+
 import Link from "next/link";
 import {
-  Building2,
-  Users,
-  Activity,
-  ShieldCheck,
-  ArrowRight,
-  Search,
-  MessageSquare,
-  ChevronLeft,
-  ChevronRight,
-  CalendarClock,
-  FileBarChart,
-  MoreVertical,
-  X,
-  CheckCircle2,
-  AlertTriangle,
-  Lock,
-  Plus,
-  MapPin,
-  GitMerge,
-  CheckSquare,
-  Clock,
-  Layers,
-  Sparkles,
-  ExternalLink,
-  ShieldAlert,
-  Trash2,
-  Edit3,
-  UserPlus,
-  RefreshCw,
-  Unlink,
-  Check,
-  Tag,
-  Zap,
+  Building2, Users, Activity, ShieldCheck, Search, MessageSquare,
+  CalendarClock, FileBarChart, X,
+  AlertTriangle, Plus, Layers, Sparkles, ShieldAlert, Trash2, Edit3, UserPlus,
 } from "lucide-react";
 import { AppShell } from "../shared/app-shell";
-import { EmptyState, Modal, PageHeader } from "../shared";
+import { EmptyState, PageHeader } from "../shared";
 import { uiLabel } from "../shared/ui-labels";
-import { Button } from "@/components/ui/button";
+
 import {
   Card,
   CardHeader,
+  CardAction,
   CardTitle,
   CardDescription,
   CardContent,
@@ -66,10 +53,11 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuGroup,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+
 import { toast } from "@/components/ui/toast";
-import { Spinner } from "@/components/ui/spinner";
+
 import {
   addSupportNoteAction,
   saveManualSubscriptionAction,
@@ -179,6 +167,7 @@ type Props = {
   logs: GlobalLog[];
   allOrganizations?: CompactOrg[];
   platformPlans?: PlatformPlanModel[];
+  overviewData?: PlatformOverviewData;
   pagination: { page: number; pages: number; total: number; pageSize: number };
 };
 
@@ -189,25 +178,25 @@ const viewMeta: Record<
   overview: {
     label: "Visão geral",
     title: "Visão da plataforma",
-    subtitle: "Acompanhe a base de clientes, métricas de adoção e saúde geral do Marcai.",
+    subtitle: "Acompanhe os clientes e as prioridades da plataforma.",
     icon: FileBarChart,
   },
   organizations: {
     label: "Organizações",
     title: "Organizações",
-    subtitle: "Consulte clientes cadastrados, gerencie acessos e condições contratuais.",
+    subtitle: "Gerencie seus clientes, acessos e assinaturas.",
     icon: Building2,
   },
   users: {
     label: "Usuários",
-    title: "Usuários da plataforma",
-    subtitle: "Consulte pessoas cadastradas, vínculos empresariais e controle global de acesso.",
+    title: "Usuários",
+    subtitle: "Organize as contas e os vínculos com cada cliente.",
     icon: Users,
   },
   subscriptions: {
     label: "Planos & Assinaturas",
     title: "Planos e assinaturas",
-    subtitle: "Registre o plano e as condições acordadas com cada cliente. O controle financeiro é manual.",
+    subtitle: "Gerencie os contratos e os modelos de planos.",
     icon: CalendarClock,
   },
   usage: {
@@ -225,7 +214,7 @@ const viewMeta: Record<
   audit: {
     label: "Auditoria",
     title: "Auditoria da plataforma",
-    subtitle: "Rastreabilidade de todas as ações administrativas, seus responsáveis e justificativas.",
+    subtitle: "Consulte ações, responsáveis e justificativas.",
     icon: Activity,
   },
 };
@@ -246,11 +235,39 @@ const actionLabels: Record<string, string> = {
   ORGANIZATION_UPDATED: "Organização atualizada",
   ORGANIZATION_DELETED: "Organização excluída",
   PLATFORM_USER_CREATED: "Usuário criado na plataforma",
+  PLATFORM_USER_CREATED_AND_LINKED: "Usuário criado e vinculado",
   PLATFORM_USER_UPDATED: "Usuário atualizado",
   PLATFORM_USER_DELETED: "Usuário excluído",
   ORGANIZATION_MEMBER_LINKED: "Vínculo organizacional criado",
   ORGANIZATION_MEMBER_UNLINKED: "Vínculo organizacional removido",
   ORGANIZATION_MEMBER_ROLE_CHANGED: "Cargo de membro alterado",
+  PLATFORM_PLAN_CREATED: "Plano criado",
+  PLATFORM_PLAN_UPDATED: "Plano atualizado",
+  PLATFORM_PLAN_DELETED: "Plano excluído",
+  EXECUTION_STATUS_CHANGED: "Situação da execução alterada",
+  EXECUTION_COMPLETED: "Execução concluída",
+  EXECUTION_STARTED: "Execução iniciada",
+  TEMPLATE_ARCHIVED: "Modelo arquivado",
+  TEMPLATE_PUBLISHED: "Modelo publicado",
+  TEMPLATE_DRAFT_UPDATED: "Rascunho do modelo atualizado",
+  TEMPLATE_CREATED: "Modelo criado",
+  TEMPLATE_DUPLICATED: "Modelo duplicado",
+  TEMPLATE_SAVED_FROM_PROCESS: "Modelo salvo a partir de processo",
+  PROCESS_CREATED_FROM_TEMPLATE: "Processo criado a partir de modelo",
+  RETENTION_PURGE_EXECUTED: "Limpeza de retenção executada",
+  TRASH_PURGE_EXECUTED: "Limpeza da lixeira executada",
+  HISTORY_PURGE_EXECUTED: "Limpeza do histórico executada",
+  MEMBER_DETAILS_UPDATED: "Dados da pessoa atualizados",
+  MEMBER_PERMANENTLY_DELETED: "Pessoa excluída definitivamente",
+  MEMBER_ACCESS_UPDATED: "Permissões da pessoa atualizadas",
+  TEAM_MEMBERS_UPDATED: "Pessoas da equipe atualizadas",
+  TEAM_LOCATIONS_UPDATED: "Unidades da equipe atualizadas",
+  SCHEDULED_REPORT_CREATED: "Relatório programado",
+  SCHEDULED_REPORT_EXECUTED: "Relatório gerado",
+  PASSWORD_RESET_REQUESTED: "Redefinição de senha solicitada",
+  TASK_OVERDUE: "Prazo da tarefa excedido",
+  TASK_EXPIRING_SOON: "Tarefa próxima do vencimento",
+  APPROVAL_DEADLINE_EXCEEDED: "Prazo de aprovação excedido",
 };
 
 function slugify(text: string): string {
@@ -318,7 +335,7 @@ function nullableNumber(form: FormData, name: string) {
 
 export function SuperadminDashboardClient(props: Props) {
   const { view, metrics, organizations, users, logs, pagination } = props;
-  const router = useRouter();
+  const activity = usePlatformActivity();
 
   const [statusTarget, setStatusTarget] = useState<{
     kind: "organization" | "user";
@@ -451,10 +468,10 @@ export function SuperadminDashboardClient(props: Props) {
   const [deleteUserTarget, setDeleteUserTarget] = useState<GlobalUser | null>(null);
   const [manageMembershipsTarget, setManageMembershipsTarget] = useState<GlobalUser | null>(null);
 
-  const [pending, setPending] = useState(false);
+  const pending = activity.busy;
 
-  function closeModals() {
-    if (!pending) {
+  function closeModals(force: unknown = false) {
+    if (force === true || !pending) {
       setStatusTarget(null);
       setSubscriptionTarget(null);
       setSelectedPresetPlanId("");
@@ -477,7 +494,8 @@ export function SuperadminDashboardClient(props: Props) {
   }
 
   async function handleRunAction(action: () => Promise<ActionResult>, successMessage: string) {
-    setPending(true);
+    const release = activity.beginMutation();
+    if (!release) return;
     try {
       const result = await action();
       if (result.error) {
@@ -488,30 +506,32 @@ export function SuperadminDashboardClient(props: Props) {
         });
         return;
       }
-      closeModals();
+      closeModals(true);
       toast.add({
         title: "Operação concluída",
         description: successMessage,
         type: "success",
       });
-      router.refresh();
-    } catch {
+      activity.refresh();
+    } catch (error) {
+      unstable_rethrow(error);
       toast.add({
         title: "Erro inesperado",
         description: "Não foi possível completar a operação. Tente novamente.",
         type: "error",
       });
     } finally {
-      setPending(false);
+      release();
     }
   }
 
-  function href(nextView: PlatformView, organization?: string, page?: number) {
+  function href(nextView: PlatformView, organization?: string, page?: number, preserveFilters = true) {
     const params = new URLSearchParams({ view: nextView });
     if (organization) params.set("organization", organization);
     if (page && page > 1) params.set("page", String(page));
-    if (props.query) params.set("q", props.query);
-    if (props.status !== "ALL") params.set("status", props.status);
+    const keepFilters = preserveFilters && nextView === view && (organization ?? "") === props.organizationFilter;
+    if (keepFilters && props.query) params.set("q", props.query);
+    if (keepFilters && props.status !== "ALL") params.set("status", props.status);
     return `/superadmin?${params.toString()}`;
   }
 
@@ -519,6 +539,7 @@ export function SuperadminDashboardClient(props: Props) {
   const hasActiveFilters = Boolean(props.query || props.status !== "ALL" || props.organizationFilter);
 
   return (
+    <PlatformActivityBoundary activity={activity}>
     <AppShell
       userName={props.userName}
       orgName="Plataforma Marcai"
@@ -526,1378 +547,972 @@ export function SuperadminDashboardClient(props: Props) {
       mode="platform"
       activeView={view}
     >
-      <div className="page-stack">
-        {/* Header Principal da Página */}
+      <PlatformPage
+        subscriptions={view === "subscriptions"}
+        tab={subscriptionSubView}
+        onTabChange={(value) =>
+          setSubscriptionSubView(value as "assignments" | "plans")
+        }
+      >
         <PageHeader
           title={viewMeta[view].title}
           subtitle={viewMeta[view].subtitle}
           actions={
-            <div className="flex items-center gap-2">
-              <Badge
-                variant="outline"
-                className="h-8 gap-1.5 px-3 rounded-full bg-emerald-500/10 text-emerald-800 dark:text-emerald-400 border-emerald-500/20 font-medium text-xs shadow-none"
-              >
-                <ShieldCheck className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                Painel Superadmin
-              </Badge>
+            <>
               {(view === "overview" || view === "organizations") && (
-                <Button
-                  onClick={() => setCreateOrgOpen(true)}
-                  className="bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)] shadow-none h-8 text-xs font-semibold gap-1.5 cursor-pointer"
-                >
-                  <Plus className="size-3.5" />
+                <Button onClick={() => setCreateOrgOpen(true)}>
+                  <Plus data-icon="inline-start" />
                   Nova organização
                 </Button>
               )}
               {view === "users" && (
-                <Button
-                  onClick={() => setCreateUserOpen(true)}
-                  className="bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)] shadow-none h-8 text-xs font-semibold gap-1.5 cursor-pointer"
-                >
-                  <UserPlus className="size-3.5" />
+                <Button onClick={() => setCreateUserOpen(true)}>
+                  <UserPlus data-icon="inline-start" />
                   Novo usuário
                 </Button>
               )}
-              {view === "support" && props.selectedOrganization && (
-                <Button
-                  onClick={() => setSupportOrgTarget(props.selectedOrganization)}
-                  className="bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)] shadow-none h-8 text-xs font-semibold gap-1.5"
-                >
-                  <MessageSquare className="size-3.5" />
-                  Registrar atendimento
+              {view === "subscriptions" && subscriptionSubView === "plans" && (
+                <Button onClick={() => setCreatePlanOpen(true)}>
+                  <Plus data-icon="inline-start" />
+                  Novo plano
                 </Button>
               )}
-            </div>
+              {view === "support" && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button disabled={!props.allOrganizations?.length}>
+                        <Plus data-icon="inline-start" />
+                        Registrar atendimento
+                      </Button>
+                    }
+                  />
+                  <DropdownMenuContent
+                    align="end"
+                    className="min-w-64 max-h-80"
+                  >
+                    <DropdownMenuGroup>
+                      {props.allOrganizations?.map((org) => (
+                        <DropdownMenuItem
+                          key={org.id}
+                          onClick={() => setSupportOrgTarget(org)}
+                        >
+                          {org.name}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </>
           }
         />
 
-        <nav
-          aria-label="Navegação de visões do superadmin"
-          className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-[var(--border-subtle)] text-xs scrollbar-none"
-        >
-          {(
-            [
-              "overview",
-              "organizations",
-              "users",
-              "subscriptions",
-              "usage",
-              "support",
-              "audit",
-            ] as PlatformView[]
-          ).map((vKey) => {
-            const item = viewMeta[vKey];
-            const Icon = item.icon;
-            const isActive = view === vKey;
-            const badgeCount =
-              vKey === "organizations"
-                ? metrics.totalOrgs
-                : vKey === "users"
-                  ? metrics.totalUsers
-                  : null;
-
-            return (
-              <Link
-                key={vKey}
-                href={href(vKey, props.organizationFilter)}
-                className={cn(
-                  "inline-flex items-center gap-2 px-3.5 py-2 rounded-xl font-medium transition-all whitespace-nowrap cursor-pointer shrink-0",
-                  isActive
-                    ? "bg-[var(--brand-900)] text-white shadow-xs"
-                    : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-muted)]"
-                )}
-              >
-                <Icon className={cn("size-3.5", isActive ? "text-white" : "text-muted-foreground")} />
-                <span>{item.label}</span>
-                {badgeCount !== null && (
-                  <span
-                    className={cn(
-                      "px-1.5 py-0.5 rounded-full text-[10px] font-bold tabular-nums leading-none",
-                      isActive
-                        ? "bg-white/20 text-white"
-                        : "bg-[var(--surface-muted)] text-[var(--text-muted)] border border-[var(--border-subtle)]"
-                    )}
-                  >
-                    {badgeCount}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
-        </nav>
-
-        {/* Chip / Banner de Organização Selecionada (Filtro Ativo) */}
-        {props.selectedOrganization && (
-          <div className="flex items-center justify-between gap-3 p-3 px-4 rounded-2xl bg-[var(--brand-soft)]/70 border border-[var(--brand-700)]/20 text-xs text-[var(--brand-900)]">
-            <div className="flex items-center gap-2 min-w-0">
-              <Building2 className="size-4 shrink-0 text-[var(--brand-700)]" />
-              <span className="truncate">
-                Visualizando dados de:{" "}
-                <strong className="font-semibold">{props.selectedOrganization.name}</strong>
-              </span>
-            </div>
-            <Link
-              href={href(view)}
-              className="inline-flex items-center gap-1 font-semibold text-[var(--brand-700)] hover:text-[var(--brand-900)] hover:underline shrink-0"
-            >
-              <X className="size-3.5" />
-              Limpar filtro de cliente
-            </Link>
-          </div>
-        )}
-
-        {/* Métricas Principais (Visão Geral) */}
-        {view === "overview" && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-            <div className="flex flex-col justify-between p-4.5 bg-[var(--surface)] border border-[var(--border-subtle)] rounded-2xl shadow-xs transition-all hover:border-[var(--brand-700)]/40">
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
-                  Organizações
-                </span>
-                <div className="size-8 rounded-xl bg-emerald-500/10 text-emerald-700 flex items-center justify-center">
-                  <Building2 className="size-4" />
-                </div>
-              </div>
-              <div>
-                <span className="text-2xl sm:text-3xl font-bold tabular-nums text-[var(--text-primary)] block leading-tight">
-                  {metrics.totalOrgs}
-                </span>
-                <span className="text-xs text-[var(--text-secondary)] mt-1 block">
-                  {metrics.activeOrgs} ativas · {metrics.suspendedOrgs} suspensas
-                </span>
-              </div>
-            </div>
-
-            <div className="flex flex-col justify-between p-4.5 bg-[var(--surface)] border border-[var(--border-subtle)] rounded-2xl shadow-xs transition-all hover:border-[var(--brand-700)]/40">
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
-                  Usuários
-                </span>
-                <div className="size-8 rounded-xl bg-blue-500/10 text-blue-700 flex items-center justify-center">
-                  <Users className="size-4" />
-                </div>
-              </div>
-              <div>
-                <span className="text-2xl sm:text-3xl font-bold tabular-nums text-[var(--text-primary)] block leading-tight">
-                  {metrics.totalUsers}
-                </span>
-                <span className="text-xs text-[var(--text-secondary)] mt-1 block">
-                  Pessoas cadastradas na plataforma
-                </span>
-              </div>
-            </div>
-
-            <div className="flex flex-col justify-between p-4.5 bg-[var(--surface)] border border-[var(--border-subtle)] rounded-2xl shadow-xs transition-all hover:border-[var(--brand-700)]/40">
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
-                  Processos
-                </span>
-                <div className="size-8 rounded-xl bg-indigo-500/10 text-indigo-700 flex items-center justify-center">
-                  <GitMerge className="size-4" />
-                </div>
-              </div>
-              <div>
-                <span className="text-2xl sm:text-3xl font-bold tabular-nums text-[var(--text-primary)] block leading-tight">
-                  {metrics.totalProcesses}
-                </span>
-                <span className="text-xs text-[var(--text-secondary)] mt-1 block">
-                  Cadastrados em todas as empresas
-                </span>
-              </div>
-            </div>
-
-            <div className="flex flex-col justify-between p-4.5 bg-[var(--surface)] border border-[var(--border-subtle)] rounded-2xl shadow-xs transition-all hover:border-[var(--brand-700)]/40">
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
-                  Tarefas Ativas
-                </span>
-                <div className="size-8 rounded-xl bg-amber-500/10 text-amber-700 flex items-center justify-center">
-                  <CheckSquare className="size-4" />
-                </div>
-              </div>
-              <div>
-                <span className="text-2xl sm:text-3xl font-bold tabular-nums text-[var(--text-primary)] block leading-tight">
-                  {metrics.totalTasks}
-                </span>
-                <span className="text-xs text-[var(--text-secondary)] mt-1 block">
-                  Registros operacionais no sistema
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[var(--surface)] p-3 rounded-2xl border border-[var(--border-subtle)]">
-          <form
-            method="get"
-            action="/superadmin"
-            className="flex max-w-3xl gap-2"
-          >
-            <input type="hidden" name="view" value={view} />
-            {props.organizationFilter && (
-              <input type="hidden" name="organization" value={props.organizationFilter} />
-            )}
-
-            <InputGroup className="h-11 w-full">
-              <InputGroupAddon>
-                <Search className="size-4 text-muted-foreground" />
-              </InputGroupAddon>
-              <InputGroupInput
-                id="platform-search"
-                name="q"
-                defaultValue={props.query}
-                placeholder={
-                  isLogView
-                    ? "Buscar por ação, recurso ou cliente..."
-                    : view === "users"
-                      ? "Buscar por nome ou e-mail..."
-                      : "Buscar organização por nome ou slug..."
-                }
-                className="text-xs!"
-              />
-              {props.query && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const params = new URLSearchParams(window.location.search);
-                    params.delete("q");
-                    router.push(`/superadmin?${params.toString()}`);
-                  }}
-                  className="pr-2.5 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                  title="Limpar busca"
-                >
-                  <X className="size-3.5" />
-                </button>
-              )}
-            </InputGroup>
-
-            {!isLogView && (
-              <NativeSelect
-                name="status"
-                defaultValue={props.status}
-                className="w-full text-xs h-10"
-                aria-label="Filtrar por status"
-              >
-                <NativeSelectOption value="ALL">Todos os status</NativeSelectOption>
-                <NativeSelectOption value="ACTIVE">Apenas ativos</NativeSelectOption>
-                <NativeSelectOption value="SUSPENDED">Apenas suspensos</NativeSelectOption>
-              </NativeSelect>
-            )}
-
-            <Button
-              type="submit"
-              variant="outline"
-              size="sm"
-              className="h-10 text-xs font-semibold gap-1.5 shrink-0"
-            >
-              <Search className="size-3.5" />
-              Buscar
-            </Button>
-          </form>
-
-          <div className="flex items-center justify-between sm:justify-end gap-3 text-xs text-muted-foreground shrink-0 px-1">
-            <span>
-              {pagination.total}{" "}
-              {isLogView
-                ? "registros"
-                : view === "users"
-                  ? "usuários"
-                  : "organizações"}
-            </span>
-            {hasActiveFilters && (
-              <Button
-                variant="ghost"
-                size="xs"
-                nativeButton={false}
-                render={<Link href={href(view)} />}
-                className="h-7 text-xs text-[var(--brand-700)] hover:text-[var(--brand-900)] px-2"
-              >
-                Limpar filtros
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {/* Estado Vazio Quando Não Há Resultados */}
-        {!pagination.total && (
-          <EmptyState
-            icon={isLogView ? Activity : view === "users" ? Users : Building2}
-            title="Nenhum resultado encontrado"
-            description={
-              hasActiveFilters
-                ? "Ajuste os filtros de busca para encontrar o que procura."
-                : view === "support"
-                  ? "Os atendimentos registrados aparecerão aqui."
-                  : "Nenhum registro disponível para exibição nesta visão."
-            }
-            action={
-              hasActiveFilters ? (
-                <Button variant="outline" size="sm" nativeButton={false} render={<Link href={href(view)} />}>
-                  Limpar todos os filtros
-                </Button>
-              ) : undefined
-            }
+        {view === "overview" && props.overviewData && (
+          <PlatformOverview
+            metrics={metrics}
+            data={props.overviewData}
+            organizations={organizations}
           />
         )}
 
-        {/* 1. VISÃO DE ORGANIZAÇÕES (Visão Geral & Organizações) */}
-        {(view === "overview" || view === "organizations") && !!organizations.length && (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {organizations.map((org) => {
-              const isActive = org.status === "ACTIVE";
-
-              return (
-                <Card
-                  key={org.id}
-                  className={cn(
-                    "relative flex flex-col justify-between rounded-2xl border border-border/70 bg-card p-5 transition-all duration-200 hover:border-border hover:shadow-xs",
-                    !isActive && "opacity-80 bg-muted/20"
-                  )}
+        {view !== "overview" && (
+          <>
+            {props.selectedOrganization && (
+              <div className="sa-context">
+                <Building2 size={17} />
+                <span>
+                  Organização:{" "}
+                  <strong>{props.selectedOrganization.name}</strong>
+                </span>
+                <Link
+                  href={href(view, undefined, undefined, false)}
+                  className="sa-text-link"
                 >
-                  <div className="flex flex-col gap-4">
-                    {/* Header do Card: Ícone, Nome, Slug e Ações */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3 min-w-0 flex-1">
-                        <div className="size-11 rounded-xl bg-[var(--brand-soft)] text-[var(--brand-900)] flex items-center justify-center font-bold shrink-0">
-                          <Building2 className="size-5 text-[var(--brand-700)]" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <h2 className="text-base font-bold text-[var(--text-primary)] truncate">
+                  <X size={14} />
+                  Remover filtro
+                </Link>
+              </div>
+            )}
+
+            {view === "subscriptions" && (
+              <div className="sa-tabs">
+                <TabsList variant="line" aria-label="Planos e assinaturas">
+                    <TabsTrigger value="assignments" disabled={pending}>Assinaturas</TabsTrigger>
+                    <TabsTrigger value="plans" disabled={pending}>
+                    Catálogo de planos{" "}
+                    <Badge variant="secondary">
+                      {props.platformPlans?.length ?? 0}
+                    </Badge>
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+            )}
+
+            {!(view === "subscriptions" && subscriptionSubView === "plans") && (
+              <div className="sa-toolbar">
+                <PlatformForm
+                  method="get"
+                  action="/superadmin"
+                  aria-label="Filtrar registros"
+                >
+                  <input type="hidden" name="view" value={view} />
+                  <FieldGroup className="sa-filter-fields">
+                    <Field>
+                      <FieldLabel htmlFor="platform-search" className="sr-only">
+                        Buscar registros
+                      </FieldLabel>
+                      <InputGroup>
+                        <InputGroupAddon>
+                          <Search />
+                        </InputGroupAddon>
+                        <InputGroupInput
+                          key={`${view}-${props.query}`}
+                          id="platform-search"
+                          name="q"
+                          defaultValue={props.query}
+                          placeholder={
+                            isLogView
+                            ? "Buscar registros"
+                              : view === "users"
+                                ? "Buscar nome ou e-mail"
+                              : "Buscar organização"
+                          }
+                        />
+                      </InputGroup>
+                    </Field>
+                    {isLogView ? (
+                      <Field>
+                        <FieldLabel
+                          htmlFor="platform-organization"
+                          className="sr-only"
+                        >
+                          Organização
+                        </FieldLabel>
+                        <NativeSelect
+                          id="platform-organization"
+                          name="organization"
+                          key={props.organizationFilter}
+                          defaultValue={props.organizationFilter}
+                        >
+                          <NativeSelectOption value="">
+                            Todas as organizações
+                          </NativeSelectOption>
+                          {props.allOrganizations?.map((org) => (
+                            <NativeSelectOption key={org.id} value={org.id}>
                               {org.name}
-                            </h2>
-                          </div>
-                          <p className="text-xs text-[var(--text-secondary)] truncate">
-                            /{org.slug} · Desde {formatDate(org.createdAt)}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "text-[11px] font-semibold px-2 py-0.5 rounded-full border shadow-none",
-                            isActive
-                              ? "bg-emerald-50 text-emerald-800 border-emerald-200/80 dark:bg-emerald-500/10 dark:text-emerald-400"
-                              : "bg-rose-50 text-rose-800 border-rose-200/80 dark:bg-rose-500/10 dark:text-rose-400"
-                          )}
+                            </NativeSelectOption>
+                          ))}
+                        </NativeSelect>
+                      </Field>
+                    ) : (
+                      <Field>
+                        {props.organizationFilter && (
+                          <input
+                            type="hidden"
+                            name="organization"
+                            value={props.organizationFilter}
+                          />
+                        )}
+                        <FieldLabel
+                          htmlFor="platform-status"
+                          className="sr-only"
                         >
-                          <span
-                            className={cn(
-                              "size-1.5 rounded-full mr-1.5 inline-block",
-                              isActive ? "bg-emerald-600" : "bg-rose-600"
-                            )}
-                          />
-                          {isActive ? "Ativa" : "Suspensa"}
-                        </Badge>
-
-                        <DropdownMenu>
-                          <DropdownMenuTrigger
-                            render={
-                              <button
-                                type="button"
-                                className="size-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors cursor-pointer"
-                                aria-label="Ações da organização"
-                              >
-                                <MoreVertical className="size-4" />
-                              </button>
-                            }
-                          />
-                          <DropdownMenuContent align="end" className="w-52">
-                            <DropdownMenuItem render={<Link href={href("users", org.id)} />}>
-                              <Users className="size-4 mr-2" />
-                              Ver pessoas
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setEditOrgTarget(org)}>
-                              <Edit3 className="size-4 mr-2" />
-                              Editar organização
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openSubscriptionModal(org)}>
-                              <CalendarClock className="size-4 mr-2" />
-                              {org.subscription ? "Editar plano" : "Registrar plano"}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setSupportOrgTarget(org)}>
-                              <MessageSquare className="size-4 mr-2" />
-                              Registrar suporte
-                            </DropdownMenuItem>
-                            <DropdownMenuItem render={<Link href={href("audit", org.id)} />}>
-                              <Activity className="size-4 mr-2" />
-                              Histórico de auditoria
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => setStatusTarget({ kind: "organization", ...org })}
-                              className={isActive ? "text-amber-600 focus:text-amber-700" : "text-emerald-600 focus:text-emerald-700"}
-                            >
-                              <ShieldAlert className="size-4 mr-2" />
-                              {isActive ? "Suspender organização" : "Reativar organização"}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => setDeleteOrgTarget(org)}
-                              className="text-destructive focus:text-destructive"
-                            >
-                              <Trash2 className="size-4 mr-2" />
-                              Excluir organização
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
-
-                    {/* Métricas Operacionais da Organização */}
-                    <div className="grid grid-cols-4 gap-2 py-3 px-3.5 bg-[var(--surface-muted)]/60 rounded-xl border border-[var(--border-subtle)] text-center">
-                      <div>
-                        <span className="text-xs text-[var(--text-secondary)] block">Pessoas</span>
-                        <strong className="text-sm font-bold text-[var(--text-primary)] tabular-nums">
-                          {org.membersCount}
-                          {org.subscription?.memberLimit ? (
-                            <span className="text-[10px] text-muted-foreground font-normal">
-                              /{org.subscription.memberLimit}
-                            </span>
-                          ) : null}
-                        </strong>
-                      </div>
-                      <div>
-                        <span className="text-xs text-[var(--text-secondary)] block">Unidades</span>
-                        <strong className="text-sm font-bold text-[var(--text-primary)] tabular-nums">
-                          {org.locationsCount}
-                          {org.subscription?.locationLimit ? (
-                            <span className="text-[10px] text-muted-foreground font-normal">
-                              /{org.subscription.locationLimit}
-                            </span>
-                          ) : null}
-                        </strong>
-                      </div>
-                      <div>
-                        <span className="text-xs text-[var(--text-secondary)] block">Processos</span>
-                        <strong className="text-sm font-bold text-[var(--text-primary)] tabular-nums">
-                          {org.processesCount}
-                        </strong>
-                      </div>
-                      <div>
-                        <span className="text-xs text-[var(--text-secondary)] block">Tarefas</span>
-                        <strong className="text-sm font-bold text-[var(--text-primary)] tabular-nums">
-                          {org.tasksCount}
-                        </strong>
-                      </div>
-                    </div>
-
-                    {/* Resumo Comercial / Assinatura */}
-                    <div className="flex items-center justify-between gap-2 text-xs pt-1">
-                      {org.subscription ? (
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="font-semibold text-[var(--text-primary)] truncate">
-                            {org.subscription.planName}
-                          </span>
-                          <span className="text-muted-foreground">·</span>
-                          <span className="text-muted-foreground truncate">
-                            {org.subscription.amountCents === null
-                              ? "Sem valor"
-                              : formatCurrency(org.subscription.amountCents)}
-                            {org.subscription.cycle === "MONTHLY"
-                              ? "/mês"
-                              : org.subscription.cycle === "YEARLY"
-                                ? "/ano"
-                                : ""}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground italic">Sem plano registrado</span>
-                      )}
-
-                      {org.subscription && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 shadow-none">
-                          {subscriptionStatusLabels[org.subscription.status] ?? org.subscription.status}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Rodapé de Ações Rápidas */}
-                  <div className="flex items-center gap-2 pt-4 mt-4 border-t border-[var(--border-subtle)]">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      nativeButton={false}
-                      render={<Link href={href("users", org.id)} />}
-                      className="flex-1 h-8 text-xs font-semibold"
+                          Status
+                        </FieldLabel>
+                        <NativeSelect
+                          id="platform-status"
+                          name="status"
+                          key={props.status}
+                          defaultValue={props.status}
+                        >
+                          <NativeSelectOption value="ALL">
+                            Todos os status
+                          </NativeSelectOption>
+                          <NativeSelectOption value="ACTIVE">
+                            Ativos
+                          </NativeSelectOption>
+                          <NativeSelectOption value="SUSPENDED">
+                            Suspensos
+                          </NativeSelectOption>
+                        </NativeSelect>
+                      </Field>
+                    )}
+                  </FieldGroup>
+                  <Button type="submit" variant="outline">
+                    Filtrar
+                  </Button>
+                </PlatformForm>
+                <div className="sa-toolbar-result">
+                  <span>
+                    {pagination.total}{" "}
+                    {isLogView
+                      ? "registros"
+                      : view === "users"
+                        ? "usuários"
+                        : "organizações"}
+                  </span>
+                  {hasActiveFilters && (
+                    <Link
+                      className="sa-text-link"
+                      href={href(view, undefined, undefined, false)}
                     >
-                      <Users className="size-3.5" />
-                      Pessoas
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openSubscriptionModal(org)}
-                      className="flex-1 h-8 text-xs font-semibold"
-                    >
-                      <CalendarClock className="size-3.5" />
-                      {org.subscription ? "Plano" : "+ Plano"}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      nativeButton={false}
-                      render={<Link href={href("support", org.id)} />}
-                      className="h-8 text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      Suporte
-                    </Button>
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-
-        {/* 2. VISÃO DE USUÁRIOS (users) */}
-        {view === "users" && !!users.length && (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {users.map((user) => {
-              const isActive = user.status === "ACTIVE";
-              const isSuperadmin = user.platformRole === "SUPERADMIN";
-              const isProtected = isSuperadmin || user.id === props.currentUserId;
-
-              return (
-                <Card
-                  key={user.id}
-                  className={cn(
-                    "relative flex flex-col justify-between rounded-2xl border border-border/70 bg-card p-5 transition-all duration-200 hover:border-border hover:shadow-xs",
-                    !isActive && "opacity-80 bg-muted/20"
+                      Limpar filtros
+                    </Link>
                   )}
-                >
-                  <div className="flex flex-col gap-3.5">
-                    {/* Header do Usuário: Avatar, Nome, E-mail, Status */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3 min-w-0 flex-1">
-                        <Avatar className="size-11 rounded-full border border-border/50 shrink-0">
-                          <AvatarFallback className="bg-[var(--brand-primary)]/10 text-[var(--brand-primary)] font-bold text-sm tracking-tight">
-                            {getInitials(user.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0 flex-1">
-                          <h2 className="text-base font-bold text-[var(--text-primary)] truncate">
-                            {user.name}
-                          </h2>
-                          <p className="text-xs text-[var(--text-secondary)] truncate">
-                            {user.email ?? "Acesso por matrícula / PIN"}
-                          </p>
-                        </div>
-                      </div>
+                </div>
+              </div>
+            )}
 
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "text-[11px] font-semibold px-2 py-0.5 rounded-full border shadow-none shrink-0",
-                            isActive
-                              ? "bg-emerald-50 text-emerald-800 border-emerald-200/80 dark:bg-emerald-500/10 dark:text-emerald-400"
-                              : "bg-rose-50 text-rose-800 border-rose-200/80 dark:bg-rose-500/10 dark:text-rose-400"
-                          )}
-                        >
-                          <span
-                            className={cn(
-                              "size-1.5 rounded-full mr-1.5 inline-block",
-                              isActive ? "bg-emerald-600" : "bg-rose-600"
-                            )}
+            {!pagination.total &&
+              !(
+                view === "subscriptions" && subscriptionSubView === "plans"
+              ) && (
+                <EmptyState
+                  icon={
+                    isLogView ? Activity : view === "users" ? Users : Building2
+                  }
+                  title="Nenhum resultado encontrado"
+                  description={
+                    hasActiveFilters
+                      ? "Ajuste os filtros para encontrar o que procura."
+                      : view === "support"
+                        ? "Registre o primeiro atendimento pelo botão no topo da página."
+                        : "Os registros desta área aparecerão aqui."
+                  }
+                  action={
+                    hasActiveFilters ? (
+                      <Button
+                        variant="outline"
+                        nativeButton={false}
+                        render={
+                          <Link
+                            href={href(view, undefined, undefined, false)}
                           />
-                          {isActive ? "Ativo" : "Suspenso"}
-                        </Badge>
+                        }
+                      >
+                        Limpar filtros
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              )}
 
-                        <DropdownMenu>
-                          <DropdownMenuTrigger
-                            render={
-                              <button
-                                type="button"
-                                className="size-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors cursor-pointer"
-                                aria-label="Ações do usuário"
-                              >
-                                <MoreVertical className="size-4" />
-                              </button>
+            {view === "organizations" && !!organizations.length && (
+              <PlatformPanel
+                title="Base de clientes"
+                description="Acessos, pessoas e condições de cada organização."
+                className="sa-list-panel"
+              >
+                <PlatformTable
+                  label="Organizações"
+                  columns={[
+                    "Organização",
+                    "Status",
+                    "Pessoas / unidades",
+                    "Assinatura",
+                    "Ações",
+                  ]}
+                >
+                  {organizations.map((org) => (
+                    <TableRow key={org.id}>
+                      <TableCell>
+                        <PlatformIdentity
+                          name={org.name}
+                          description={`/${org.slug}`}
+                        />
+                        <details className="sa-details">
+                          <summary>Dados operacionais</summary>
+                          <dl className="sa-facts">
+                            <div>
+                              <dt>Cadastro</dt>
+                              <dd>{formatDate(org.createdAt)}</dd>
+                            </div>
+                            <div>
+                              <dt>Processos</dt>
+                              <dd>{org.processesCount}</dd>
+                            </div>
+                            <div>
+                              <dt>Tarefas</dt>
+                              <dd>{org.tasksCount}</dd>
+                            </div>
+                            <div>
+                              <dt>Execuções</dt>
+                              <dd>{org.executionsCount}</dd>
+                            </div>
+                          </dl>
+                        </details>
+                      </TableCell>
+                      <TableCell data-label="Status">
+                        <PlatformStatus
+                          tone={org.status === "ACTIVE" ? "success" : "danger"}
+                        >
+                          {org.status === "ACTIVE" ? "Ativa" : "Suspensa"}
+                        </PlatformStatus>
+                      </TableCell>
+                      <TableCell data-label="Pessoas / unidades">
+                        <span className="sa-numeric">
+                          {org.membersCount}{" "}
+                          {org.membersCount === 1 ? "pessoa" : "pessoas"}
+                        </span>
+                        <span className="sa-secondary">
+                          {org.locationsCount}{" "}
+                          {org.locationsCount === 1 ? "unidade" : "unidades"}
+                        </span>
+                      </TableCell>
+                      <TableCell data-label="Assinatura">
+                        <strong>
+                          {org.subscription?.planName ?? "Sem plano"}
+                        </strong>
+                        {org.subscription && (
+                          <span className="sa-secondary">
+                            {subscriptionStatusLabels[
+                              org.subscription.status
+                            ] ?? org.subscription.status}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="sa-row-actions">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          nativeButton={false}
+                          render={<Link href={href("users", org.id)} />}
+                        >
+                          Pessoas
+                        </Button>
+                        <PlatformActions label={org.name}>
+                          <DropdownMenuItem
+                            onClick={() => setEditOrgTarget(org)}
+                          >
+                            <Edit3 />
+                            Editar organização
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => openSubscriptionModal(org)}
+                          >
+                            <CalendarClock />
+                            {org.subscription
+                              ? "Editar assinatura"
+                              : "Registrar assinatura"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            render={<Link href={href("usage", org.id)} />}
+                          >
+                            <Layers />
+                            Ver uso e limites
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            render={<Link href={href("support", org.id)} />}
+                          >
+                            <MessageSquare />
+                            Histórico de suporte
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => setSupportOrgTarget(org)}
+                          >
+                            <Plus />
+                            Registrar atendimento
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            render={<Link href={href("audit", org.id)} />}
+                          >
+                            <Activity />
+                            Ver auditoria
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() =>
+                              setStatusTarget({ kind: "organization", ...org })
+                            }
+                          >
+                            <ShieldAlert />
+                            {org.status === "ACTIVE"
+                              ? "Suspender organização"
+                              : "Reativar organização"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => setDeleteOrgTarget(org)}
+                          >
+                            <Trash2 />
+                            Excluir organização
+                          </DropdownMenuItem>
+                        </PlatformActions>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </PlatformTable>
+              </PlatformPanel>
+            )}
+
+            {view === "users" && !!users.length && (
+              <PlatformPanel
+                title="Pessoas e acessos"
+                description="Contas, segurança e vínculos com organizações."
+                className="sa-list-panel"
+              >
+                <PlatformTable
+                  label="Usuários da plataforma"
+                  columns={[
+                    "Usuário",
+                    "Status",
+                    "Segurança",
+                    "Organizações",
+                    "Ações",
+                  ]}
+                >
+                  {users.map((user) => {
+                    const isProtected =
+                      user.platformRole === "SUPERADMIN" ||
+                      user.id === props.currentUserId;
+                    return (
+                      <TableRow key={user.id}>
+                        <TableCell>
+                          <PlatformIdentity
+                            name={user.name}
+                            initials={getInitials(user.name)}
+                            description={
+                              user.email ?? "Acesso por matrícula / PIN"
                             }
                           />
-                          <DropdownMenuContent align="end" className="w-52">
-                            <DropdownMenuItem onClick={() => setEditUserTarget(user)}>
-                              <Edit3 className="size-4 mr-2" />
-                              Editar dados da conta
+                          <span className="sa-registration">
+                            Desde {formatDate(user.createdAt)}
+                            {user.platformRole === "SUPERADMIN" &&
+                              " · Superadministrador"}
+                          </span>
+                        </TableCell>
+                        <TableCell data-label="Status">
+                          <PlatformStatus
+                            tone={
+                              user.status === "ACTIVE" ? "success" : "danger"
+                            }
+                          >
+                            {user.status === "ACTIVE" ? "Ativo" : "Suspenso"}
+                          </PlatformStatus>
+                        </TableCell>
+                        <TableCell data-label="Segurança">
+                          <span className="sa-inline">
+                            <ShieldCheck size={15} />
+                            {user.twoFactorEnabled ? "2FA ativo" : "Sem 2FA"}
+                          </span>
+                        </TableCell>
+                        <TableCell data-label="Organizações">
+                          {user.memberships.length ? (
+                            <details className="sa-details sa-memberships">
+                              <summary>
+                                {user.memberships.length}{" "}
+                                {user.memberships.length === 1
+                                  ? "vínculo"
+                                  : "vínculos"}
+                              </summary>
+                              <ul>
+                                {user.memberships.map((member) => (
+                                  <li key={member.organizationId}>
+                                    <Link
+                                      href={href(
+                                        "organizations",
+                                        member.organizationId,
+                                      )}
+                                    >
+                                      {member.organizationName}
+                                    </Link>
+                                    <small>
+                                      {uiLabel(member.role)} ·{" "}
+                                      {member.status === "ACTIVE"
+                                        ? "Ativo"
+                                        : "Inativo"}
+                                    </small>
+                                  </li>
+                                ))}
+                              </ul>
+                            </details>
+                          ) : (
+                            <span className="sa-secondary">Sem vínculos</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="sa-row-actions">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setManageMembershipsTarget(user)}
+                          >
+                            Vínculos
+                          </Button>
+                          <PlatformActions label={user.name}>
+                            <DropdownMenuItem
+                              onClick={() => setEditUserTarget(user)}
+                            >
+                              <Edit3 />
+                              Editar usuário
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setManageMembershipsTarget(user)}>
-                              <Building2 className="size-4 mr-2" />
-                              Gerenciar organizações
+                            <DropdownMenuItem
+                              onClick={() => setManageMembershipsTarget(user)}
+                            >
+                              <Building2 />
+                              Gerenciar vínculos
                             </DropdownMenuItem>
                             {!isProtected && (
                               <>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
-                                  onClick={() => setStatusTarget({ kind: "user", ...user })}
-                                  className={isActive ? "text-amber-600 focus:text-amber-700" : "text-emerald-600 focus:text-emerald-700"}
+                                  onClick={() =>
+                                    setStatusTarget({ kind: "user", ...user })
+                                  }
                                 >
-                                  <ShieldAlert className="size-4 mr-2" />
-                                  {isActive ? "Suspender acesso" : "Reativar acesso"}
+                                  <ShieldAlert />
+                                  {user.status === "ACTIVE"
+                                    ? "Suspender acesso"
+                                    : "Reativar acesso"}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
+                                  variant="destructive"
                                   onClick={() => setDeleteUserTarget(user)}
-                                  className="text-destructive focus:text-destructive"
                                 >
-                                  <Trash2 className="size-4 mr-2" />
+                                  <Trash2 />
                                   Excluir usuário
                                 </DropdownMenuItem>
                               </>
                             )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
+                          </PlatformActions>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </PlatformTable>
+              </PlatformPanel>
+            )}
 
-                    {/* Metadados: Superadmin, 2FA, Cadastro */}
-                    <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                      {isSuperadmin && (
-                        <Badge className="bg-purple-600 text-white text-[10px] font-semibold px-2 py-0.5">
-                          Superadmin
-                        </Badge>
-                      )}
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "text-[10px] px-2 py-0.5 shadow-none",
-                          user.twoFactorEnabled
-                            ? "bg-emerald-50/50 text-emerald-700 border-emerald-200/60"
-                            : "text-muted-foreground"
-                        )}
-                      >
-                        <ShieldCheck className="size-3 mr-1" />
-                        {user.twoFactorEnabled ? "2FA Ativo" : "Sem 2FA"}
-                      </Badge>
-                      <span className="text-[11px] text-muted-foreground">
-                        Cadastrado em {formatDate(user.createdAt)}
-                      </span>
-                    </div>
-
-                    {/* Vínculos com Organizações */}
-                    <div className="flex flex-col gap-1.5 pt-2 border-t border-[var(--border-subtle)]">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-[var(--text-secondary)]">
-                          Organizações vinculadas:
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          onClick={() => setManageMembershipsTarget(user)}
-                          className="h-6 text-[11px] text-[var(--brand-700)] hover:text-[var(--brand-900)] px-1.5"
-                        >
-                          <Plus className="size-3 mr-1" />
-                          Gerenciar
-                        </Button>
-                      </div>
-                      {user.memberships.length ? (
-                        <ul className="flex flex-col gap-1 max-h-32 overflow-y-auto pr-1">
-                          {user.memberships.map((m) => (
-                            <li
-                              key={m.organizationId}
-                              className="flex items-center justify-between gap-2 p-1.5 rounded-lg bg-[var(--surface-muted)]/50 text-xs"
-                            >
-                              <Link
-                                href={href("organizations", m.organizationId)}
-                                className="font-medium text-[var(--text-primary)] hover:underline truncate"
-                              >
-                                {m.organizationName}
-                              </Link>
-                              <Badge
-                                variant="outline"
-                                className="text-[10px] font-medium shrink-0 shadow-none"
-                              >
-                                {uiLabel(m.role)}
-                              </Badge>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-xs text-muted-foreground italic">Sem vínculos ativos.</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Rodapé de Ações */}
-                  <div className="flex items-center gap-2 pt-4 mt-4 border-t border-[var(--border-subtle)]">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setEditUserTarget(user)}
-                      className="flex-1 h-8 text-xs font-semibold"
+            {view === "subscriptions" &&
+              subscriptionSubView === "assignments" &&
+              !!organizations.length && (
+                <TabsContent value="assignments">
+                  <PlatformPanel
+                    title="Assinaturas por organização"
+                    description="Condições registradas manualmente. Sem cobrança automática."
+                    className="sa-list-panel"
+                  >
+                    <PlatformTable
+                      label="Assinaturas"
+                      columns={[
+                        "Organização",
+                        "Plano / valor",
+                        "Situação",
+                        "Vigência",
+                        "Ações",
+                      ]}
                     >
-                      <Edit3 className="size-3.5 mr-1" />
-                      Editar
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setManageMembershipsTarget(user)}
-                      className="flex-1 h-8 text-xs font-semibold"
-                    >
-                      <Building2 className="size-3.5 mr-1" />
-                      Vínculos
-                    </Button>
-                    {!isProtected && (
-                      <Button
-                        variant={isActive ? "outline" : "default"}
-                        size="sm"
-                        onClick={() => setStatusTarget({ kind: "user", ...user })}
-                        className={cn(
-                          "h-8 text-xs font-semibold px-2.5",
-                          isActive
-                            ? "text-destructive hover:bg-destructive/10 hover:text-destructive border-border"
-                            : "bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
-                        )}
-                        title={isActive ? "Suspender acesso global" : "Reativar acesso global"}
-                      >
-                        <ShieldAlert className="size-3.5" />
-                      </Button>
-                    )}
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-
-        {/* 3. VISÃO DE PLANOS E ASSINATURAS (subscriptions) */}
-        {view === "subscriptions" && (
-          <div className="flex flex-col gap-4">
-            {/* Sub-navegação interna: Assinaturas das Empresas vs Catálogo de Planos Prontos */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-1.5 rounded-2xl bg-[var(--surface-muted)]/60 border border-[var(--border-subtle)]">
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setSubscriptionSubView("assignments")}
-                  className={cn(
-                    "flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer",
-                    subscriptionSubView === "assignments"
-                      ? "bg-[var(--surface)] text-[var(--text-primary)] shadow-xs border border-[var(--border-subtle)]"
-                      : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                  )}
-                >
-                  <CalendarClock className="size-3.5 text-[var(--brand-700)]" />
-                  <span>Assinaturas das Empresas</span>
-                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-[var(--surface-muted)] font-bold text-muted-foreground border border-[var(--border-subtle)]">
-                    {organizations.length}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSubscriptionSubView("plans")}
-                  className={cn(
-                    "flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer",
-                    subscriptionSubView === "plans"
-                      ? "bg-[var(--surface)] text-[var(--text-primary)] shadow-xs border border-[var(--border-subtle)]"
-                      : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                  )}
-                >
-                  <span>Catálogo de Planos Prontos</span>
-                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-[var(--surface-muted)] font-bold text-muted-foreground border border-[var(--border-subtle)]">
-                    {props.platformPlans?.length ?? 0}
-                  </span>
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {subscriptionSubView === "plans" && (
-                  <>
-                    <Button
-                      size="sm"
-                      onClick={() => setCreatePlanOpen(true)}
-                      className="h-8 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)] gap-1.5 cursor-pointer"
-                    >
-                      <Plus className="size-3.5" />
-                      Novo plano pronto
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* SUB-ABA 1: ASSINATURAS DAS EMPRESAS */}
-            {subscriptionSubView === "assignments" && (
-              <>
-                {organizations.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {organizations.map((org) => {
-                      const sub = org.subscription;
-
-                      return (
-                        <Card
-                          key={org.id}
-                          className="flex flex-col justify-between rounded-2xl border border-border/70 bg-card p-5 transition-all duration-200 hover:border-border hover:shadow-xs"
-                        >
-                          <div className="flex flex-col gap-4">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <h2 className="text-base font-bold text-[var(--text-primary)] truncate">
-                                  {org.name}
-                                </h2>
-                                <p className="text-xs text-muted-foreground">/{org.slug}</p>
-                              </div>
-                              <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    "text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-none",
-                                    sub?.status === "ACTIVE" && "bg-emerald-50 text-emerald-800 border-emerald-200",
-                                    sub?.status === "TRIAL" && "bg-amber-50 text-amber-800 border-amber-300",
-                                    sub?.status === "PAST_DUE" && "bg-rose-50 text-rose-800 border-rose-300",
-                                    !sub && "bg-muted text-muted-foreground"
+                      {organizations.map((org) => {
+                        const sub = org.subscription;
+                        const notice = getSubscriptionNotice(sub);
+                        return (
+                          <TableRow key={org.id}>
+                            <TableCell>
+                              <PlatformIdentity
+                                name={org.name}
+                                description={`/${org.slug}`}
+                              />
+                              {sub && (
+                                <details className="sa-details">
+                                  <summary>Condições do contrato</summary>
+                                  <dl className="sa-facts">
+                                    <div>
+                                      <dt>Pessoas</dt>
+                                      <dd>{sub.memberLimit ?? "Sem limite"}</dd>
+                                    </div>
+                                    <div>
+                                      <dt>Unidades</dt>
+                                      <dd>
+                                        {sub.locationLimit ?? "Sem limite"}
+                                      </dd>
+                                    </div>
+                                    <div>
+                                      <dt>Início</dt>
+                                      <dd>
+                                        {formatDate(
+                                          `${sub.startsOn}T12:00:00Z`,
+                                        )}
+                                      </dd>
+                                    </div>
+                                  </dl>
+                                  {sub.notes && (
+                                    <p className="sa-note">{sub.notes}</p>
                                   )}
-                                >
-                                  {sub ? subscriptionStatusLabels[sub.status] ?? sub.status : "Sem plano"}
-                                </Badge>
-                                {(() => {
-                                  const notice = getSubscriptionNotice(sub);
-                                  if (!notice) return null;
-                                  return (
-                                    <Badge
-                                      variant="outline"
-                                      className={cn(
-                                        "text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-none",
+                                </details>
+                              )}
+                            </TableCell>
+                            <TableCell data-label="Plano / valor">
+                              <strong>
+                                {sub?.planName ?? "Sem assinatura"}
+                              </strong>
+                              {sub && (
+                                <span className="sa-secondary">
+                                  {sub.amountCents === null
+                                    ? "Valor não informado"
+                                    : formatCurrency(sub.amountCents)}{" "}
+                                  · {cycleLabels[sub.cycle]}
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell data-label="Situação">
+                              <PlatformStatus
+                                tone={
+                                  sub?.status === "ACTIVE"
+                                    ? "success"
+                                    : sub?.status === "PAST_DUE"
+                                      ? "danger"
+                                      : sub?.status === "TRIAL"
+                                        ? "warning"
+                                        : "neutral"
+                                }
+                              >
+                                {sub
+                                  ? subscriptionStatusLabels[sub.status]
+                                  : "Sem plano"}
+                              </PlatformStatus>
+                            </TableCell>
+                            <TableCell data-label="Vigência">
+                              {sub?.endsOn ? (
+                                <>
+                                  <span>
+                                    {formatDate(`${sub.endsOn}T12:00:00Z`)}
+                                  </span>
+                                  {notice && (
+                                    <span
+                                      className="sa-secondary"
+                                      data-tone={
                                         notice.isExpired
-                                          ? "bg-rose-100/70 text-rose-800 border-rose-300"
-                                          : notice.daysRemaining <= 3
-                                          ? "bg-amber-100/70 text-amber-900 border-amber-300"
-                                          : "bg-emerald-100/70 text-emerald-800 border-emerald-300"
-                                      )}
+                                          ? "danger"
+                                          : notice.daysRemaining <= 7
+                                            ? "warning"
+                                            : undefined
+                                      }
                                     >
                                       {notice.isExpired
-                                        ? "Expirado"
+                                        ? "Expirada"
                                         : notice.daysRemaining === 0
-                                        ? "Vence hoje"
-                                        : `${notice.daysRemaining}d restantes`}
-                                    </Badge>
-                                  );
-                                })()}
-                              </div>
-                            </div>
-
-                            {sub ? (
-                              <div className="flex flex-col gap-3 p-3.5 bg-[var(--surface-muted)]/60 rounded-xl border border-[var(--border-subtle)] text-xs">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-muted-foreground">Plano contratado:</span>
-                                  <strong className="text-sm font-bold text-[var(--text-primary)]">
-                                    {sub.planName}
-                                  </strong>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                  <span className="text-muted-foreground">Valor por período:</span>
-                                  <strong className="font-semibold text-[var(--text-primary)]">
-                                    {sub.amountCents === null ? "Não informado" : formatCurrency(sub.amountCents)}
-                                    <span className="text-muted-foreground font-normal">
-                                      {" "}
-                                      ({sub.cycle === "MONTHLY" ? "Mensal" : sub.cycle === "YEARLY" ? "Anual" : "Customizado"})
+                                          ? "Vence hoje"
+                                          : `${notice.daysRemaining} dias restantes`}
                                     </span>
-                                  </strong>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                  <span className="text-muted-foreground">Vigência:</span>
-                                  <span>
-                                    {formatDate(`${sub.startsOn}T12:00:00Z`)} até{" "}
-                                    {sub.endsOn ? formatDate(`${sub.endsOn}T12:00:00Z`) : "Indeterminada"}
-                                  </span>
-                                </div>
-                                <div className="flex items-center justify-between pt-2 border-t border-[var(--border-subtle)]">
-                                  <span className="text-muted-foreground">Limites contratuais:</span>
-                                  <span className="font-medium">
-                                    {sub.memberLimit ?? "∞"} pessoas · {sub.locationLimit ?? "∞"} unidades
-                                  </span>
-                                </div>
-                                {sub.notes && (
-                                  <div className="pt-2 border-t border-[var(--border-subtle)] text-[11px] text-muted-foreground whitespace-pre-wrap">
-                                    {sub.notes}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <div className="p-4 rounded-xl bg-[var(--surface-muted)]/30 border border-dashed border-[var(--border-subtle)] text-center text-xs text-muted-foreground">
-                                Nenhum contrato manual registrado para este cliente.
-                              </div>
-                            )}
-                          </div>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="sa-secondary">
+                                  {sub ? "Indeterminada" : "Não definida"}
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="sa-row-actions">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openSubscriptionModal(org)}
+                              >
+                                {sub ? "Editar condições" : "Registrar plano"}
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </PlatformTable>
+                  </PlatformPanel>
+                </TabsContent>
+              )}
 
-                          <div className="pt-4 mt-4 border-t border-[var(--border-subtle)]">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openSubscriptionModal(org)}
-                              className="w-full h-8 text-xs font-semibold gap-1.5"
-                            >
-                              <CalendarClock className="size-3.5" />
-                              {sub ? "Editar condições da assinatura" : "Registrar assinatura manual"}
-                            </Button>
+            {view === "subscriptions" && subscriptionSubView === "plans" && (
+              <TabsContent value="plans">
+                {props.platformPlans?.length ? (
+                  <div className="sa-plan-grid">
+                    {props.platformPlans.map((plan) => (
+                      <Card key={plan.id} className="sa-plan">
+                        <CardHeader>
+                          <CardTitle>
+                            <h2>{plan.name}</h2>
+                          </CardTitle>
+                          <CardDescription>
+                            {plan.description || "Modelo de assinatura"}
+                          </CardDescription>
+                          <CardAction>
+                            <PlatformActions label={plan.name}>
+                              <DropdownMenuItem
+                                onClick={() => setEditPlanTarget(plan)}
+                              >
+                                <Edit3 />
+                                Editar plano
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onClick={() => setDeletePlanTarget(plan)}
+                              >
+                                <Trash2 />
+                                Excluir plano
+                              </DropdownMenuItem>
+                            </PlatformActions>
+                          </CardAction>
+                        </CardHeader>
+                        <CardContent>
+                          <PlatformStatus
+                            tone={
+                              plan.status === "ARCHIVED" ? "neutral" : "success"
+                            }
+                          >
+                            {plan.status === "ARCHIVED" ? "Arquivado" : "Ativo"}
+                          </PlatformStatus>
+                          <div className="sa-price">
+                            <strong>
+                              {plan.amountCents === null
+                                ? "Sob consulta"
+                                : formatCurrency(plan.amountCents)}
+                            </strong>
+                            <span>
+                              {
+                                cycleLabels[
+                                  plan.cycle as keyof typeof cycleLabels
+                                ]
+                              }
+                            </span>
                           </div>
-                        </Card>
-                      );
-                    })}
+                          <dl className="sa-facts">
+                            <div>
+                              <dt>Pessoas</dt>
+                              <dd>{plan.memberLimit ?? "Sem limite"}</dd>
+                            </div>
+                            <div>
+                              <dt>Unidades</dt>
+                              <dd>{plan.locationLimit ?? "Sem limite"}</dd>
+                            </div>
+                          </dl>
+                          {plan.features && (
+                            <details className="sa-details">
+                              <summary>Recursos incluídos</summary>
+                              <p className="sa-note">{plan.features}</p>
+                            </details>
+                          )}
+                        </CardContent>
+                        <CardFooter>
+                          <Button
+                            variant="outline"
+                            disabled={plan.status === "ARCHIVED"}
+                            onClick={() => setApplyPlanTarget(plan)}
+                          >
+                            <Plus data-icon="inline-start" />
+                            Aplicar a uma organização
+                          </Button>
+                        </CardFooter>
+                      </Card>
+                    ))}
                   </div>
                 ) : (
                   <EmptyState
                     icon={CalendarClock}
-                    title="Nenhuma organização encontrada"
-                    description="Não há empresas com assinaturas para os filtros selecionados."
-                  />
-                )}
-              </>
-            )}
-
-            {/* SUB-ABA 2: CATÁLOGO DE PLANOS PRONTOS */}
-            {subscriptionSubView === "plans" && (
-              <div className="flex flex-col gap-4">
-                {props.platformPlans && props.platformPlans.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {props.platformPlans.map((plan) => {
-                      const assignedCount = organizations.filter(
-                        (o) => o.subscription?.planName?.toLowerCase() === plan.name.toLowerCase()
-                      ).length;
-                      const isArchived = plan.status === "ARCHIVED";
-
-                      return (
-                        <Card
-                          key={plan.id}
-                          className={cn(
-                            "relative flex flex-col justify-between rounded-2xl border border-border/70 bg-card p-5 transition-all duration-200 hover:border-border hover:shadow-xs",
-                            isArchived && "opacity-75 bg-muted/20"
-                          )}
-                        >
-                          <div className="flex flex-col gap-4">
-                            {/* Header do Card */}
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2">
-                                  <h4 className="text-base font-bold text-[var(--text-primary)] truncate">
-                                    {plan.name}
-                                  </h4>
-                                </div>
-                                <p className="text-xs text-[var(--text-secondary)] mt-0.5 line-clamp-2">
-                                  {plan.description || "Sem descrição cadastrada."}
-                                </p>
-                              </div>
-
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 shadow-none",
-                                  !isArchived
-                                    ? "bg-emerald-50 text-emerald-800 border-emerald-200/80 dark:bg-emerald-500/10 dark:text-emerald-400"
-                                    : "bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400"
-                                )}
-                              >
-                                {!isArchived ? "Ativo" : "Arquivado"}
-                              </Badge>
-                            </div>
-
-                            {/* Preço e Periodicidade */}
-                            <div className="p-3.5 rounded-xl bg-[var(--surface-muted)]/60 border border-[var(--border-subtle)]">
-                              <div className="flex items-baseline gap-1.5">
-                                <span className="text-2xl font-black text-[var(--text-primary)] tracking-tight">
-                                  {plan.amountCents != null ? formatCurrency(plan.amountCents) : "R$ 0,00"}
-                                </span>
-                                <span className="text-xs text-muted-foreground font-medium">
-                                  /{cycleLabels[plan.cycle as keyof typeof cycleLabels]?.toLowerCase() ?? plan.cycle.toLowerCase()}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2 text-[11px] text-[var(--text-secondary)] mt-1.5">
-                                <span>
-                                  Pessoas:{" "}
-                                  <strong className="text-[var(--text-primary)]">
-                                    {plan.memberLimit ?? "Ilimitado"}
-                                  </strong>
-                                </span>
-                                <span>·</span>
-                                <span>
-                                  Unidades:{" "}
-                                  <strong className="text-[var(--text-primary)]">
-                                    {plan.locationLimit ?? "Ilimitado"}
-                                  </strong>
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Recursos e Destaques */}
-                            {plan.features ? (
-                              <div className="flex flex-col gap-1.5 text-xs text-[var(--text-secondary)]">
-                                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                  Recursos inclusos
-                                </span>
-                                <ul className="flex flex-col gap-1">
-                                  {plan.features
-                                    .split("\n")
-                                    .filter(Boolean)
-                                    .slice(0, 4)
-                                    .map((feat, idx) => (
-                                      <li key={idx} className="flex items-start gap-1.5 text-xs text-[var(--text-primary)]">
-                                        <Check className="size-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                                        <span className="line-clamp-1">{feat.trim()}</span>
-                                      </li>
-                                    ))}
-                                </ul>
-                              </div>
-                            ) : null}
-
-                            {/* Indicador de Empresas com esse plano */}
-                            <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-[var(--border-subtle)]">
-                              <span>Empresas ativas neste plano:</span>
-                              <Badge variant="outline" className="text-[10px] font-bold px-1.5 py-0 shadow-none">
-                                {assignedCount} {assignedCount === 1 ? "empresa" : "empresas"}
-                              </Badge>
-                            </div>
-                          </div>
-
-                          {/* Ações do Card */}
-                          <div className="flex items-center gap-2 pt-4 mt-4 border-t border-[var(--border-subtle)]">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setEditPlanTarget(plan)}
-                              className="flex-1 h-8 text-xs font-semibold cursor-pointer"
-                            >
-                              <Edit3 className="size-3 mr-1" />
-                              Editar
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setApplyPlanTarget(plan)}
-                              className="flex-1 h-8 text-xs font-semibold bg-[var(--brand-soft)] text-[var(--brand-900)] hover:bg-[var(--brand-soft)]/80 border-[var(--brand-700)]/20 cursor-pointer"
-                            >
-                              <Zap className="size-3 mr-1 text-[var(--brand-700)]" />
-                              Aplicar
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setDeletePlanTarget(plan)}
-                              className="h-8 text-xs font-semibold text-destructive hover:bg-destructive/10 hover:text-destructive px-2.5 cursor-pointer"
-                              title="Excluir plano pronto"
-                            >
-                              <Trash2 className="size-3.5" />
-                            </Button>
-                          </div>
-                        </Card>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <EmptyState
-                    icon={Sparkles}
-                    title="Nenhum plano pronto cadastrado"
-                    description="Crie modelos de planos com limites e preços para agilizar o registro de assinaturas das empresas."
+                    title="Nenhum plano cadastrado"
+                    description="Crie modelos para agilizar o registro das assinaturas."
                     action={
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={() =>
-                            handleRunAction(
-                              () => seedDefaultPlatformPlansAction(),
-                              "Modelos padrão carregados com sucesso!"
-                            )
-                          }
-                        >
-                          Carregar sugestões padrão
-                        </Button>
-                        <Button
-                          onClick={() => setCreatePlanOpen(true)}
-                          className="bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
-                        >
-                          Criar primeiro plano
-                        </Button>
-                      </div>
+                      <Button
+                        variant="outline"
+                        disabled={pending}
+                        onClick={() =>
+                          handleRunAction(
+                            () => seedDefaultPlatformPlansAction(),
+                            "Modelos padrão carregados.",
+                          )
+                        }
+                      >
+                        Carregar modelos padrão
+                      </Button>
                     }
                   />
                 )}
-              </div>
+              </TabsContent>
             )}
-          </div>
-        )}
 
-        {/* 4. VISÃO DE USO E LIMITES (usage) */}
-        {view === "usage" && !!organizations.length && (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {organizations.map((org) => {
-              const sub = org.subscription;
-              const memberLimit = sub?.memberLimit ?? null;
-              const locationLimit = sub?.locationLimit ?? null;
-              const isMemberOver = memberLimit !== null && org.membersCount > memberLimit;
-              const isLocationOver = locationLimit !== null && org.locationsCount > locationLimit;
-              const isOverLimit = isMemberOver || isLocationOver;
-
-              const memberPct = memberLimit ? Math.min(100, Math.round((org.membersCount / memberLimit) * 100)) : null;
-              const locationPct = locationLimit ? Math.min(100, Math.round((org.locationsCount / locationLimit) * 100)) : null;
-
-              return (
-                <Card
-                  key={org.id}
-                  className="flex flex-col justify-between rounded-2xl border border-border/70 bg-card p-5 transition-all duration-200 hover:border-border hover:shadow-xs"
+            {view === "usage" && !!organizations.length && (
+              <PlatformPanel
+                title="Consumo por organização"
+                description="Pessoas e unidades ativas em relação aos limites contratados."
+                className="sa-list-panel"
+              >
+                <PlatformTable
+                  label="Uso e limites"
+                  columns={[
+                    "Organização",
+                    "Pessoas",
+                    "Unidades",
+                    "Operação",
+                    "Ações",
+                  ]}
                 >
-                  <div className="flex flex-col gap-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h2 className="text-base font-bold text-[var(--text-primary)] truncate">
-                          {org.name}
-                        </h2>
-                        <p className="text-xs text-muted-foreground">/{org.slug}</p>
-                      </div>
-                      {isOverLimit && (
-                        <Badge
-                          variant="outline"
-                          className="bg-rose-50 text-rose-700 border-rose-200 text-[10px] font-semibold"
-                        >
-                          <AlertTriangle className="size-3 mr-1" />
-                          Acima do limite
-                        </Badge>
-                      )}
-                    </div>
-
-                    {/* Barras de Consumo */}
-                    <div className="flex flex-col gap-3 p-3.5 bg-[var(--surface-muted)]/60 rounded-xl border border-[var(--border-subtle)] text-xs">
-                      <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-muted-foreground">Pessoas ativas:</span>
-                          <strong className={cn("font-semibold", isMemberOver ? "text-rose-600" : "")}>
-                            {org.membersCount} {memberLimit ? `/ ${memberLimit}` : "(Sem limite)"}
-                          </strong>
-                        </div>
-                        {memberLimit && (
-                          <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
-                            <div
-                              className={cn(
-                                "h-full rounded-full transition-all",
-                                isMemberOver ? "bg-rose-500" : "bg-[var(--brand-700)]"
-                              )}
-                              style={{ width: `${memberPct}%` }}
-                            />
-                          </div>
-                        )}
-                      </div>
-
-                      <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-muted-foreground">Unidades ativas:</span>
-                          <strong className={cn("font-semibold", isLocationOver ? "text-rose-600" : "")}>
-                            {org.locationsCount} {locationLimit ? `/ ${locationLimit}` : "(Sem limite)"}
-                          </strong>
-                        </div>
-                        {locationLimit && (
-                          <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
-                            <div
-                              className={cn(
-                                "h-full rounded-full transition-all",
-                                isLocationOver ? "bg-rose-500" : "bg-[var(--brand-700)]"
-                              )}
-                              style={{ width: `${locationPct}%` }}
-                            />
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[var(--border-subtle)] text-center">
-                        <div>
-                          <span className="text-[10px] text-muted-foreground block">Processos</span>
-                          <strong className="text-xs font-bold text-[var(--text-primary)]">
-                            {org.processesCount}
-                          </strong>
-                        </div>
-                        <div>
-                          <span className="text-[10px] text-muted-foreground block">Tarefas</span>
-                          <strong className="text-xs font-bold text-[var(--text-primary)]">
-                            {org.tasksCount}
-                          </strong>
-                        </div>
-                        <div>
-                          <span className="text-[10px] text-muted-foreground block">Execuções</span>
-                          <strong className="text-xs font-bold text-[var(--text-primary)]">
-                            {org.executionsCount}
-                          </strong>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="pt-4 mt-4 border-t border-[var(--border-subtle)]">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSubscriptionTarget(org)}
-                      className="w-full h-8 text-xs font-semibold gap-1.5"
-                    >
-                      <Layers className="size-3.5" />
-                      Ajustar cotas / plano
-                    </Button>
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-
-        {/* 5. VISÃO DE SUPORTE (support) */}
-        {view === "support" && !!logs.length && (
-          <div className="flex flex-col gap-3">
-            {logs.map((log) => {
-              const statusCfg = log.supportStatus ? supportLabels[log.supportStatus] : null;
-
-              return (
-                <Card
-                  key={log.id}
-                  className="rounded-2xl border border-border/70 bg-card p-4 sm:p-5 transition-all hover:border-border hover:shadow-xs"
-                >
-                  <div className="flex flex-col gap-2.5">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <Link
-                          href={href("support", log.organizationId)}
-                          className="font-bold text-sm text-[var(--text-primary)] hover:underline flex items-center gap-1"
-                        >
-                          <Building2 className="size-3.5 text-[var(--brand-700)]" />
-                          {log.orgName}
-                        </Link>
-                        {statusCfg && (
-                          <Badge
+                  {organizations.map((org) => {
+                    const over =
+                      (org.subscription?.memberLimit != null &&
+                        org.membersCount > org.subscription.memberLimit) ||
+                      (org.subscription?.locationLimit != null &&
+                        org.locationsCount > org.subscription.locationLimit);
+                    return (
+                      <TableRow key={org.id}>
+                        <TableCell>
+                          <PlatformIdentity
+                            name={org.name}
+                            description={
+                              org.subscription?.planName ??
+                              "Sem plano registrado"
+                            }
+                          />
+                          {over && (
+                            <PlatformStatus tone="danger">
+                              Acima do limite
+                            </PlatformStatus>
+                          )}
+                        </TableCell>
+                        <TableCell data-label="Pessoas">
+                          <PlatformQuota
+                            label="Pessoas"
+                            count={org.membersCount}
+                            limit={org.subscription?.memberLimit ?? null}
+                          />
+                        </TableCell>
+                        <TableCell data-label="Unidades">
+                          <PlatformQuota
+                            label="Unidades"
+                            count={org.locationsCount}
+                            limit={org.subscription?.locationLimit ?? null}
+                          />
+                        </TableCell>
+                        <TableCell data-label="Operação">
+                          <span>
+                            {org.processesCount} processos · {org.tasksCount}{" "}
+                            tarefas
+                          </span>
+                          <span className="sa-secondary">
+                            {org.executionsCount} execuções
+                          </span>
+                        </TableCell>
+                        <TableCell className="sa-row-actions">
+                          <Button
                             variant="outline"
-                            className={cn("text-[10px] font-semibold px-2 py-0.5", statusCfg.color)}
+                            size="sm"
+                            onClick={() => openSubscriptionModal(org)}
                           >
-                            {statusCfg.label}
-                          </Badge>
+                            Ajustar limites
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </PlatformTable>
+              </PlatformPanel>
+            )}
+
+            {isLogView && !!logs.length && (
+              <PlatformPanel
+                title={
+                  view === "support"
+                    ? "Histórico de atendimentos"
+                    : "Atividade administrativa"
+                }
+                description={
+                  view === "support"
+                    ? "Registros internos de atendimento por organização."
+                    : "Ações, responsáveis e justificativas da plataforma."
+                }
+                className="sa-list-panel"
+              >
+                <PlatformTable
+                  label={view === "support" ? "Atendimentos" : "Auditoria"}
+                  columns={[
+                    view === "support"
+                      ? "Organização / atendimento"
+                      : "Ação / organização",
+                    "Responsável",
+                    "Data e hora",
+                  ]}
+                >
+                  {logs.map((log) => (
+                    <TableRow key={log.id}>
+                      <TableCell>
+                        <div className="sa-log-title">
+                          {view === "support"
+                            ? log.orgName
+                            : (actionLabels[log.action] ?? uiLabel(log.action))}
+                        </div>
+                        {view === "support" ? (
+                          <PlatformStatus
+                            tone={
+                              log.supportStatus === "RESOLVED"
+                                ? "success"
+                                : log.supportStatus === "FOLLOW_UP"
+                                  ? "warning"
+                                  : "neutral"
+                            }
+                          >
+                            {supportLabels[log.supportStatus ?? ""]?.label ??
+                              "Atendimento"}
+                          </PlatformStatus>
+                        ) : (
+                          <Link
+                            className="sa-secondary sa-text-link"
+                            href={href("audit", log.organizationId)}
+                          >
+                            {log.orgName}
+                          </Link>
                         )}
-                      </div>
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Clock className="size-3" />
-                        {formatDateTime(log.createdAt)} · {log.actorName}
-                      </span>
-                    </div>
+                        <details className="sa-details">
+                          <summary>
+                            {view === "support"
+                              ? "Ler atendimento"
+                              : "Ver detalhes"}
+                          </summary>
+                          {log.note ? (
+                            <p className="sa-note">{log.note}</p>
+                          ) : (
+                            <p className="sa-secondary">
+                              Sem observações registradas.
+                            </p>
+                          )}
+                          {view === "audit" && (
+                            <dl className="sa-facts sa-technical">
+                              <div>
+                                <dt>Ação</dt>
+                                <dd>{log.action}</dd>
+                              </div>
+                              <div>
+                                <dt>Recurso</dt>
+                                <dd>
+                                  {log.entityType} ({log.entityId})
+                                </dd>
+                              </div>
+                              <div>
+                                <dt>Organização</dt>
+                                <dd>{log.organizationId}</dd>
+                              </div>
+                            </dl>
+                          )}
+                        </details>
+                      </TableCell>
+                      <TableCell data-label="Responsável">
+                        {log.actorName}
+                      </TableCell>
+                      <TableCell data-label="Data e hora">
+                        <time dateTime={log.createdAt}>
+                          {formatDateTime(log.createdAt)}
+                        </time>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </PlatformTable>
+              </PlatformPanel>
+            )}
 
-                    {log.note && (
-                      <p className="text-xs text-[var(--text-primary)] whitespace-pre-wrap bg-[var(--surface-muted)]/50 p-3 rounded-xl border border-[var(--border-subtle)]">
-                        {log.note}
-                      </p>
-                    )}
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
+            {
+              !(
+                view === "subscriptions" && subscriptionSubView === "plans"
+              ) && (
+                <PlatformPagination {...pagination} href={(page) => href(view, props.organizationFilter, page)} />
+              )}
+          </>
         )}
-
-        {/* 6. VISÃO DE AUDITORIA (audit) */}
-        {view === "audit" && !!logs.length && (
-          <div className="flex flex-col gap-3">
-            {logs.map((log) => (
-              <Card
-                key={log.id}
-                className="rounded-2xl border border-border/70 bg-card p-4 sm:p-5 transition-all hover:border-border hover:shadow-xs"
-              >
-                <div className="flex flex-col gap-2.5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <Badge
-                        variant="outline"
-                        className="bg-[var(--brand-soft)]/60 text-[var(--brand-900)] border-[var(--brand-700)]/30 text-xs font-semibold"
-                      >
-                        <Activity className="size-3 mr-1" />
-                        {actionLabels[log.action] ?? uiLabel(log.action)}
-                      </Badge>
-                      <Link
-                        href={href("audit", log.organizationId)}
-                        className="text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline"
-                      >
-                        {log.orgName}
-                      </Link>
-                    </div>
-                    <span className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Clock className="size-3" />
-                      {formatDateTime(log.createdAt)} · {log.actorName}
-                    </span>
-                  </div>
-
-                  {log.note && (
-                    <div className="text-xs text-[var(--text-primary)] bg-[var(--surface-muted)]/50 p-3 rounded-xl border border-[var(--border-subtle)]">
-                      <span className="font-semibold text-muted-foreground block mb-1">
-                        Justificativa / Motivo:
-                      </span>
-                      <p className="whitespace-pre-wrap">{log.note}</p>
-                    </div>
-                  )}
-
-                  <details className="text-[11px] text-muted-foreground cursor-pointer pt-1">
-                    <summary className="hover:text-foreground">Detalhes técnicos do registro</summary>
-                    <div className="p-2.5 mt-1.5 rounded-lg bg-[var(--surface-muted)] font-mono text-[10px] flex flex-col gap-1">
-                      <div>
-                        <strong>Ação:</strong> {log.action}
-                      </div>
-                      <div>
-                        <strong>Recurso:</strong> {log.entityType} ({log.entityId})
-                      </div>
-                      <div>
-                        <strong>Organização ID:</strong> {log.organizationId}
-                      </div>
-                    </div>
-                  </details>
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
-
-        {/* Paginação Padronizada */}
-        {pagination.total > 0 && (
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-[var(--border-subtle)] text-xs text-muted-foreground">
-            <p>
-              Página {pagination.page} de {pagination.pages} · Mostrando{" "}
-              {(pagination.page - 1) * pagination.pageSize + 1}–
-              {Math.min(pagination.page * pagination.pageSize, pagination.total)} de{" "}
-              {pagination.total} registros
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={pagination.page <= 1}
-                render={
-                  pagination.page > 1 ? (
-                    <Link
-                      href={href(
-                        view,
-                        props.organizationFilter,
-                        pagination.page - 1
-                      )}
-                    />
-                  ) : undefined
-                }
-                className="h-8 text-xs font-semibold gap-1"
-              >
-                <ChevronLeft className="size-3.5" />
-                Anterior
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={pagination.page >= pagination.pages}
-                render={
-                  pagination.page < pagination.pages ? (
-                    <Link
-                      href={href(
-                        view,
-                        props.organizationFilter,
-                        pagination.page + 1
-                      )}
-                    />
-                  ) : undefined
-                }
-                className="h-8 text-xs font-semibold gap-1"
-              >
-                Próxima
-                <ChevronRight className="size-3.5" />
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
+      </PlatformPage>
 
       {/* MODAL 1: Suspender ou Reativar Acesso */}
       <Modal
@@ -1906,16 +1521,25 @@ export function SuperadminDashboardClient(props: Props) {
         title={`${statusTarget?.status === "ACTIVE" ? "Suspender" : "Reativar"} acesso`}
       >
         {statusTarget && (
-          <form
+          <PlatformForm
             action={async (form) => {
-              const nextStatus = statusTarget.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
+              const nextStatus =
+                statusTarget.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
               const reason = String(form.get("reason") ?? "");
               await handleRunAction(
                 () =>
                   statusTarget.kind === "organization"
-                    ? toggleOrganizationStatusAction(statusTarget.id, nextStatus, reason)
-                    : updatePlatformUserStatusAction(statusTarget.id, nextStatus, reason),
-                "Status de acesso atualizado com sucesso."
+                    ? toggleOrganizationStatusAction(
+                        statusTarget.id,
+                        nextStatus,
+                        reason,
+                      )
+                    : updatePlatformUserStatusAction(
+                        statusTarget.id,
+                        nextStatus,
+                        reason,
+                      ),
+                "Status de acesso atualizado com sucesso.",
               );
             }}
             className="flex flex-col gap-4"
@@ -1925,19 +1549,21 @@ export function SuperadminDashboardClient(props: Props) {
                 "p-3 rounded-xl border text-xs",
                 statusTarget.status === "ACTIVE"
                   ? "bg-rose-50 border-rose-200 text-rose-800"
-                  : "bg-emerald-50 border-emerald-200 text-emerald-800"
+                  : "bg-emerald-50 border-emerald-200 text-emerald-800",
               )}
             >
               <p>
                 {statusTarget.status === "ACTIVE"
-                  ? `Atenção: A suspensão impedirá imediatamente o acesso ${statusTarget.kind === "organization"
-                    ? "de todas as pessoas e operações vinculadas à organização"
-                    : "deste usuário na plataforma em todas as organizações"
-                  }.`
-                  : `A reativação restabelecerá o acesso ${statusTarget.kind === "organization"
-                    ? "dos colaboradores à organização"
-                    : "deste usuário na plataforma"
-                  }.`}
+                  ? `Atenção: A suspensão impedirá imediatamente o acesso ${
+                      statusTarget.kind === "organization"
+                        ? "de todas as pessoas e operações vinculadas à organização"
+                        : "deste usuário na plataforma em todas as organizações"
+                    }.`
+                  : `A reativação restabelecerá o acesso ${
+                      statusTarget.kind === "organization"
+                        ? "dos colaboradores à organização"
+                        : "deste usuário na plataforma"
+                    }.`}
               </p>
             </div>
 
@@ -1946,7 +1572,10 @@ export function SuperadminDashboardClient(props: Props) {
             </div>
 
             <Field>
-              <FieldLabel htmlFor="status-reason" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="status-reason"
+                className="text-xs font-semibold"
+              >
                 Motivo da alteração (obrigatório para auditoria)
               </FieldLabel>
               <Textarea
@@ -1978,14 +1607,16 @@ export function SuperadminDashboardClient(props: Props) {
                   "h-9 text-xs font-semibold text-white",
                   statusTarget.status === "ACTIVE"
                     ? "bg-destructive hover:bg-destructive/90"
-                    : "bg-[var(--brand-900)] hover:bg-[var(--brand-700)]"
+                    : "bg-[var(--brand-900)] hover:bg-[var(--brand-700)]",
                 )}
               >
-                {pending && <Spinner className="size-3 mr-1.5" />}
-                {statusTarget.status === "ACTIVE" ? "Confirmar suspensão" : "Confirmar reativação"}
+
+                {statusTarget.status === "ACTIVE"
+                  ? "Confirmar suspensão"
+                  : "Confirmar reativação"}
               </Button>
             </div>
-          </form>
+          </PlatformForm>
         )}
       </Modal>
 
@@ -1997,11 +1628,13 @@ export function SuperadminDashboardClient(props: Props) {
         className="max-h-[90dvh] overflow-y-auto sm:max-w-xl"
       >
         {subscriptionTarget && (
-          <form
+          <PlatformForm
             key={subscriptionTarget.id}
             action={async (form) => {
               const amountNum =
-                subAmount.trim() === "" ? null : Number(subAmount.replace(",", "."));
+                subAmount.trim() === ""
+                  ? null
+                  : Number(subAmount.replace(",", "."));
               await handleRunAction(
                 () =>
                   saveManualSubscriptionAction(
@@ -2016,20 +1649,27 @@ export function SuperadminDashboardClient(props: Props) {
                           : Math.round(amountNum * 100),
                       startsOn: subStartsOn,
                       endsOn: subEndsOn.trim() || null,
-                      memberLimit: subMemberLimit.trim() === "" ? null : Number(subMemberLimit),
-                      locationLimit: subLocationLimit.trim() === "" ? null : Number(subLocationLimit),
+                      memberLimit:
+                        subMemberLimit.trim() === ""
+                          ? null
+                          : Number(subMemberLimit),
+                      locationLimit:
+                        subLocationLimit.trim() === ""
+                          ? null
+                          : Number(subLocationLimit),
                       notes: subNotes.trim(),
                     },
-                    String(form.get("reason") ?? "")
+                    String(form.get("reason") ?? ""),
                   ),
-                "Assinatura salva no histórico do cliente."
+                "Assinatura salva no histórico do cliente.",
               );
             }}
             className="flex flex-col gap-4 text-xs"
           >
             <p className="text-muted-foreground">
-              Condições contratuais de <strong>{subscriptionTarget.name}</strong>. O controle
-              financeiro e cobrança são manuais.
+              Condições contratuais de{" "}
+              <strong>{subscriptionTarget.name}</strong>. O controle financeiro
+              e cobrança são manuais.
             </p>
 
             {/* SELETOR DE PLANO PRONTO (MODELO) */}
@@ -2049,7 +1689,9 @@ export function SuperadminDashboardClient(props: Props) {
                 )}
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Selecione um plano pronto para preencher os valores, ciclo e limites abaixo automaticamente. Você pode customizá-los livremente antes de salvar.
+                Selecione um plano pronto para preencher os valores, ciclo e
+                limites abaixo automaticamente. Você pode customizá-los
+                livremente antes de salvar.
               </p>
               <NativeSelect
                 id="preset-plan-selector"
@@ -2064,8 +1706,13 @@ export function SuperadminDashboardClient(props: Props) {
                 {props.platformPlans?.map((plan) => (
                   <NativeSelectOption key={plan.id} value={plan.id}>
                     {plan.name} —{" "}
-                    {plan.amountCents != null ? formatCurrency(plan.amountCents) : "R$ 0,00"} (
-                    {cycleLabels[plan.cycle as keyof typeof cycleLabels] ?? plan.cycle})
+                    {plan.amountCents != null
+                      ? formatCurrency(plan.amountCents)
+                      : "R$ 0,00"}{" "}
+                    (
+                    {cycleLabels[plan.cycle as keyof typeof cycleLabels] ??
+                      plan.cycle}
+                    )
                   </NativeSelectOption>
                 ))}
               </NativeSelect>
@@ -2073,7 +1720,10 @@ export function SuperadminDashboardClient(props: Props) {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field>
-                <FieldLabel htmlFor="plan-name" className="text-xs font-semibold">
+                <FieldLabel
+                  htmlFor="plan-name"
+                  className="text-xs font-semibold"
+                >
                   Nome do plano *
                 </FieldLabel>
                 <Input
@@ -2091,7 +1741,10 @@ export function SuperadminDashboardClient(props: Props) {
               </Field>
 
               <Field>
-                <FieldLabel htmlFor="subscription-status" className="text-xs font-semibold">
+                <FieldLabel
+                  htmlFor="subscription-status"
+                  className="text-xs font-semibold"
+                >
                   Situação contratual *
                 </FieldLabel>
                 <NativeSelect
@@ -2102,11 +1755,13 @@ export function SuperadminDashboardClient(props: Props) {
                   disabled={pending}
                   className="w-full text-xs h-11"
                 >
-                  {Object.entries(subscriptionStatusLabels).map(([value, label]) => (
-                    <NativeSelectOption key={value} value={value}>
-                      {label}
-                    </NativeSelectOption>
-                  ))}
+                  {Object.entries(subscriptionStatusLabels).map(
+                    ([value, label]) => (
+                      <NativeSelectOption key={value} value={value}>
+                        {label}
+                      </NativeSelectOption>
+                    ),
+                  )}
                 </NativeSelect>
               </Field>
 
@@ -2122,9 +1777,13 @@ export function SuperadminDashboardClient(props: Props) {
                   disabled={pending}
                   className="w-full text-xs h-11"
                 >
-                  <NativeSelectOption value="MONTHLY">Mensal</NativeSelectOption>
+                  <NativeSelectOption value="MONTHLY">
+                    Mensal
+                  </NativeSelectOption>
                   <NativeSelectOption value="YEARLY">Anual</NativeSelectOption>
-                  <NativeSelectOption value="CUSTOM">Personalizada</NativeSelectOption>
+                  <NativeSelectOption value="CUSTOM">
+                    Personalizada
+                  </NativeSelectOption>
                 </NativeSelect>
               </Field>
 
@@ -2148,7 +1807,10 @@ export function SuperadminDashboardClient(props: Props) {
               </Field>
 
               <Field>
-                <FieldLabel htmlFor="starts-on" className="text-xs font-semibold">
+                <FieldLabel
+                  htmlFor="starts-on"
+                  className="text-xs font-semibold"
+                >
                   Início da vigência *
                 </FieldLabel>
                 <Input
@@ -2179,7 +1841,10 @@ export function SuperadminDashboardClient(props: Props) {
               </Field>
 
               <Field>
-                <FieldLabel htmlFor="member-limit" className="text-xs font-semibold">
+                <FieldLabel
+                  htmlFor="member-limit"
+                  className="text-xs font-semibold"
+                >
                   Limite de pessoas ativas
                 </FieldLabel>
                 <Input
@@ -2198,7 +1863,10 @@ export function SuperadminDashboardClient(props: Props) {
               </Field>
 
               <Field>
-                <FieldLabel htmlFor="location-limit" className="text-xs font-semibold">
+                <FieldLabel
+                  htmlFor="location-limit"
+                  className="text-xs font-semibold"
+                >
                   Limite de unidades ativas
                 </FieldLabel>
                 <Input
@@ -2218,7 +1886,10 @@ export function SuperadminDashboardClient(props: Props) {
             </div>
 
             <Field>
-              <FieldLabel htmlFor="subscription-notes" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="subscription-notes"
+                className="text-xs font-semibold"
+              >
                 Observações comerciais
               </FieldLabel>
               <Textarea
@@ -2234,7 +1905,10 @@ export function SuperadminDashboardClient(props: Props) {
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="subscription-reason" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="subscription-reason"
+                className="text-xs font-semibold"
+              >
                 Motivo ou justificativa da alteração (opcional para histórico)
               </FieldLabel>
               <Textarea
@@ -2262,11 +1936,11 @@ export function SuperadminDashboardClient(props: Props) {
                 disabled={pending}
                 className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
               >
-                {pending && <Spinner className="size-3 mr-1.5" />}
+
                 Salvar assinatura
               </Button>
             </div>
-          </form>
+          </PlatformForm>
         )}
       </Modal>
 
@@ -2276,10 +1950,11 @@ export function SuperadminDashboardClient(props: Props) {
         title="Criar novo modelo de plano pronto"
         className="max-h-[90dvh] overflow-y-auto sm:max-w-xl"
       >
-        <form
+        <PlatformForm
           action={async (form) => {
             const amountVal = String(form.get("amount") ?? "").trim();
-            const amountNum = amountVal === "" ? null : Number(amountVal.replace(",", "."));
+            const amountNum =
+              amountVal === "" ? null : Number(amountVal.replace(",", "."));
             const memberLim = nullableNumber(form, "memberLimit");
             const locationLim = nullableNumber(form, "locationLimit");
 
@@ -2287,8 +1962,10 @@ export function SuperadminDashboardClient(props: Props) {
               () =>
                 createPlatformPlanAction({
                   name: String(form.get("name") ?? "").trim(),
-                  description: String(form.get("description") ?? "").trim() || null,
-                  cycle: (form.get("cycle") ?? "MONTHLY") as "MONTHLY" | "YEARLY" | "CUSTOM",
+                  description:
+                    String(form.get("description") ?? "").trim() || null,
+                  cycle: (form.get("cycle") ?? "MONTHLY") as
+                    "MONTHLY" | "YEARLY" | "CUSTOM",
                   amountCents:
                     amountNum === null || Number.isNaN(amountNum)
                       ? null
@@ -2296,20 +1973,26 @@ export function SuperadminDashboardClient(props: Props) {
                   memberLimit: memberLim,
                   locationLimit: locationLim,
                   features: String(form.get("features") ?? "").trim() || null,
-                  status: (form.get("status") ?? "ACTIVE") as "ACTIVE" | "ARCHIVED",
+                  status: (form.get("status") ?? "ACTIVE") as
+                    "ACTIVE" | "ARCHIVED",
                 }),
-              "Plano pronto criado com sucesso!"
+              "Plano pronto criado com sucesso!",
             );
           }}
           className="flex flex-col gap-4 text-xs"
         >
           <p className="text-muted-foreground">
-            Defina os parâmetros do plano modelo. Ao registrar ou alterar a assinatura de qualquer empresa, você poderá carregar este plano pré-configurado.
+            Defina os parâmetros do plano modelo. Ao registrar ou alterar a
+            assinatura de qualquer empresa, você poderá carregar este plano
+            pré-configurado.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field className="sm:col-span-2">
-              <FieldLabel htmlFor="plan-create-name" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="plan-create-name"
+                className="text-xs font-semibold"
+              >
                 Nome do plano *
               </FieldLabel>
               <Input
@@ -2325,7 +2008,10 @@ export function SuperadminDashboardClient(props: Props) {
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="plan-create-cycle" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="plan-create-cycle"
+                className="text-xs font-semibold"
+              >
                 Periodicidade padrão *
               </FieldLabel>
               <NativeSelect
@@ -2337,12 +2023,17 @@ export function SuperadminDashboardClient(props: Props) {
               >
                 <NativeSelectOption value="MONTHLY">Mensal</NativeSelectOption>
                 <NativeSelectOption value="YEARLY">Anual</NativeSelectOption>
-                <NativeSelectOption value="CUSTOM">Personalizada</NativeSelectOption>
+                <NativeSelectOption value="CUSTOM">
+                  Personalizada
+                </NativeSelectOption>
               </NativeSelect>
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="plan-create-amount" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="plan-create-amount"
+                className="text-xs font-semibold"
+              >
                 Valor contratual (R$)
               </FieldLabel>
               <Input
@@ -2359,7 +2050,10 @@ export function SuperadminDashboardClient(props: Props) {
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="plan-create-member-limit" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="plan-create-member-limit"
+                className="text-xs font-semibold"
+              >
                 Limite de pessoas ativas
               </FieldLabel>
               <Input
@@ -2376,7 +2070,10 @@ export function SuperadminDashboardClient(props: Props) {
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="plan-create-location-limit" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="plan-create-location-limit"
+                className="text-xs font-semibold"
+              >
                 Limite de unidades ativas
               </FieldLabel>
               <Input
@@ -2393,7 +2090,10 @@ export function SuperadminDashboardClient(props: Props) {
             </Field>
 
             <Field className="sm:col-span-2">
-              <FieldLabel htmlFor="plan-create-status" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="plan-create-status"
+                className="text-xs font-semibold"
+              >
                 Situação no catálogo
               </FieldLabel>
               <NativeSelect
@@ -2403,14 +2103,21 @@ export function SuperadminDashboardClient(props: Props) {
                 disabled={pending}
                 className="w-full text-xs h-11"
               >
-                <NativeSelectOption value="ACTIVE">Ativo (sugerido para novas assinaturas)</NativeSelectOption>
-                <NativeSelectOption value="ARCHIVED">Arquivado (não sugerido para novos clientes)</NativeSelectOption>
+                <NativeSelectOption value="ACTIVE">
+                  Ativo (sugerido para novas assinaturas)
+                </NativeSelectOption>
+                <NativeSelectOption value="ARCHIVED">
+                  Arquivado (não sugerido para novos clientes)
+                </NativeSelectOption>
               </NativeSelect>
             </Field>
           </div>
 
           <Field>
-            <FieldLabel htmlFor="plan-create-desc" className="text-xs font-semibold">
+            <FieldLabel
+              htmlFor="plan-create-desc"
+              className="text-xs font-semibold"
+            >
               Descrição comercial do plano
             </FieldLabel>
             <Textarea
@@ -2424,7 +2131,10 @@ export function SuperadminDashboardClient(props: Props) {
           </Field>
 
           <Field>
-            <FieldLabel htmlFor="plan-create-features" className="text-xs font-semibold">
+            <FieldLabel
+              htmlFor="plan-create-features"
+              className="text-xs font-semibold"
+            >
               Recursos inclusos e destaques (uma linha por item)
             </FieldLabel>
             <Textarea
@@ -2452,11 +2162,11 @@ export function SuperadminDashboardClient(props: Props) {
               disabled={pending}
               className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
             >
-              {pending && <Spinner className="size-3 mr-1.5" />}
+
               Criar modelo de plano
             </Button>
           </div>
-        </form>
+        </PlatformForm>
       </Modal>
 
       {/* MODAL: Editar Plano Pronto */}
@@ -2467,11 +2177,12 @@ export function SuperadminDashboardClient(props: Props) {
         className="max-h-[90dvh] overflow-y-auto sm:max-w-xl"
       >
         {editPlanTarget && (
-          <form
+          <PlatformForm
             key={editPlanTarget.id}
             action={async (form) => {
               const amountVal = String(form.get("amount") ?? "").trim();
-              const amountNum = amountVal === "" ? null : Number(amountVal.replace(",", "."));
+              const amountNum =
+                amountVal === "" ? null : Number(amountVal.replace(",", "."));
               const memberLim = nullableNumber(form, "memberLimit");
               const locationLim = nullableNumber(form, "locationLimit");
 
@@ -2479,8 +2190,10 @@ export function SuperadminDashboardClient(props: Props) {
                 () =>
                   updatePlatformPlanAction(editPlanTarget.id, {
                     name: String(form.get("name") ?? "").trim(),
-                    description: String(form.get("description") ?? "").trim() || null,
-                    cycle: (form.get("cycle") ?? "MONTHLY") as "MONTHLY" | "YEARLY" | "CUSTOM",
+                    description:
+                      String(form.get("description") ?? "").trim() || null,
+                    cycle: (form.get("cycle") ?? "MONTHLY") as
+                      "MONTHLY" | "YEARLY" | "CUSTOM",
                     amountCents:
                       amountNum === null || Number.isNaN(amountNum)
                         ? null
@@ -2488,16 +2201,20 @@ export function SuperadminDashboardClient(props: Props) {
                     memberLimit: memberLim,
                     locationLimit: locationLim,
                     features: String(form.get("features") ?? "").trim() || null,
-                    status: (form.get("status") ?? "ACTIVE") as "ACTIVE" | "ARCHIVED",
+                    status: (form.get("status") ?? "ACTIVE") as
+                      "ACTIVE" | "ARCHIVED",
                   }),
-                "Plano pronto atualizado com sucesso!"
+                "Plano pronto atualizado com sucesso!",
               );
             }}
             className="flex flex-col gap-4 text-xs"
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field className="sm:col-span-2">
-                <FieldLabel htmlFor="plan-edit-name" className="text-xs font-semibold">
+                <FieldLabel
+                  htmlFor="plan-edit-name"
+                  className="text-xs font-semibold"
+                >
                   Nome do plano *
                 </FieldLabel>
                 <Input
@@ -2513,7 +2230,10 @@ export function SuperadminDashboardClient(props: Props) {
               </Field>
 
               <Field>
-                <FieldLabel htmlFor="plan-edit-cycle" className="text-xs font-semibold">
+                <FieldLabel
+                  htmlFor="plan-edit-cycle"
+                  className="text-xs font-semibold"
+                >
                   Periodicidade padrão *
                 </FieldLabel>
                 <NativeSelect
@@ -2523,14 +2243,21 @@ export function SuperadminDashboardClient(props: Props) {
                   disabled={pending}
                   className="w-full text-xs h-11"
                 >
-                  <NativeSelectOption value="MONTHLY">Mensal</NativeSelectOption>
+                  <NativeSelectOption value="MONTHLY">
+                    Mensal
+                  </NativeSelectOption>
                   <NativeSelectOption value="YEARLY">Anual</NativeSelectOption>
-                  <NativeSelectOption value="CUSTOM">Personalizada</NativeSelectOption>
+                  <NativeSelectOption value="CUSTOM">
+                    Personalizada
+                  </NativeSelectOption>
                 </NativeSelect>
               </Field>
 
               <Field>
-                <FieldLabel htmlFor="plan-edit-amount" className="text-xs font-semibold">
+                <FieldLabel
+                  htmlFor="plan-edit-amount"
+                  className="text-xs font-semibold"
+                >
                   Valor contratual (R$)
                 </FieldLabel>
                 <Input
@@ -2552,7 +2279,10 @@ export function SuperadminDashboardClient(props: Props) {
               </Field>
 
               <Field>
-                <FieldLabel htmlFor="plan-edit-member-limit" className="text-xs font-semibold">
+                <FieldLabel
+                  htmlFor="plan-edit-member-limit"
+                  className="text-xs font-semibold"
+                >
                   Limite de pessoas ativas
                 </FieldLabel>
                 <Input
@@ -2570,7 +2300,10 @@ export function SuperadminDashboardClient(props: Props) {
               </Field>
 
               <Field>
-                <FieldLabel htmlFor="plan-edit-location-limit" className="text-xs font-semibold">
+                <FieldLabel
+                  htmlFor="plan-edit-location-limit"
+                  className="text-xs font-semibold"
+                >
                   Limite de unidades ativas
                 </FieldLabel>
                 <Input
@@ -2588,7 +2321,10 @@ export function SuperadminDashboardClient(props: Props) {
               </Field>
 
               <Field className="sm:col-span-2">
-                <FieldLabel htmlFor="plan-edit-status" className="text-xs font-semibold">
+                <FieldLabel
+                  htmlFor="plan-edit-status"
+                  className="text-xs font-semibold"
+                >
                   Situação no catálogo
                 </FieldLabel>
                 <NativeSelect
@@ -2598,14 +2334,21 @@ export function SuperadminDashboardClient(props: Props) {
                   disabled={pending}
                   className="w-full text-xs h-11"
                 >
-                  <NativeSelectOption value="ACTIVE">Ativo (sugerido para novas assinaturas)</NativeSelectOption>
-                  <NativeSelectOption value="ARCHIVED">Arquivado (não sugerido)</NativeSelectOption>
+                  <NativeSelectOption value="ACTIVE">
+                    Ativo (sugerido para novas assinaturas)
+                  </NativeSelectOption>
+                  <NativeSelectOption value="ARCHIVED">
+                    Arquivado (não sugerido)
+                  </NativeSelectOption>
                 </NativeSelect>
               </Field>
             </div>
 
             <Field>
-              <FieldLabel htmlFor="plan-edit-desc" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="plan-edit-desc"
+                className="text-xs font-semibold"
+              >
                 Descrição comercial do plano
               </FieldLabel>
               <Textarea
@@ -2620,7 +2363,10 @@ export function SuperadminDashboardClient(props: Props) {
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="plan-edit-features" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="plan-edit-features"
+                className="text-xs font-semibold"
+              >
                 Recursos inclusos e destaques (uma linha por item)
               </FieldLabel>
               <Textarea
@@ -2649,11 +2395,11 @@ export function SuperadminDashboardClient(props: Props) {
                 disabled={pending}
                 className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
               >
-                {pending && <Spinner className="size-3 mr-1.5" />}
+
                 Salvar alterações
               </Button>
             </div>
-          </form>
+          </PlatformForm>
         )}
       </Modal>
 
@@ -2665,11 +2411,11 @@ export function SuperadminDashboardClient(props: Props) {
         className="sm:max-w-md"
       >
         {deletePlanTarget && (
-          <form
+          <PlatformForm
             action={async () => {
               await handleRunAction(
                 () => deletePlatformPlanAction(deletePlanTarget.id),
-                `Plano "${deletePlanTarget.name}" excluído do catálogo.`
+                `Plano "${deletePlanTarget.name}" excluído do catálogo.`,
               );
             }}
             className="flex flex-col gap-4 text-xs"
@@ -2680,7 +2426,11 @@ export function SuperadminDashboardClient(props: Props) {
                 Atenção ao remover modelo
               </div>
               <p className="mt-1 text-[11px] leading-relaxed">
-                Você está prestes a excluir o modelo <strong>{deletePlanTarget.name}</strong>. Empresas que já contratualizaram este plano continuarão com suas condições preservadas, mas o modelo não estará mais disponível para novas assinaturas.
+                Você está prestes a excluir o modelo{" "}
+                <strong>{deletePlanTarget.name}</strong>. Empresas que já
+                contratualizaram este plano continuarão com suas condições
+                preservadas, mas o modelo não estará mais disponível para novas
+                assinaturas.
               </p>
             </div>
 
@@ -2699,11 +2449,11 @@ export function SuperadminDashboardClient(props: Props) {
                 disabled={pending}
                 className="h-9 text-xs font-semibold bg-destructive text-white hover:bg-destructive/90"
               >
-                {pending && <Spinner className="size-3 mr-1.5" />}
+
                 Confirmar exclusão
               </Button>
             </div>
-          </form>
+          </PlatformForm>
         )}
       </Modal>
 
@@ -2715,7 +2465,7 @@ export function SuperadminDashboardClient(props: Props) {
         className="sm:max-w-md"
       >
         {applyPlanTarget && (
-          <form
+          <PlatformForm
             onSubmit={(e) => {
               e.preventDefault();
               const form = new FormData(e.currentTarget);
@@ -2744,15 +2494,23 @@ export function SuperadminDashboardClient(props: Props) {
                   membersCount:
                     "membersCount" in org ? (org as GlobalOrg).membersCount : 0,
                   locationsCount:
-                    "locationsCount" in org ? (org as GlobalOrg).locationsCount : 0,
+                    "locationsCount" in org
+                      ? (org as GlobalOrg).locationsCount
+                      : 0,
                   processesCount:
-                    "processesCount" in org ? (org as GlobalOrg).processesCount : 0,
+                    "processesCount" in org
+                      ? (org as GlobalOrg).processesCount
+                      : 0,
                   tasksCount:
                     "tasksCount" in org ? (org as GlobalOrg).tasksCount : 0,
                   executionsCount:
-                    "executionsCount" in org ? (org as GlobalOrg).executionsCount : 0,
+                    "executionsCount" in org
+                      ? (org as GlobalOrg).executionsCount
+                      : 0,
                   subscription:
-                    "subscription" in org ? (org as GlobalOrg).subscription : null,
+                    "subscription" in org
+                      ? (org as GlobalOrg).subscription
+                      : null,
                 };
                 setApplyPlanTarget(null);
                 openSubscriptionModal(fullOrg, applyPlanTarget);
@@ -2761,18 +2519,23 @@ export function SuperadminDashboardClient(props: Props) {
             className="flex flex-col gap-4 text-xs"
           >
             <p className="text-muted-foreground">
-              Selecione a empresa que receberá o plano <strong>{applyPlanTarget.name}</strong> (
+              Selecione a empresa que receberá o plano{" "}
+              <strong>{applyPlanTarget.name}</strong> (
               {applyPlanTarget.amountCents != null
                 ? formatCurrency(applyPlanTarget.amountCents)
                 : "R$ 0,00"}
               /
-              {cycleLabels[applyPlanTarget.cycle as keyof typeof cycleLabels]?.toLowerCase() ??
-                applyPlanTarget.cycle.toLowerCase()}
+              {cycleLabels[
+                applyPlanTarget.cycle as keyof typeof cycleLabels
+              ]?.toLowerCase() ?? applyPlanTarget.cycle.toLowerCase()}
               ).
             </p>
 
             <Field>
-              <FieldLabel htmlFor="apply-plan-org" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="apply-plan-org"
+                className="text-xs font-semibold"
+              >
                 Empresa destino *
               </FieldLabel>
               <NativeSelect
@@ -2811,7 +2574,7 @@ export function SuperadminDashboardClient(props: Props) {
                 Prosseguir para assinatura
               </Button>
             </div>
-          </form>
+          </PlatformForm>
         )}
       </Modal>
 
@@ -2822,24 +2585,27 @@ export function SuperadminDashboardClient(props: Props) {
         title="Registrar atendimento de suporte"
       >
         {supportOrgTarget && (
-          <form
+          <PlatformForm
             action={async (form) => {
               const status = String(form.get("status") ?? "OPEN");
               const note = String(form.get("note") ?? "");
               await handleRunAction(
                 () => addSupportNoteAction(supportOrgTarget.id, status, note),
-                "Atendimento registrado com sucesso no histórico do cliente."
+                "Atendimento registrado com sucesso no histórico do cliente.",
               );
             }}
             className="flex flex-col gap-4 text-xs"
           >
             <p className="text-muted-foreground">
-              Cliente: <strong>{supportOrgTarget.name}</strong>. O registro ficará disponível para a
-              equipe da plataforma.
+              Cliente: <strong>{supportOrgTarget.name}</strong>. O registro
+              ficará disponível para a equipe da plataforma.
             </p>
 
             <Field>
-              <FieldLabel htmlFor="support-status" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="support-status"
+                className="text-xs font-semibold"
+              >
                 Etapa do atendimento
               </FieldLabel>
               <NativeSelect
@@ -2857,7 +2623,10 @@ export function SuperadminDashboardClient(props: Props) {
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="support-note" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="support-note"
+                className="text-xs font-semibold"
+              >
                 Descrição do atendimento ou solução
               </FieldLabel>
               <Textarea
@@ -2891,11 +2660,11 @@ export function SuperadminDashboardClient(props: Props) {
                 disabled={pending}
                 className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
               >
-                {pending && <Spinner className="size-3 mr-1.5" />}
+
                 Registrar atendimento
               </Button>
             </div>
-          </form>
+          </PlatformForm>
         )}
       </Modal>
 
@@ -2906,11 +2675,12 @@ export function SuperadminDashboardClient(props: Props) {
         title="Nova organização"
         className="max-h-[90dvh] overflow-y-auto sm:max-w-lg"
       >
-        <form
+        <PlatformForm
           action={async (form) => {
             const name = String(form.get("name") ?? "").trim();
             const slug = String(form.get("slug") ?? "").trim();
-            const createDefaultLocation = form.get("createDefaultLocation") === "on";
+            const createDefaultLocation =
+              form.get("createDefaultLocation") === "on";
 
             await handleRunAction(
               () =>
@@ -2919,7 +2689,7 @@ export function SuperadminDashboardClient(props: Props) {
                   slug,
                   createDefaultLocation,
                 }),
-              "Organização criada com sucesso."
+              "Organização criada com sucesso.",
             );
           }}
           className="flex flex-col gap-4 text-xs"
@@ -2991,7 +2761,8 @@ export function SuperadminDashboardClient(props: Props) {
                 Criar unidade padrão ("Matriz / Principal")
               </span>
               <span className="text-[11px] text-muted-foreground block">
-                Gera imediatamente uma unidade operacional ativa no fuso de São Paulo.
+                Gera imediatamente uma unidade operacional ativa no fuso de São
+                Paulo.
               </span>
             </div>
           </label>
@@ -3011,11 +2782,11 @@ export function SuperadminDashboardClient(props: Props) {
               disabled={pending}
               className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
             >
-              {pending && <Spinner className="size-3 mr-1.5" />}
+
               Criar organização
             </Button>
           </div>
-        </form>
+        </PlatformForm>
       </Modal>
 
       {/* MODAL 5: Editar Organização */}
@@ -3026,7 +2797,7 @@ export function SuperadminDashboardClient(props: Props) {
         className="sm:max-w-lg"
       >
         {editOrgTarget && (
-          <form
+          <PlatformForm
             key={editOrgTarget.id}
             action={async (form) => {
               const name = String(form.get("name") ?? "").trim();
@@ -3043,13 +2814,16 @@ export function SuperadminDashboardClient(props: Props) {
                     status,
                     reason,
                   }),
-                "Organização atualizada com sucesso."
+                "Organização atualizada com sucesso.",
               );
             }}
             className="flex flex-col gap-4 text-xs"
           >
             <Field>
-              <FieldLabel htmlFor="edit-org-name" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="edit-org-name"
+                className="text-xs font-semibold"
+              >
                 Nome da organização *
               </FieldLabel>
               <Input
@@ -3065,7 +2839,10 @@ export function SuperadminDashboardClient(props: Props) {
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="edit-org-slug" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="edit-org-slug"
+                className="text-xs font-semibold"
+              >
                 Slug (identificador URL) *
               </FieldLabel>
               <Input
@@ -3079,12 +2856,16 @@ export function SuperadminDashboardClient(props: Props) {
                 className="text-xs h-9 font-mono"
               />
               <FieldDescription className="text-[10px] text-muted-foreground">
-                Cuidado: alterar o identificador afetará links diretos de acesso desta organização.
+                Cuidado: alterar o identificador afetará links diretos de acesso
+                desta organização.
               </FieldDescription>
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="edit-org-status" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="edit-org-status"
+                className="text-xs font-semibold"
+              >
                 Status de operação *
               </FieldLabel>
               <NativeSelect
@@ -3094,13 +2875,20 @@ export function SuperadminDashboardClient(props: Props) {
                 disabled={pending}
                 className="w-full text-xs h-9"
               >
-                <NativeSelectOption value="ACTIVE">Ativa (Operação normal)</NativeSelectOption>
-                <NativeSelectOption value="SUSPENDED">Suspensa (Bloqueio total de acesso)</NativeSelectOption>
+                <NativeSelectOption value="ACTIVE">
+                  Ativa (Operação normal)
+                </NativeSelectOption>
+                <NativeSelectOption value="SUSPENDED">
+                  Suspensa (Bloqueio total de acesso)
+                </NativeSelectOption>
               </NativeSelect>
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="edit-org-reason" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="edit-org-reason"
+                className="text-xs font-semibold"
+              >
                 Motivo da alteração (obrigatório para auditoria) *
               </FieldLabel>
               <Textarea
@@ -3130,11 +2918,11 @@ export function SuperadminDashboardClient(props: Props) {
                 disabled={pending}
                 className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
               >
-                {pending && <Spinner className="size-3 mr-1.5" />}
+
                 Salvar alterações
               </Button>
             </div>
-          </form>
+          </PlatformForm>
         )}
       </Modal>
 
@@ -3146,10 +2934,12 @@ export function SuperadminDashboardClient(props: Props) {
         className="sm:max-w-lg"
       >
         {deleteOrgTarget && (
-          <form
+          <PlatformForm
             key={deleteOrgTarget.id}
             action={async (form) => {
-              const confirmationSlug = String(form.get("confirmationSlug") ?? "").trim();
+              const confirmationSlug = String(
+                form.get("confirmationSlug") ?? "",
+              ).trim();
               const reason = String(form.get("reason") ?? "").trim();
 
               await handleRunAction(
@@ -3159,7 +2949,7 @@ export function SuperadminDashboardClient(props: Props) {
                     confirmationSlug,
                     reason,
                   }),
-                "Organização e registros vinculados excluídos com sucesso."
+                "Organização e registros vinculados excluídos com sucesso.",
               );
             }}
             className="flex flex-col gap-4 text-xs"
@@ -3170,14 +2960,18 @@ export function SuperadminDashboardClient(props: Props) {
                 Ação destrutiva e irreversível!
               </div>
               <p>
-                A exclusão da organização <strong>{deleteOrgTarget.name}</strong> removerá permanentemente
-                todas as unidades, tarefas, processos operacionais, execuções e desvinculará
-                todos os membros.
+                A exclusão da organização{" "}
+                <strong>{deleteOrgTarget.name}</strong> removerá permanentemente
+                todas as unidades, tarefas, processos operacionais, execuções e
+                desvinculará todos os membros.
               </p>
             </div>
 
             <Field>
-              <FieldLabel htmlFor="delete-org-confirmation" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="delete-org-confirmation"
+                className="text-xs font-semibold"
+              >
                 Para confirmar, digite exatamente o slug{" "}
                 <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-foreground font-bold">
                   {deleteOrgTarget.slug}
@@ -3195,7 +2989,10 @@ export function SuperadminDashboardClient(props: Props) {
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="delete-org-reason" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="delete-org-reason"
+                className="text-xs font-semibold"
+              >
                 Motivo da exclusão (obrigatório para auditoria) *
               </FieldLabel>
               <Textarea
@@ -3225,11 +3022,11 @@ export function SuperadminDashboardClient(props: Props) {
                 disabled={pending}
                 className="h-9 text-xs font-semibold bg-destructive text-white hover:bg-destructive/90"
               >
-                {pending && <Spinner className="size-3 mr-1.5" />}
+
                 Confirmar exclusão definitiva
               </Button>
             </div>
-          </form>
+          </PlatformForm>
         )}
       </Modal>
 
@@ -3240,14 +3037,18 @@ export function SuperadminDashboardClient(props: Props) {
         title="Novo usuário da plataforma"
         className="max-h-[90dvh] overflow-y-auto sm:max-w-xl"
       >
-        <form
+        <PlatformForm
           action={async (form) => {
             const name = String(form.get("name") ?? "").trim();
             const email = String(form.get("email") ?? "").trim();
             const password = String(form.get("password") ?? "");
-            const platformRole = (form.get("platformRole") ?? "USER") as "USER" | "SUPERADMIN";
-            const organizationId = String(form.get("organizationId") ?? "").trim();
-            const role = (form.get("role") || undefined) as "OWNER" | "ADMIN" | "MANAGER" | "EMPLOYEE" | undefined;
+            const platformRole = (form.get("platformRole") ?? "USER") as
+              "USER" | "SUPERADMIN";
+            const organizationId = String(
+              form.get("organizationId") ?? "",
+            ).trim();
+            const role = (form.get("role") || undefined) as
+              "OWNER" | "ADMIN" | "MANAGER" | "EMPLOYEE" | undefined;
             const employeeCode = String(form.get("employeeCode") ?? "").trim();
             const pin = String(form.get("pin") ?? "").trim();
             await handleRunAction(
@@ -3262,13 +3063,14 @@ export function SuperadminDashboardClient(props: Props) {
                   employeeCode: employeeCode || undefined,
                   pin: pin || undefined,
                 }),
-              "Usuário cadastrado com sucesso."
+              "Usuário cadastrado com sucesso.",
             );
           }}
           className="flex flex-col gap-4 text-xs"
         >
           <p className="text-muted-foreground">
-            Cadastre um novo usuário para acesso à plataforma Marcai ou ao painel administrativo.
+            Cadastre um novo usuário para acesso à plataforma Marcai ou ao
+            painel administrativo.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -3289,7 +3091,10 @@ export function SuperadminDashboardClient(props: Props) {
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="user-email" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="user-email"
+                className="text-xs font-semibold"
+              >
                 E-mail de acesso *
               </FieldLabel>
               <Input
@@ -3304,7 +3109,10 @@ export function SuperadminDashboardClient(props: Props) {
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="user-password" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="user-password"
+                className="text-xs font-semibold"
+              >
                 Senha inicial *
               </FieldLabel>
               <Input
@@ -3320,7 +3128,10 @@ export function SuperadminDashboardClient(props: Props) {
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="user-platform-role" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="user-platform-role"
+                className="text-xs font-semibold"
+              >
                 Perfil de acesso global *
               </FieldLabel>
               <NativeSelect
@@ -3330,8 +3141,12 @@ export function SuperadminDashboardClient(props: Props) {
                 disabled={pending}
                 className="w-full text-xs h-9"
               >
-                <NativeSelectOption value="USER">Usuário Comum (Empresarial)</NativeSelectOption>
-                <NativeSelectOption value="SUPERADMIN">Superadmin (Gestor da Plataforma)</NativeSelectOption>
+                <NativeSelectOption value="USER">
+                  Usuário Comum (Empresarial)
+                </NativeSelectOption>
+                <NativeSelectOption value="SUPERADMIN">
+                  Superadmin (Gestor da Plataforma)
+                </NativeSelectOption>
               </NativeSelect>
             </Field>
           </div>
@@ -3347,7 +3162,10 @@ export function SuperadminDashboardClient(props: Props) {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field>
-                <FieldLabel htmlFor="user-org-select" className="text-xs font-semibold">
+                <FieldLabel
+                  htmlFor="user-org-select"
+                  className="text-xs font-semibold"
+                >
                   Organização
                 </FieldLabel>
                 <NativeSelect
@@ -3357,7 +3175,9 @@ export function SuperadminDashboardClient(props: Props) {
                   disabled={pending}
                   className="w-full text-xs h-9"
                 >
-                  <NativeSelectOption value="">Nenhuma (Vincular depois)</NativeSelectOption>
+                  <NativeSelectOption value="">
+                    Nenhuma (Vincular depois)
+                  </NativeSelectOption>
                   {props.allOrganizations?.map((o) => (
                     <NativeSelectOption key={o.id} value={o.id}>
                       {o.name} ({o.slug})
@@ -3367,7 +3187,10 @@ export function SuperadminDashboardClient(props: Props) {
               </Field>
 
               <Field>
-                <FieldLabel htmlFor="user-org-role" className="text-xs font-semibold">
+                <FieldLabel
+                  htmlFor="user-org-role"
+                  className="text-xs font-semibold"
+                >
                   Papel na organização
                 </FieldLabel>
                 <NativeSelect
@@ -3377,15 +3200,26 @@ export function SuperadminDashboardClient(props: Props) {
                   disabled={pending}
                   className="w-full text-xs h-9"
                 >
-                  <NativeSelectOption value="EMPLOYEE">Colaborador / Operador</NativeSelectOption>
-                  <NativeSelectOption value="MANAGER">Gestor de Equipe</NativeSelectOption>
-                  <NativeSelectOption value="ADMIN">Administrador</NativeSelectOption>
-                  <NativeSelectOption value="OWNER">Proprietário (Owner)</NativeSelectOption>
+                  <NativeSelectOption value="EMPLOYEE">
+                    Colaborador / Operador
+                  </NativeSelectOption>
+                  <NativeSelectOption value="MANAGER">
+                    Gestor de Equipe
+                  </NativeSelectOption>
+                  <NativeSelectOption value="ADMIN">
+                    Administrador
+                  </NativeSelectOption>
+                  <NativeSelectOption value="OWNER">
+                    Proprietário (Owner)
+                  </NativeSelectOption>
                 </NativeSelect>
               </Field>
 
               <Field>
-                <FieldLabel htmlFor="user-employee-code" className="text-xs font-semibold">
+                <FieldLabel
+                  htmlFor="user-employee-code"
+                  className="text-xs font-semibold"
+                >
                   Matrícula / Código operacional
                 </FieldLabel>
                 <Input
@@ -3399,7 +3233,10 @@ export function SuperadminDashboardClient(props: Props) {
               </Field>
 
               <Field>
-                <FieldLabel htmlFor="user-pin" className="text-xs font-semibold">
+                <FieldLabel
+                  htmlFor="user-pin"
+                  className="text-xs font-semibold"
+                >
                   PIN rápido de terminal
                 </FieldLabel>
                 <Input
@@ -3430,11 +3267,11 @@ export function SuperadminDashboardClient(props: Props) {
               disabled={pending}
               className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
             >
-              {pending && <Spinner className="size-3 mr-1.5" />}
+
               Criar usuário
             </Button>
           </div>
-        </form>
+        </PlatformForm>
       </Modal>
 
       {/* MODAL 8: Editar Usuário */}
@@ -3445,12 +3282,13 @@ export function SuperadminDashboardClient(props: Props) {
         className="sm:max-w-lg"
       >
         {editUserTarget && (
-          <form
+          <PlatformForm
             key={editUserTarget.id}
             action={async (form) => {
               const name = String(form.get("name") ?? "").trim();
               const email = String(form.get("email") ?? "").trim();
-              const platformRole = (form.get("platformRole") ?? "USER") as "USER" | "SUPERADMIN";
+              const platformRole = (form.get("platformRole") ?? "USER") as
+                "USER" | "SUPERADMIN";
               const newPassword = String(form.get("newPassword") ?? "");
               const status = form.get("status") as "ACTIVE" | "SUSPENDED";
               await handleRunAction(
@@ -3463,14 +3301,17 @@ export function SuperadminDashboardClient(props: Props) {
                     newPassword: newPassword || undefined,
                     status,
                   }),
-                "Usuário atualizado com sucesso."
+                "Usuário atualizado com sucesso.",
               );
             }}
             className="flex flex-col gap-4 text-xs"
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field>
-                <FieldLabel htmlFor="edit-user-name" className="text-xs font-semibold">
+                <FieldLabel
+                  htmlFor="edit-user-name"
+                  className="text-xs font-semibold"
+                >
                   Nome completo *
                 </FieldLabel>
                 <Input
@@ -3486,7 +3327,10 @@ export function SuperadminDashboardClient(props: Props) {
               </Field>
 
               <Field>
-                <FieldLabel htmlFor="edit-user-email" className="text-xs font-semibold">
+                <FieldLabel
+                  htmlFor="edit-user-email"
+                  className="text-xs font-semibold"
+                >
                   E-mail *
                 </FieldLabel>
                 <Input
@@ -3501,23 +3345,37 @@ export function SuperadminDashboardClient(props: Props) {
               </Field>
 
               <Field>
-                <FieldLabel htmlFor="edit-user-platform-role" className="text-xs font-semibold">
+                <FieldLabel
+                  htmlFor="edit-user-platform-role"
+                  className="text-xs font-semibold"
+                >
                   Papel na plataforma *
                 </FieldLabel>
                 <NativeSelect
                   id="edit-user-platform-role"
                   name="platformRole"
-                  defaultValue={editUserTarget.platformRole === "SUPERADMIN" ? "SUPERADMIN" : "USER"}
+                  defaultValue={
+                    editUserTarget.platformRole === "SUPERADMIN"
+                      ? "SUPERADMIN"
+                      : "USER"
+                  }
                   disabled={pending}
                   className="w-full text-xs h-9"
                 >
-                  <NativeSelectOption value="USER">Usuário Comum</NativeSelectOption>
-                  <NativeSelectOption value="SUPERADMIN">Superadmin</NativeSelectOption>
+                  <NativeSelectOption value="USER">
+                    Usuário Comum
+                  </NativeSelectOption>
+                  <NativeSelectOption value="SUPERADMIN">
+                    Superadmin
+                  </NativeSelectOption>
                 </NativeSelect>
               </Field>
 
               <Field>
-                <FieldLabel htmlFor="edit-user-status" className="text-xs font-semibold">
+                <FieldLabel
+                  htmlFor="edit-user-status"
+                  className="text-xs font-semibold"
+                >
                   Status *
                 </FieldLabel>
                 <NativeSelect
@@ -3528,13 +3386,18 @@ export function SuperadminDashboardClient(props: Props) {
                   className="w-full text-xs h-9"
                 >
                   <NativeSelectOption value="ACTIVE">Ativo</NativeSelectOption>
-                  <NativeSelectOption value="SUSPENDED">Suspenso</NativeSelectOption>
+                  <NativeSelectOption value="SUSPENDED">
+                    Suspenso
+                  </NativeSelectOption>
                 </NativeSelect>
               </Field>
             </div>
 
             <Field>
-              <FieldLabel htmlFor="edit-user-new-password" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="edit-user-new-password"
+                className="text-xs font-semibold"
+              >
                 Redefinir senha (opcional)
               </FieldLabel>
               <Input
@@ -3563,11 +3426,11 @@ export function SuperadminDashboardClient(props: Props) {
                 disabled={pending}
                 className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
               >
-                {pending && <Spinner className="size-3 mr-1.5" />}
+
                 Salvar alterações
               </Button>
             </div>
-          </form>
+          </PlatformForm>
         )}
       </Modal>
 
@@ -3579,10 +3442,12 @@ export function SuperadminDashboardClient(props: Props) {
         className="sm:max-w-lg"
       >
         {deleteUserTarget && (
-          <form
+          <PlatformForm
             key={deleteUserTarget.id}
             action={async (form) => {
-              const confirmationEmail = String(form.get("confirmationEmail") ?? "").trim();
+              const confirmationEmail = String(
+                form.get("confirmationEmail") ?? "",
+              ).trim();
               const reason = String(form.get("reason") ?? "").trim();
 
               await handleRunAction(
@@ -3592,7 +3457,7 @@ export function SuperadminDashboardClient(props: Props) {
                     confirmationEmail,
                     reason,
                   }),
-                "Conta de usuário excluída com sucesso."
+                "Conta de usuário excluída com sucesso.",
               );
             }}
             className="flex flex-col gap-4 text-xs"
@@ -3603,13 +3468,18 @@ export function SuperadminDashboardClient(props: Props) {
                 Ação destrutiva!
               </div>
               <p>
-                A exclusão da conta de <strong>{deleteUserTarget.name}</strong> revogará todos os acessos
-                e desvinculará a pessoa de todas as organizações ({deleteUserTarget.memberships.length} organizações vinculadas).
+                A exclusão da conta de <strong>{deleteUserTarget.name}</strong>{" "}
+                revogará todos os acessos e desvinculará a pessoa de todas as
+                organizações ({deleteUserTarget.memberships.length} organizações
+                vinculadas).
               </p>
             </div>
 
             <Field>
-              <FieldLabel htmlFor="delete-user-confirmation" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="delete-user-confirmation"
+                className="text-xs font-semibold"
+              >
                 Para confirmar, digite exatamente o e-mail{" "}
                 <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-foreground font-bold">
                   {deleteUserTarget.email ?? "sem-email"}
@@ -3628,7 +3498,10 @@ export function SuperadminDashboardClient(props: Props) {
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="delete-user-reason" className="text-xs font-semibold">
+              <FieldLabel
+                htmlFor="delete-user-reason"
+                className="text-xs font-semibold"
+              >
                 Motivo da exclusão (obrigatório para auditoria) *
               </FieldLabel>
               <Textarea
@@ -3658,11 +3531,11 @@ export function SuperadminDashboardClient(props: Props) {
                 disabled={pending}
                 className="h-9 text-xs font-semibold bg-destructive text-white hover:bg-destructive/90"
               >
-                {pending && <Spinner className="size-3 mr-1.5" />}
+
                 Confirmar exclusão
               </Button>
             </div>
-          </form>
+          </PlatformForm>
         )}
       </Modal>
 
@@ -3678,12 +3551,14 @@ export function SuperadminDashboardClient(props: Props) {
             {/* Lista de Vínculos Existentes */}
             <div className="flex flex-col gap-2.5">
               <h3 className="font-bold text-sm text-[var(--text-primary)]">
-                Organizações vinculadas atualmente ({manageMembershipsTarget.memberships.length})
+                Organizações vinculadas atualmente (
+                {manageMembershipsTarget.memberships.length})
               </h3>
 
               {manageMembershipsTarget.memberships.length === 0 ? (
                 <p className="text-muted-foreground italic p-3 rounded-xl bg-muted/30 border border-border/50">
-                  Este usuário ainda não possui nenhum vínculo ativo com organizações.
+                  Este usuário ainda não possui nenhum vínculo ativo com
+                  organizações.
                 </p>
               ) : (
                 <div className="flex flex-col gap-2">
@@ -3697,21 +3572,28 @@ export function SuperadminDashboardClient(props: Props) {
                           {m.organizationName}
                         </strong>
                         <span className="text-xs text-muted-foreground">
-                          Papel atual: <Badge variant="outline" className="text-[10px] ml-1">{uiLabel(m.role)}</Badge>
+                          Papel atual:{" "}
+                          <Badge variant="outline" className="text-[10px] ml-1">
+                            {uiLabel(m.role)}
+                          </Badge>
                         </span>
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
                         {/* Formulário rápido de alteração de papel */}
-                        <form
+                        <PlatformForm
                           action={async (form) => {
-                            const newRole = form.get("newRole") as "OWNER" | "ADMIN" | "MANAGER" | "EMPLOYEE";
-                            const reason = prompt("Informe o motivo da alteração de cargo (mínimo 5 caracteres):");
+                            const newRole = form.get("newRole") as
+                              "OWNER" | "ADMIN" | "MANAGER" | "EMPLOYEE";
+                            const reason = prompt(
+                              "Informe o motivo da alteração de cargo (mínimo 5 caracteres):",
+                            );
                             if (!reason || reason.trim().length < 5) {
                               if (reason !== null) {
                                 toast.add({
                                   title: "Operação cancelada",
-                                  description: "O motivo é obrigatório para auditoria (mínimo 5 caracteres).",
+                                  description:
+                                    "O motivo é obrigatório para auditoria (mínimo 5 caracteres).",
                                   type: "error",
                                 });
                               }
@@ -3725,7 +3607,7 @@ export function SuperadminDashboardClient(props: Props) {
                                   newRole,
                                   reason: reason.trim(),
                                 }),
-                              "Papel atualizado com sucesso."
+                              "Papel atualizado com sucesso.",
                             );
                           }}
                           className="flex items-center gap-1.5"
@@ -3737,10 +3619,18 @@ export function SuperadminDashboardClient(props: Props) {
                             className="h-8 text-xs w-28"
                             aria-label="Alterar papel"
                           >
-                            <NativeSelectOption value="EMPLOYEE">Colaborador</NativeSelectOption>
-                            <NativeSelectOption value="MANAGER">Gestor</NativeSelectOption>
-                            <NativeSelectOption value="ADMIN">Administrador</NativeSelectOption>
-                            <NativeSelectOption value="OWNER">Proprietário</NativeSelectOption>
+                            <NativeSelectOption value="EMPLOYEE">
+                              Colaborador
+                            </NativeSelectOption>
+                            <NativeSelectOption value="MANAGER">
+                              Gestor
+                            </NativeSelectOption>
+                            <NativeSelectOption value="ADMIN">
+                              Administrador
+                            </NativeSelectOption>
+                            <NativeSelectOption value="OWNER">
+                              Proprietário
+                            </NativeSelectOption>
                           </NativeSelect>
                           <Button
                             type="submit"
@@ -3752,7 +3642,7 @@ export function SuperadminDashboardClient(props: Props) {
                           >
                             Salvar
                           </Button>
-                        </form>
+                        </PlatformForm>
 
                         {/* Botão de desvincular */}
                         <Button
@@ -3761,13 +3651,14 @@ export function SuperadminDashboardClient(props: Props) {
                           disabled={pending}
                           onClick={async () => {
                             const reason = prompt(
-                              `Confirma desvincular ${manageMembershipsTarget.name} da organização ${m.organizationName}?\nInforme o motivo:`
+                              `Confirma desvincular ${manageMembershipsTarget.name} da organização ${m.organizationName}?\nInforme o motivo:`,
                             );
                             if (!reason || reason.trim().length < 5) {
                               if (reason !== null) {
                                 toast.add({
                                   title: "Operação cancelada",
-                                  description: "O motivo é obrigatório para auditoria (mínimo 5 caracteres).",
+                                  description:
+                                    "O motivo é obrigatório para auditoria (mínimo 5 caracteres).",
                                   type: "error",
                                 });
                               }
@@ -3780,7 +3671,7 @@ export function SuperadminDashboardClient(props: Props) {
                                   userId: manageMembershipsTarget.id,
                                   reason: reason.trim(),
                                 }),
-                              "Membro desvinculado com sucesso."
+                              "Membro desvinculado com sucesso.",
                             );
                           }}
                           className="h-8 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive px-2"
@@ -3796,11 +3687,16 @@ export function SuperadminDashboardClient(props: Props) {
             </div>
 
             {/* Formulário para Adicionar Novo Vínculo */}
-            <form
+            <PlatformForm
               action={async (form) => {
-                const organizationId = String(form.get("organizationId") ?? "").trim();
-                const role = form.get("role") as "OWNER" | "ADMIN" | "MANAGER" | "EMPLOYEE";
-                const employeeCode = String(form.get("employeeCode") ?? "").trim();
+                const organizationId = String(
+                  form.get("organizationId") ?? "",
+                ).trim();
+                const role = form.get("role") as
+                  "OWNER" | "ADMIN" | "MANAGER" | "EMPLOYEE";
+                const employeeCode = String(
+                  form.get("employeeCode") ?? "",
+                ).trim();
                 const pin = String(form.get("pin") ?? "").trim();
                 const reason = String(form.get("reason") ?? "").trim();
 
@@ -3814,7 +3710,7 @@ export function SuperadminDashboardClient(props: Props) {
                       pin: pin || undefined,
                       reason,
                     }),
-                  "Usuário vinculado à organização com sucesso."
+                  "Usuário vinculado à organização com sucesso.",
                 );
               }}
               className="flex flex-col gap-3 p-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)]/50"
@@ -3826,7 +3722,10 @@ export function SuperadminDashboardClient(props: Props) {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Field>
-                  <FieldLabel htmlFor="link-org-select" className="text-xs font-semibold">
+                  <FieldLabel
+                    htmlFor="link-org-select"
+                    className="text-xs font-semibold"
+                  >
                     Organização *
                   </FieldLabel>
                   <NativeSelect
@@ -3836,13 +3735,15 @@ export function SuperadminDashboardClient(props: Props) {
                     disabled={pending}
                     className="w-full text-xs h-9"
                   >
-                    <NativeSelectOption value="">Selecione uma organização...</NativeSelectOption>
+                    <NativeSelectOption value="">
+                      Selecione uma organização...
+                    </NativeSelectOption>
                     {props.allOrganizations
                       ?.filter(
                         (o) =>
                           !manageMembershipsTarget.memberships.some(
-                            (m) => m.organizationId === o.id
-                          )
+                            (m) => m.organizationId === o.id,
+                          ),
                       )
                       .map((o) => (
                         <NativeSelectOption key={o.id} value={o.id}>
@@ -3853,7 +3754,10 @@ export function SuperadminDashboardClient(props: Props) {
                 </Field>
 
                 <Field>
-                  <FieldLabel htmlFor="link-org-role" className="text-xs font-semibold">
+                  <FieldLabel
+                    htmlFor="link-org-role"
+                    className="text-xs font-semibold"
+                  >
                     Papel *
                   </FieldLabel>
                   <NativeSelect
@@ -3863,15 +3767,26 @@ export function SuperadminDashboardClient(props: Props) {
                     disabled={pending}
                     className="w-full text-xs h-9"
                   >
-                    <NativeSelectOption value="EMPLOYEE">Colaborador</NativeSelectOption>
-                    <NativeSelectOption value="MANAGER">Gestor</NativeSelectOption>
-                    <NativeSelectOption value="ADMIN">Administrador</NativeSelectOption>
-                    <NativeSelectOption value="OWNER">Proprietário</NativeSelectOption>
+                    <NativeSelectOption value="EMPLOYEE">
+                      Colaborador
+                    </NativeSelectOption>
+                    <NativeSelectOption value="MANAGER">
+                      Gestor
+                    </NativeSelectOption>
+                    <NativeSelectOption value="ADMIN">
+                      Administrador
+                    </NativeSelectOption>
+                    <NativeSelectOption value="OWNER">
+                      Proprietário
+                    </NativeSelectOption>
                   </NativeSelect>
                 </Field>
 
                 <Field>
-                  <FieldLabel htmlFor="link-employee-code" className="text-xs font-semibold">
+                  <FieldLabel
+                    htmlFor="link-employee-code"
+                    className="text-xs font-semibold"
+                  >
                     Matrícula operacional (opcional)
                   </FieldLabel>
                   <Input
@@ -3885,7 +3800,10 @@ export function SuperadminDashboardClient(props: Props) {
                 </Field>
 
                 <Field>
-                  <FieldLabel htmlFor="link-pin" className="text-xs font-semibold">
+                  <FieldLabel
+                    htmlFor="link-pin"
+                    className="text-xs font-semibold"
+                  >
                     PIN de terminal (6 dígitos, opcional)
                   </FieldLabel>
                   <Input
@@ -3901,7 +3819,10 @@ export function SuperadminDashboardClient(props: Props) {
               </div>
 
               <Field>
-                <FieldLabel htmlFor="link-reason" className="text-xs font-semibold">
+                <FieldLabel
+                  htmlFor="link-reason"
+                  className="text-xs font-semibold"
+                >
                   Motivo da vinculação (obrigatório para auditoria) *
                 </FieldLabel>
                 <Textarea
@@ -3922,11 +3843,11 @@ export function SuperadminDashboardClient(props: Props) {
                   disabled={pending}
                   className="h-8 text-xs font-semibold bg-brand-900 text-white hover:bg-brand-700"
                 >
-                  {pending && <Spinner className="size-3 mr-1.5" />}
+
                   Adicionar vínculo
                 </Button>
               </div>
-            </form>
+            </PlatformForm>
 
             <div className="flex justify-end pt-2 border-t border-[var(--border-subtle)]">
               <Button
@@ -3943,5 +3864,6 @@ export function SuperadminDashboardClient(props: Props) {
         )}
       </Modal>
     </AppShell>
+    </PlatformActivityBoundary>
   );
 }

@@ -83,8 +83,13 @@ export async function verifySecondFactorAction(_previous: { error?: string }, fo
   if (result.error || !result.user) return { error: result.error ?? "Não foi possível verificar." };
   const { user, proof } = result;
   await clearLoginChallenge();
+  const userPasskeysCount = await prisma.passkeyAuthenticator.count({ where: { userId: user.id } });
+
   if (user.platformRole === "SUPERADMIN") {
     await createSession({ userId: user.id, name: user.name, email: user.email, activeOrgId: "", activeMemberId: "", role: Role.SUPERADMIN, secondFactorProof: proof });
+    if (userPasskeysCount === 0) {
+      redirect(`/setup-biometrics?next=${encodeURIComponent("/superadmin")}`);
+    }
     redirect("/superadmin");
   }
   const members = challenge.memberId
@@ -93,7 +98,11 @@ export async function verifySecondFactorAction(_previous: { error?: string }, fo
   if (!members.length) return { error: "Você não possui vínculo ativo. Consulte a administração." };
   const member = members[0];
   await createSession({ userId: user.id, name: user.name, email: user.email, activeOrgId: member.organizationId, activeMemberId: member.id, role: member.role as Role, employeeCode: member.employeeCode, secondFactorProof: proof });
-  redirect(members.length > 1 ? "/select-org" : member.role === "EMPLOYEE" ? "/tasks" : "/overview");
+  const destination = members.length > 1 ? "/select-org" : member.role === "EMPLOYEE" ? "/tasks" : "/overview";
+  if (userPasskeysCount === 0) {
+    redirect(`/setup-biometrics?next=${encodeURIComponent(destination)}`);
+  }
+  redirect(destination);
 }
 
 export async function regenerateTwoFactorSecretAction(): Promise<{ error?: string; success?: boolean }> {

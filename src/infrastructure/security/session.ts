@@ -1,3 +1,4 @@
+import { mobileSessionContext } from "./mobile-context";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { Role } from "@/domain/types";
@@ -53,6 +54,8 @@ export async function createSession(data: SessionData): Promise<void> {
 }
 
 export async function getSession(): Promise<SessionData | null> {
+  const mobile = mobileSessionContext.getStore();
+  if (mobile) return mobile;
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;

@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { Brand } from "@/presentation/components/shared/brand";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { ScanFace, CheckCircle2 } from "lucide-react";
+import { Fingerprint, CheckCircle2 } from "lucide-react";
 import { toast } from "@/components/ui/toast";
 import { startAuthentication } from "@simplewebauthn/browser";
 import {
@@ -21,7 +21,7 @@ export default function MobileQRAuthPage() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  const handleFaceIdLogin = async () => {
+  const handleBiometricsLogin = async () => {
     setIsPending(true);
     setErrorMsg("");
     try {
@@ -48,7 +48,7 @@ export default function MobileQRAuthPage() {
       if (err.name === "NotAllowedError") {
         setErrorMsg("Processo de biometria cancelado.");
       } else {
-        setErrorMsg("Não foi possível iniciar o Face ID. " + err.message);
+        setErrorMsg("Não foi possível iniciar a biometria. " + err.message);
       }
     } finally {
       setIsPending(false);
@@ -56,8 +56,8 @@ export default function MobileQRAuthPage() {
   };
 
   useEffect(() => {
-    // Auto-start Face ID if available
-    handleFaceIdLogin();
+    // Auto-start biometrics if available
+    handleBiometricsLogin();
   }, []);
 
   return (
@@ -80,12 +80,12 @@ export default function MobileQRAuthPage() {
           </>
         ) : (
           <>
-            <ScanFace className="size-16 text-[var(--brand-700)] mb-4" />
+            <Fingerprint className="size-16 text-[var(--brand-700)] mb-4" />
             <h1 className="text-xl font-bold text-gray-900 mb-2">
               Verificação Necessária
             </h1>
-            <p className="text-gray-600 mb-6">
-              Confirme sua identidade usando Face ID ou biometria para acessar o
+            <p className="text-gray-600 mb-6 text-sm">
+              Confirme sua identidade usando a biometria do seu aparelho para acessar o
               painel no computador.
             </p>
 
@@ -96,7 +96,7 @@ export default function MobileQRAuthPage() {
             )}
 
             <Button
-              onClick={handleFaceIdLogin}
+              onClick={handleBiometricsLogin}
               disabled={isPending}
               className="w-full h-[48px] rounded-[14px] font-semibold flex items-center justify-center gap-2"
             >
@@ -107,7 +107,7 @@ export default function MobileQRAuthPage() {
                 </>
               ) : (
                 <>
-                  <ScanFace className="size-5" />
+                  <Fingerprint className="size-5" />
                   <span>Tentar Novamente</span>
                 </>
               )}

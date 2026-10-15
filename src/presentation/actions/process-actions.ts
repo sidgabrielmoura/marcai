@@ -10,6 +10,10 @@ import { processDefinitionSchema, readProcessDefinition, scheduleSchema, type Pr
 import { generateRoutineExecution } from "@/application/processes/generate-execution";
 import { changeExecutionState } from "@/application/processes/execution-lifecycle";
 import { dispatchNotificationAsync } from "@/infrastructure/notifications/notification-service";
+import { readable } from "@/application/mobile/data";
+import { taskScope } from "@/application/security/operational-scope";
+import { evaluateTaskDependencies } from "@/domain/rules/dependency-rules";
+import { resolveExecutionStatus } from "@/domain/rules/execution-state";
 import { revalidatePath } from "next/cache";
 export type ActionResult = {
   success?: boolean;
@@ -216,12 +220,13 @@ export async function getEmployeeProcessExecutionAction(
     where: {
       id: executionId,
       organizationId: context.organizationId,
+      tasks: { some: context.role === "EMPLOYEE" ? readable(context) : taskScope(context) },
     },
     include: {
       process: { select: { id: true, name: true, description: true } },
       location: { select: { id: true, name: true } },
       tasks: {
-        where: { deletedAt: null },
+        where: { AND: [{ deletedAt: null }, context.role === "EMPLOYEE" ? readable(context) : taskScope(context)] },
         include: {
           assignments: {
             where: { removedAt: null },
@@ -244,7 +249,7 @@ export async function getEmployeeProcessExecutionAction(
           dependencies: {
             include: {
               dependsOnTask: {
-                select: { id: true, status: true },
+                select: { id: true, status: true, approvalWorkflow: { select: { status: true } } },
               },
             },
           },
@@ -283,13 +288,13 @@ export async function getEmployeeProcessExecutionAction(
   const titleOrderMap = new Map<string, number>();
   if (Array.isArray(snapshotTasks)) {
     snapshotTasks.forEach((st: any, idx: number) => {
-      if (st.title) titleOrderMap.set(st.title.trim().toLowerCase(), idx);
+      if (st.id) titleOrderMap.set(st.id, idx);
     });
   }
 
   const sortedTasks = [...execution.tasks].sort((a, b) => {
-    const orderA = a.definitionOrder ?? titleOrderMap.get(a.title.trim().toLowerCase()) ?? 999;
-    const orderB = b.definitionOrder ?? titleOrderMap.get(b.title.trim().toLowerCase()) ?? 999;
+    const orderA = a.definitionOrder ?? titleOrderMap.get(a.definitionTaskId ?? "") ?? 999;
+    const orderB = b.definitionOrder ?? titleOrderMap.get(b.definitionTaskId ?? "") ?? 999;
     if (orderA !== orderB) return orderA - orderB;
     return a.id.localeCompare(b.id);
   });
@@ -298,20 +303,7 @@ export async function getEmployeeProcessExecutionAction(
     const isCompleted = task.status === "COMPLETED";
     let isBlocked = task.status === "BLOCKED";
 
-    if (!isCompleted) {
-      if (orderRule === "STRICT") {
-        if (idx > 0 && sortedTasks.slice(0, idx).some((prev) => prev.status !== "COMPLETED")) {
-          isBlocked = true;
-        }
-      } else if (orderRule === "CUSTOM") {
-        const hasPendingDep = task.dependencies.some(
-          (dep) => dep.dependsOnTask?.status !== "COMPLETED"
-        );
-        if (hasPendingDep) isBlocked = true;
-      }
-    } else {
-      isBlocked = false;
-    }
+    isBlocked = !isCompleted && (task.status === "BLOCKED" || evaluateTaskDependencies(task.dependencies.map(dep => ({ dependsOnTaskId: dep.dependsOnId, dependsOnStatus: dep.dependsOnTask.status, dependsOnApprovalStatus: dep.dependsOnTask.approvalWorkflow?.status, type: dep.type, logic: dep.logic }))).isBlocked);
 
     const primaryAssignee = task.assignments.find((a) => a.type === "PRIMARY");
     const isAssignedToCurrent = task.assignments.some(
@@ -383,19 +375,14 @@ export async function completeProcessExecutionAction(
   return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"execution:" + executionId}))`;
     const execution = await tx.processExecution.findFirst({
-      where: { id: executionId, organizationId: context.organizationId },
-      include: { tasks: { where: { deletedAt: null } } },
+      where: { id: executionId, organizationId: context.organizationId, tasks: { some: context.role === "EMPLOYEE" ? readable(context) : taskScope(context) } },
+      include: { tasks: { where: { deletedAt: null }, include: { approvalWorkflow: true } } },
     });
     if (!execution) return { error: "Execução de processo não encontrada." };
 
-    const uncompletedTasks = execution.tasks.filter((t) => t.status !== "COMPLETED");
-    if (uncompletedTasks.length > 0) {
-      return {
-        error: `Ainda existem ${uncompletedTasks.length} ${
-          uncompletedTasks.length === 1 ? "tarefa pendente" : "tarefas pendentes"
-        } neste processo. Todas as tarefas devem ser concluídas primeiro.`,
-      };
-    }
+    if (execution.status === "COMPLETED") return { success: true };
+    if (["CANCELLED", "NOT_COMPLETED"].includes(execution.status)) return { error: "Esta execução está encerrada." };
+    if (resolveExecutionStatus(execution, new Date()) !== "COMPLETED") return { error: "Ainda existem etapas obrigatórias ou aprovações pendentes no processo." };
 
     const now = new Date();
     if (execution.scheduledAt && execution.scheduledAt > now) {
