@@ -1,4 +1,5 @@
 "use client";
+import {clearEmployeeDrafts} from "@/presentation/lib/employee-drafts";
 
 import { useState, useActionState, useEffect } from "react";
 import { Brand } from "@/presentation/components/shared/brand";
@@ -48,6 +49,7 @@ import { cn } from "@/lib/utils";
 import { QRCodeSVG } from "qrcode.react";
 
 export default function LoginPage() {
+  useEffect(()=>{void clearEmployeeDrafts().catch(()=>{});},[]);
   const [tab, setTab] = useState<"pin" | "password" | "biometrics">("pin");
   const [isBiometricsPending, setIsBiometricsPending] = useState(false);
   
@@ -385,8 +387,8 @@ export default function LoginPage() {
                       type="password"
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      maxLength={8}
-                      placeholder="••••"
+                      maxLength={6}
+                      placeholder="••••••"
                       required
                       className="text-[length:var(--type-body)] placeholder:text-[var(--text-secondary)] tracking-widest font-mono text-center font-bold"
                     />

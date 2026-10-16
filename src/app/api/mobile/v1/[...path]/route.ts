@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {resolveDestination} from '@/application/mobile/destinations';
 import {prisma} from '@/infrastructure/database/prisma';
 import {json,failure,fail,MobileError} from '@/application/mobile/http';
 import {login,refresh,revoke,secondFactor,withAuth,logout,switchOrg,identity,rateRequest,rate} from '@/application/mobile/security';
@@ -28,7 +29,7 @@ async function handle(req:Request,ctx:Context) {
  const parts=(await ctx.params).path.map(id),route=parts.join('/'),url=new URL(req.url),method=req.method;
  if(method==='POST'&&route.startsWith('auth/')){
  const b=await body(req);
- const identifier=typeof b==='object'&&b&&(b.employeeCode||b.email||b.challengeId)?String(b.organizationSlug??'')+':'+String(b.employeeCode??b.email??b.challengeId):'';
+ const identifier=typeof b==='object'&&b&&(b.employeeCode||b.email||b.challengeId)?String(b.organizationSlug??'').trim().toLowerCase()+':'+String(b.employeeCode??b.email??b.challengeId).trim().toLowerCase():'';
  await rateRequest(req,route,identifier);
  if(route==='auth/pin')return json(await login(b,'pin'));
  if(route==='auth/password')return json(await login(b,'password'));
@@ -47,6 +48,7 @@ async function handle(req:Request,ctx:Context) {
  return json(members.map(m=>({...m.organization,role:m.role})));
  }
  if(method==='POST'&&route==='organizations/switch'){const b=z.object({organizationId:z.string().min(1).max(128)}).strict().parse(await body(req));return json(await switchOrg(auth.session,b.organizationId));}
+ if(method==='GET'&&route==='destinations/resolve'){const b=z.object({taskId:z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/).optional(),executionId:z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/).optional()}).refine(v=>!!v.taskId!==!!v.executionId).parse(Object.fromEntries(url.searchParams));return json(await resolveDestination(c,b));}
  if(method==='GET'&&route==='tasks')return json(await listTasks(c,url.searchParams.get('cursor'),z.string().max(100).parse(url.searchParams.get('q')??''),z.enum(['all','standard','form']).parse(url.searchParams.get('type')??'all')));
  if(method==='GET'&&route==='search')return json(await searchTasks(c,z.string().trim().min(2).max(100).parse(url.searchParams.get('q'))));
  if(method==='GET'&&route==='history'){

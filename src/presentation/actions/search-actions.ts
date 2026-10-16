@@ -1,4 +1,5 @@
 "use server";
+import {searchTasks} from "@/application/mobile/data";
 
 import { listTemplateLibrary } from "@/application/templates/template-library";
 import { processTemplateHref, templateJobs } from "@/domain/rules/reusable-template-definition";
@@ -30,6 +31,7 @@ export async function searchWorkspaceAction(query: string): Promise<SearchResult
   }
   const c = await getAuthenticatedContext(false);
   if (!c) return [];
+  if(c.role==='EMPLOYEE'){const tasks=await searchTasks(c,parsed.data);return tasks.map(t=>({id:t.id,group:'Tarefas',title:t.title,detail:[t.locationName,t.processName].filter(Boolean).join(' · ')||'Sem unidade',href:'/tasks/'+t.id}));}
   const tasks = await prisma.task.findMany({ where: { ...taskScope(c), deletedAt: null, title: contains }, select: { id: true, title: true, location: { select: { name: true } } }, orderBy: { updatedAt: "desc" }, take: 8 });
   const results: SearchResult[] = tasks.map(t => ({ id: t.id, group: "Tarefas", title: t.title, detail: t.location?.name ?? "Sem unidade", href: `${isManagement(c) ? "/management" : ""}/tasks/${t.id}` }));
   if (!isManagement(c)) return results;

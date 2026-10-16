@@ -542,7 +542,7 @@ export function SuperadminDashboardClient(props: Props) {
     <PlatformActivityBoundary activity={activity}>
     <AppShell
       userName={props.userName}
-      orgName="Plataforma Marcai"
+      orgName="Plataforma Tarefaí"
       role="SUPERADMIN"
       mode="platform"
       activeView={view}
@@ -3069,7 +3069,7 @@ export function SuperadminDashboardClient(props: Props) {
           className="flex flex-col gap-4 text-xs"
         >
           <p className="text-muted-foreground">
-            Cadastre um novo usuário para acesso à plataforma Marcai ou ao
+            Cadastre um novo usuário para acesso à plataforma Tarefaí ou ao
             painel administrativo.
           </p>
 

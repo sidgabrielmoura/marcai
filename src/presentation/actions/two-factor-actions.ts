@@ -4,13 +4,16 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/infrastructure/database/prisma";
 import { getLoginChallenge, clearLoginChallenge, credentialVersion, refreshLoginChallengeWithNewSecret } from "@/infrastructure/security/login-challenge";
-import { openTotp, sealTotp, secondFactorProof, verifyTotp, hashRecoveryCode } from "@/infrastructure/security/totp";
+import { openTotp, sealTotp, secondFactorProof, verifyTotp, hashRecoveryCode,generateRecoveryCodes } from "@/infrastructure/security/totp";
 import { createSession } from "@/infrastructure/security/session";
+import { rate } from "@/application/mobile/security";
 import { Role } from "@/domain/types";
 
-export async function verifySecondFactorAction(_previous: { error?: string }, form: FormData): Promise<{ error?: string }> {
+export type SecondFactorState={error?:string;recoveryCodes?:string[];redirectUrl?:string};
+export async function verifySecondFactorAction(_previous: SecondFactorState, form: FormData): Promise<SecondFactorState> {
   const challenge = await getLoginChallenge();
   if (!challenge) return { error: "Sua verificação expirou. Volte ao login e entre novamente." };
+  try{await rate("web-second-factor:"+challenge.userId,5);}catch{return {error:"Muitas tentativas. Aguarde 5 minutos."};}
   const rawCode = String(form.get("code") || "").trim();
   const cleanCode = rawCode.replace(/[\s-]+/g, "").toUpperCase();
   const isTotp = /^\d{6}$/.test(cleanCode);
@@ -19,6 +22,9 @@ export async function verifySecondFactorAction(_previous: { error?: string }, fo
 
   const result = await prisma.$transaction(async tx => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"2fa:" + challenge.userId}))`;
+    if(!challenge.challengeId)return {error:"Sua verificação expirou. Entre novamente."};
+    const [pending]=await tx.$queryRaw<Array<{id:string;failures:number}>>`SELECT id,failures FROM web_login_challenges WHERE id=${challenge.challengeId}::uuid AND user_id=${challenge.userId} AND consumed_at IS NULL AND expires_at>now() FOR UPDATE`;
+    if(!pending||pending.failures>=5)return {error:"Sua verificação expirou ou já foi utilizada."};
     const user = await tx.user.findUnique({
       where: { id: challenge.userId },
       include: {
@@ -44,7 +50,8 @@ export async function verifySecondFactorAction(_previous: { error?: string }, fo
       if (idx === -1) return { error: "Código de recuperação inválido ou já utilizado." };
       codes.splice(idx, 1);
       await tx.user.update({ where: { id: user.id }, data: { twoFactorRecoveryCodes: JSON.stringify(codes) } });
-      return { user, proof: secondFactorProof(user.twoFactorSecret) };
+      await tx.$executeRaw`UPDATE web_login_challenges SET consumed_at=now() WHERE id=${challenge.challengeId}::uuid`;
+      return { user, proof: secondFactorProof(user.twoFactorSecret),recoveryCodes:undefined as string[]|undefined };
     }
 
     const isEnrolling = !!challenge.enrollSecret;
@@ -54,9 +61,7 @@ export async function verifySecondFactorAction(_previous: { error?: string }, fo
     if (!secret) return { error: "A verificação não está configurada. Entre em contato com o administrador." };
     const counter = verifyTotp(secret, cleanCode, isEnrolling ? -1 : previous?.lastCounter);
     if (counter === null) {
-      if (isEnrolling) {
-        return { error: "Código incorreto. Confira o código de 6 dígitos no Google Authenticator." };
-      }
+      if(isEnrolling){await tx.$executeRaw`UPDATE web_login_challenges SET failures=failures+1 WHERE id=${challenge.challengeId}::uuid`;return {error:pending.failures>=4?"Muitas tentativas. Aguarde 5 minutos e entre novamente.":"Código incorreto. Confira o autenticador."};}
       const failures = (previous?.failures ?? 0) + 1;
       await tx.user.update({
         where: { id: user.id },
@@ -77,20 +82,23 @@ export async function verifySecondFactorAction(_previous: { error?: string }, fo
       };
     }
     const sealed = sealTotp({ secret, lastCounter: counter, failures: 0, lockedUntil: 0 });
-    await tx.user.update({ where: { id: user.id }, data: { twoFactorEnabled: true, twoFactorSecret: sealed } });
-    return { user, proof: secondFactorProof(sealed) };
+    const recoveryCodes=isEnrolling?generateRecoveryCodes():undefined;
+    await tx.user.update({ where: { id: user.id }, data: { twoFactorEnabled: true, twoFactorSecret: sealed,...(recoveryCodes?{twoFactorRecoveryCodes:JSON.stringify(recoveryCodes.map(hashRecoveryCode))}:{}) } });
+    await tx.$executeRaw`UPDATE web_login_challenges SET consumed_at=now() WHERE id=${challenge.challengeId}::uuid`;
+    return { user, proof: secondFactorProof(sealed),recoveryCodes };
   });
   if (result.error || !result.user) return { error: result.error ?? "Não foi possível verificar." };
   const { user, proof } = result;
+  const finish=(destination:string):SecondFactorState=>{if(result.recoveryCodes)return {recoveryCodes:result.recoveryCodes,redirectUrl:destination};redirect(destination);};
   await clearLoginChallenge();
   const userPasskeysCount = await prisma.passkeyAuthenticator.count({ where: { userId: user.id } });
 
   if (user.platformRole === "SUPERADMIN") {
     await createSession({ userId: user.id, name: user.name, email: user.email, activeOrgId: "", activeMemberId: "", role: Role.SUPERADMIN, secondFactorProof: proof });
     if (userPasskeysCount === 0) {
-      redirect(`/setup-biometrics?next=${encodeURIComponent("/superadmin")}`);
+      return finish(`/setup-biometrics?next=${encodeURIComponent("/superadmin")}`);
     }
-    redirect("/superadmin");
+    return finish("/superadmin");
   }
   const members = challenge.memberId
     ? await prisma.organizationMember.findMany({ where: { id: challenge.memberId, userId: user.id, status: "ACTIVE", organization: { status: "ACTIVE" } }, include: { organization: true } })
@@ -100,9 +108,9 @@ export async function verifySecondFactorAction(_previous: { error?: string }, fo
   await createSession({ userId: user.id, name: user.name, email: user.email, activeOrgId: member.organizationId, activeMemberId: member.id, role: member.role as Role, employeeCode: member.employeeCode, secondFactorProof: proof });
   const destination = members.length > 1 ? "/select-org" : member.role === "EMPLOYEE" ? "/tasks" : "/overview";
   if (userPasskeysCount === 0) {
-    redirect(`/setup-biometrics?next=${encodeURIComponent(destination)}`);
+    return finish(`/setup-biometrics?next=${encodeURIComponent(destination)}`);
   }
-  redirect(destination);
+  return finish(destination);
 }
 
 export async function regenerateTwoFactorSecretAction(): Promise<{ error?: string; success?: boolean }> {

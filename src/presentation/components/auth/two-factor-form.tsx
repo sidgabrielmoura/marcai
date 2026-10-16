@@ -101,6 +101,7 @@ export function TwoFactorForm({ secret, qrCodeDataUrl, userEmail }: TwoFactorFor
     ? secret.match(/.{1,4}/g)?.join(" ") ?? secret
     : "";
 
+  if(state.recoveryCodes?.length)return <div className="flex flex-col gap-4"><h1>Guarde os códigos de recuperação</h1><p>Cada código funciona uma vez. Guarde-os em um local seguro antes de continuar.</p><ul>{state.recoveryCodes.map(code=><li key={code}><code>{code}</code></li>)}</ul><Button onClick={()=>router.replace(state.redirectUrl??"/tasks")}>Guardei os códigos. Continuar</Button></div>;
   return (
     <div className="flex flex-col items-center w-full">
       {/* Header Compacto */}

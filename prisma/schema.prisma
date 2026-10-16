@@ -1021,3 +1021,43 @@ model MobileJobCursor {
  touchedAt DateTime @default(now()) @map("touched_at") @db.Timestamptz(6)
  @@map("mobile_job_cursors")
 }
+
+model WebAuthSession {
+ id String @id @db.Uuid
+ userId String @map("user_id")
+ memberId String @map("member_id")
+ organizationId String @map("organization_id")
+ credentialVersion String @map("credential_version")
+ expiresAt DateTime @map("expires_at") @db.Timestamptz
+ revokedAt DateTime? @map("revoked_at") @db.Timestamptz
+ createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+ @@index([expiresAt],map:"web_auth_sessions_expiry_idx")
+ @@index([userId],map:"web_auth_sessions_user_idx")
+ @@map("web_auth_sessions")
+}
+model WebLoginChallenge {
+ id String @id @db.Uuid
+ userId String @map("user_id")
+ expiresAt DateTime @map("expires_at") @db.Timestamptz
+ consumedAt DateTime? @map("consumed_at") @db.Timestamptz
+ failures Int @default(0)
+ createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+ @@index([expiresAt],map:"web_login_challenges_expiry_idx")
+ @@map("web_login_challenges")
+}
+model WebQrBinding {
+ token String @id
+ initiatorHash String @map("initiator_hash")
+ expiresAt DateTime @map("expires_at") @db.Timestamptz
+ @@index([expiresAt],map:"web_qr_bindings_expiry_idx")
+ @@map("web_qr_bindings")
+}
+model WebPasskeyChallenge {
+ challenge String @id
+ userId String? @map("user_id")
+ kind String
+ expiresAt DateTime @map("expires_at") @db.Timestamptz
+ consumedAt DateTime? @map("consumed_at") @db.Timestamptz
+ @@index([expiresAt],map:"web_passkey_challenges_expiry_idx")
+ @@map("web_passkey_challenges")
+}

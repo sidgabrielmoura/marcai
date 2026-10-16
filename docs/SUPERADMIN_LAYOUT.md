@@ -1,4 +1,4 @@
-# Marcaí · Padrão de layout do superadmin
+# Tarefaí · Padrão de layout do superadmin
 
 Este documento é o contrato de interface para qualquer alteração ou nova página da administração da plataforma. Leia-o antes de implementar. As regras são verificáveis e devem ser seguidas em conjunto; não basta reutilizar a cor verde ou o raio dos cartões.
 
@@ -10,7 +10,7 @@ Referência original enviada pelo proprietário: dashboard Donezo. Preserve suas
 
 ![Referência original](./references/superadmin-reference.png)
 
-A implementação do Marcaí adapta essa direção à administração de clientes. Visão geral usa painéis. Listas administrativas usam linhas compactas. Não transforme cada usuário ou organização em um cartão alto com várias caixas e botões.
+A implementação do Tarefaí adapta essa direção à administração de clientes. Visão geral usa painéis. Listas administrativas usam linhas compactas. Não transforme cada usuário ou organização em um cartão alto com várias caixas e botões.
 
 Arquivos de referência obrigatórios:
 
@@ -260,7 +260,7 @@ O exemplo define composição. Adicione filtros, estado vazio e paginação quan
 
 Para reproduzir a auditoria local: mantenha o servidor em `http://localhost:3000` e execute `npm run test:superadmin:ui`. O script usa um superadmin já configurado no banco e a autenticação local existente. Não imprime tokens nem credenciais e não envia formulários de alteração. Capturas e relatório ficam em `tmp/superadmin-review/`.
 
-Se a porta estiver ocupada por outro projeto, execute o Marcaí em outra porta e configure `MARCAI_UI_BASE_URL` com seu endereço antes de rodar o script. `--audit-only` limita uma revisão posterior à auditoria em desktop e mobile.
+Se a porta estiver ocupada por outro projeto, execute o Tarefaí em outra porta e configure `TAREFAI_UI_BASE_URL` ou `MARCAI_UI_BASE_URL` com seu endereço antes de rodar o script. `--audit-only` limita uma revisão posterior à auditoria em desktop e mobile.
 
 Execute também `npm run test:superadmin:async`: ele atrasa solicitações no navegador, intercepta as mutações antes do envio ao servidor e simula uma falha local para validar loaders, bloqueadores, nova tentativa, filtros e paginação. Não cria nem altera dados reais.
 

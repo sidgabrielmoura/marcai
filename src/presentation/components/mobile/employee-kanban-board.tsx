@@ -1,4 +1,5 @@
 "use client";
+import {columnFor} from "@/application/mobile/policy";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -27,6 +28,9 @@ import { Input } from "@/components/ui/input";
 import type { TaskStatus, Priority, Criticality } from "@/domain/types";
 
 export interface EmployeeTask {
+  roundId: string;
+  timezone: string;
+  column?:ColumnId;
   id: string;
   executionId: string | null;
   title: string;
@@ -381,145 +385,16 @@ export function EmployeeKanbanBoard({
   }, [allKanbanItems, filterType, searchQuery]);
 
   // Agrupamento por coluna
-  const groupedTasks = useMemo(() => {
-    const groups: Record<ColumnId, KanbanBoardItem[]> = {
-      today: [],
-      overdue: [],
-      unassigned: [],
-      completed: [],
-      upcoming: [],
-    };
-
-    const currentDate = new Date(now);
-
-    for (const item of filteredItems) {
-      if (item.type === "TASK") {
-        const task = item.task;
-        if (task.status === "COMPLETED") {
-          groups.completed.push(item);
-          continue;
-        }
-
-        // Verificação de agendamento futuro
-        const taskScheduledTime = task.scheduledDate ? new Date(task.scheduledDate).getTime() : null;
-        const isFutureScheduled = taskScheduledTime !== null && taskScheduledTime > now;
-
-        if (isFutureScheduled) {
-          const hoursUntilStart = (taskScheduledTime - now) / (1000 * 60 * 60);
-
-          // Se for igual ou maior que 24hrs, vai para 'Próximos Dias' automaticamente
-          if (hoursUntilStart >= 24) {
-            groups.upcoming.push(item);
-            continue;
-          }
-
-          // Se estiver faltando 23hrs ou menos pra iniciar (< 24h):
-          // Vai para 'Para Assumir' se não tiver responsável, ou 'A Fazer' se já atribuída
-          if (task.isUnassigned) {
-            groups.unassigned.push(item);
-          } else {
-            groups.today.push(item);
-          }
-          continue;
-        }
-
-        // Tarefas não concluídas com prazo estourado além da tolerância
-        if (getTaskDeadlineStatus(task, now).status === "OVERDUE") {
-          groups.overdue.push(item);
-          continue;
-        }
-
-        // Tarefas sem responsável já liberadas
-        if (task.isUnassigned) {
-          groups.unassigned.push(item);
-          continue;
-        }
-
-        // Verificação de data para Hoje vs Próximos Dias (pelo deadline)
-        const targetDate = task.deadlineAt;
-        if (targetDate) {
-          const d = new Date(targetDate);
-          const todayEnd = new Date(
-            currentDate.getFullYear(),
-            currentDate.getMonth(),
-            currentDate.getDate(),
-            23,
-            59,
-            59,
-            999
-          );
-          if (d > todayEnd) {
-            groups.upcoming.push(item);
-            continue;
-          }
-        }
-
-        // Padrão para tarefas do dia
-        groups.today.push(item);
-      } else {
-        // item.type === "PROCESS"
-        if (item.allCompleted) {
-          groups.completed.push(item);
-          continue;
-        }
-
-        // Verificação de agendamento futuro para processo
-        const procScheduledTime = item.scheduledDate ? new Date(item.scheduledDate).getTime() : null;
-        const isFutureScheduled = procScheduledTime !== null && procScheduledTime > now;
-
-        if (isFutureScheduled) {
-          const hoursUntilStart = (procScheduledTime - now) / (1000 * 60 * 60);
-
-          // Se for igual ou maior que 24hrs, vai para 'Próximos Dias' automaticamente
-          if (hoursUntilStart >= 24) {
-            groups.upcoming.push(item);
-            continue;
-          }
-
-          // Se estiver faltando 23hrs ou menos pra iniciar (< 24h):
-          // Vai para 'Para Assumir' se todas não atribuídas, ou 'A Fazer' se atribuídas
-          if (item.allUnassigned) {
-            groups.unassigned.push(item);
-          } else {
-            groups.today.push(item);
-          }
-          continue;
-        }
-
-        if (item.anyOverdue) {
-          groups.overdue.push(item);
-          continue;
-        }
-
-        if (item.allUnassigned) {
-          groups.unassigned.push(item);
-          continue;
-        }
-
-        const targetDate = item.deadlineAt;
-        if (targetDate) {
-          const d = new Date(targetDate);
-          const todayEnd = new Date(
-            currentDate.getFullYear(),
-            currentDate.getMonth(),
-            currentDate.getDate(),
-            23,
-            59,
-            59,
-            999
-          );
-          if (d > todayEnd) {
-            groups.upcoming.push(item);
-            continue;
-          }
-        }
-
-        groups.today.push(item);
-      }
+  const groupedTasks=useMemo(()=>{
+    const groups:Record<ColumnId,KanbanBoardItem[]>={today:[],overdue:[],unassigned:[],completed:[],upcoming:[]};
+    for(const item of filteredItems){
+      const columns=(item.type==='TASK'?[item.task]:item.tasks).map(task=>columnFor(task,now) as ColumnId);
+      const active=columns.filter(c=>c!=='completed');
+      const column:ColumnId=active.includes('today')?'today':active.includes('overdue')?'overdue':active[0]??columns[0]??'today';
+      groups[column].push(item);
     }
-
     return groups;
-  }, [filteredItems, now]);
+  },[filteredItems,now]);
 
   // Navegar suavemente até uma coluna específica
   function scrollToColumn(colId: ColumnId) {
@@ -926,6 +801,7 @@ function TaskCard({
           <div className="flex items-center gap-2">
             <QuickCompleteButton
               taskId={task.id}
+              roundId={task.roundId}
               taskTitle={task.title}
               className="flex-1 h-10! bg-[var(--brand-900)]! shadow-none!"
             />

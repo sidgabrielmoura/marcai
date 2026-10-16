@@ -24,7 +24,7 @@ OWNER e ADMIN poderão transformar a definição de seus processos em templates 
 | Editor | ProcessEditorWizard, com Dados, Tarefas, Dependências, Rotina, Aprovações e Revisão | Reaproveitar controles e seções; introduzir contratos distintos para processo e template. |
 | Tarefas | STANDARD e FORM; oito tipos de pergunta; evidências, dependências AND/OR e aprovação sequencial/paralela | O catálogo pode conter procedimentos úteis, formulários e conferências reais. |
 | Segurança | Papéis OWNER, ADMIN, MANAGER, EMPLOYEE e SUPERADMIN; contexto de organização e escopo de unidade/equipe | Catálogo e biblioteca não substituem a validação operacional no servidor. |
-| UI | Geist local, verde profundo, branco/cinza suave, cards, drawers e dialogs compartilhados | Estética iPhone localizada no modal; preservar identidade, navegação e tipografia do MarcAI. |
+| UI | Geist local, verde profundo, branco/cinza suave, cards, drawers e dialogs compartilhados | Estética iPhone localizada no modal; preservar identidade, navegação e tipografia do Tarefaí. |
 | Navegação | Processos na sidebar e no mobile; criação também pelo botão central; busca global | Integrar todos os pontos de entrada, sem acrescentar uma sexta aba móvel. |
 | Operação | Geração recorrente, relógio, dependências, evidências, aprovações, notificações e retenção | Testar a passagem completa de template até tarefa e histórico do colaborador. |
 | Documentação | auditoria-produto.md declara templates como presentes | A declaração excede a UX e as garantias atuais. Atualizar a auditoria somente após a entrega comprovada. |
@@ -165,7 +165,7 @@ Não abrir o modal automaticamente sempre que entrar em Processos; apresentar a 
 
 ## 7. Modal com linguagem visual do iPhone
 
-Usar uma apresentação do tipo sheet: conteúdo focado, uma única superfície de interação e navegação interna entre seleção e prévia. A referência de comportamento é [Apple HIG — Sheets](https://developer.apple.com/design/human-interface-guidelines/sheets); os detalhes de cor e dimensão abaixo são decisões específicas para o MarcAI.
+Usar uma apresentação do tipo sheet: conteúdo focado, uma única superfície de interação e navegação interna entre seleção e prévia. A referência de comportamento é [Apple HIG — Sheets](https://developer.apple.com/design/human-interface-guidelines/sheets); os detalhes de cor e dimensão abaixo são decisões específicas para o Tarefaí.
 
 - Mobile: painel inferior com cantos superiores de 28 px, puxador discreto, cabeçalho e ação principal persistentes. Altura inicial adequada ao catálogo; permitir expansão, rolagem e teclado sem encobrir a ação.
 - Desktop: dialog central com raio de 28 px, largura máxima aproximada de 760 px e altura limitada à viewport; catálogo e prévia podem ocupar a mesma superfície em passos sucessivos.

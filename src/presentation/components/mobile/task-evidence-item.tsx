@@ -21,6 +21,7 @@ export interface TaskEvidenceRequirement {
   type: string;
   required: boolean;
   minQuantity: number;
+  maxQuantity?:number;
   executionStage?: string;
   submissions: {
     id: string;
@@ -171,6 +172,8 @@ export function TaskEvidenceItem({
   }
 
   const currentFile = draft?.file ?? file;
+  const [signaturePreview,setSignaturePreview]=useState<string|null>(null);
+  useEffect(()=>{if(req.type!=='SIGNATURE'||!currentFile){setSignaturePreview(null);return;}const url=URL.createObjectURL(currentFile);setSignaturePreview(url);return ()=>URL.revokeObjectURL(url);},[req.type,currentFile]);
   const currentValue = draft?.value ?? value;
   const isSigned = draft?.signed ?? signed;
 
@@ -203,6 +206,7 @@ export function TaskEvidenceItem({
           : "bg-slate-50/60 dark:bg-muted/15 border-[var(--border-subtle)]"
         }`}
     >
+      {signaturePreview?<img src={signaturePreview} alt="Assinatura recuperada do rascunho" className="max-h-40 w-full object-contain"/>:null}
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="flex items-center gap-2">
           <div
@@ -472,7 +476,7 @@ export function TaskEvidenceItem({
                         signed: true,
                         getSignatureBlob: () =>
                           new Promise<Blob | null>((resolve) =>
-                            canvasRef.current?.toBlob(resolve, "image/png")
+                            canvasRef.current?canvasRef.current.toBlob(resolve, "image/png"):resolve(null)
                           ),
                       });
                     }

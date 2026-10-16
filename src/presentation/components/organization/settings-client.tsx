@@ -626,11 +626,11 @@ export function SettingsClient({
                   </label>
                 </div>
 
-                {/* Canal Oficial de Envio Marcaí */}
+                {/* Canal Oficial de Envio Tarefaí */}
                 <div className="pt-3 border-t border-[var(--border-subtle)] flex items-center gap-2 text-xs text-[var(--text-secondary)]">
                   <span className="size-2 rounded-full bg-emerald-500 shrink-0" />
                   <span>
-                    Os alertas são disparados automaticamente pelo canal oficial do Marcaí no WhatsApp.
+                    Os alertas são disparados automaticamente pelo canal oficial do Tarefaí no WhatsApp.
                   </span>
                 </div>
               </CardContent>

@@ -10,7 +10,7 @@ import { getEvidenceRound,evidenceInRound } from '@/application/tasks/evidence-r
 import { fail } from './http';
 import { columnFor,deadline,dayKey } from './policy';
 export const includeTask={
- organization:{select:{settings:true}},location:true,process:{select:{name:true}},execution:{select:{id:true,status:true,availableAt:true,process:{select:{name:true}}}},
+ organization:{select:{settings:true}},location:true,team:{select:{name:true}},process:{select:{name:true}},execution:{select:{id:true,status:true,availableAt:true,process:{select:{name:true}}}},
  assignments:{where:{removedAt:null},select:{memberId:true,type:true,member:{select:{organizationId:true,user:{select:{name:true}}}}}},
  approvalWorkflow:{include:{steps:{include:{decisions:{select:{id:true,decision:true,note:true,createdAt:true}}}}}},
  sessions:{include:{pauses:true}},
@@ -57,7 +57,7 @@ export async function project(task:LoadedTask,c:AuthenticatedContext,detail=fals
  const early=evaluateEarlyExecution({policy:settings?.earlyExecutionPolicy??"NOT_ALLOWED",scheduledOrAvailableAt:task.execution?.availableAt??task.scheduledDate??new Date(0),currentTime:now,windowMinutes:settings?.earlyExecutionWindowMinutes??60});
  const startCheck=canStartTask(task.status,dependencies(task).isBlocked);
  const dep=dependencies(task);
- const claim=unassigned&&!dep.isBlocked&&task.status!=='BLOCKED'&&!future&&!terminal;
+ const claim=unassigned&&!!task.teamId&&operationGuard(task,now,true).allowed;
  const requirements=task.evidenceRequirements.map(r=>{
  const current=evidenceInRound(r.submissions,round),validCount=current.filter(s=>s.validationStatus==='VALID').length,rejectedCount=current.filter(s=>s.validationStatus==='REJECTED').length;
  return {id:r.id,type:r.type,required:r.required,minQuantity:r.minQuantity,maxQuantity:r.maxQuantity,stage:r.executionStage,validCount,rejectedCount,waived:rejectedCount>=3&&validCount<r.minQuantity,
@@ -67,18 +67,18 @@ export async function project(task:LoadedTask,c:AuthenticatedContext,detail=fals
  const correctionMeta=correctionLog?.metadata as {note?:unknown;reason?:unknown}|null;
  const correctionNote=correctionMeta?.note??correctionMeta?.reason;
  const taskDto={id:task.id,snapshotAt:now.toISOString(),version:task.updatedAt.toISOString(),organizationId:task.organizationId,executionId:task.executionId,origin:task.origin,title:task.title,
- description:detail?task.description:null,instructions:detail?task.instructions:null,status:task.status,taskType:task.taskType,priority:task.priority,required:task.required,
+ description:detail?task.description:null,instructions:detail?task.instructions:null,status:task.status,taskType:task.taskType,priority:task.priority,criticality:task.criticality,teamName:task.team?.name??null,required:task.required,
  processName:task.process?.name??task.execution?.process.name??null,locationName:task.location?.name??null,timezone:task.location?.timezone??'America/Sao_Paulo',
  deadlineAt:task.deadlineAt?.toISOString()??null,slaDueAt:task.slaDueAt?.toISOString()??null,scheduledDate:task.scheduledDate?.toISOString()??null,toleranceMinutes:task.toleranceMinutes??20,
  startedAt:task.startedAt?.toISOString()??null,endedAt:ended?.toISOString()??null,elapsedSeconds:elapsed,workSeconds:effectiveWorkSeconds(task.sessions,ended??now),
  timerRunning:!future&&!terminal&&task.status!=='PAUSED'&&task.status!=='BLOCKED'&&!!start&&(limit===null||now.getTime()<=limit),isUnassigned:unassigned,requiresApproval:!!task.approvalWorkflow,assignmentType:task.assignments.find(a=>a.memberId===c.memberId)?.type??null,assignedNames:task.assignments.filter(a=>a.member.organizationId===c.organizationId).map(a=>a.member.user.name),
  roundId:round?.id??'initial',formFields:detail?task.formFields??[]:[],formAnswers:detail?task.formAnswers??{}:{},requirements,
  actions:{start:{...(assigned&&startCheck.allowed&&(early.allowed||early.requireJustification)&&requirements.filter(r=>r.required&&r.stage==="START").every(r=>r.validCount>=r.minQuantity||r.waived)?permit():permit("START_UNAVAILABLE",startCheck.reason??early.reason??"Registre as evidências de início.")),requiresJustification:!!early.requireJustification},claim:claim?permit():permit('CLAIM_UNAVAILABLE',future?'Aguarde o horário agendado.':'Esta tarefa não está disponível para assumir.'),complete:guard,evidence:guard,
- resume:assigned&&task.status==='PAUSED'?permit():permit('RESUME_UNAVAILABLE','Retomar é exclusivo de tarefas pausadas antigas.'),
+ resume:permit('RESUME_UNAVAILABLE','Tarefas não podem ser pausadas.'),
  impediment:assigned&&!['COMPLETED','CANCELLED','NOT_COMPLETED','SUBMITTED'].includes(task.status)?permit():permit('IMPEDIMENT_UNAVAILABLE','Esta tarefa não pode ser encerrada com impedimento.')},
  dependencies:detail?await Promise.all(task.dependencies.map(async d=>{
  const visible=await prisma.task.findFirst({where:{...readable(c),id:d.dependsOnId},select:{id:true}});
- return {id:d.id,type:d.type,logic:d.logic,satisfied:d.type==='INFORMATIVE'||d.dependsOnTask.status==='COMPLETED'&&(d.type!=='APPROVAL_CONDITION'||d.dependsOnTask.approvalWorkflow?.status==='APPROVED'),title:visible?d.dependsOnTask.title:'Etapa anterior fora do seu acesso'};
+ return {id:d.id,type:d.type,logic:d.logic,taskId:visible?d.dependsOnId:null,status:visible?d.dependsOnTask.status:null,satisfied:d.type==='INFORMATIVE'||d.dependsOnTask.status==='COMPLETED'&&(d.type!=='APPROVAL_CONDITION'||d.dependsOnTask.approvalWorkflow?.status==='APPROVED'),title:visible?d.dependsOnTask.title:'Etapa anterior fora do seu acesso'};
  })):[],
  occurrences:detail?task.occurrences.map(o=>({id:o.id,reason:o.reason,category:o.category,createdAt:o.createdAt.toISOString()})):[],
  correctionReason:typeof correctionNote==='string'?correctionNote.slice(0,1000):null,
@@ -91,8 +91,7 @@ export async function taskDetail(c:AuthenticatedContext,id:string) {
  if(!t)fail(404,'TASK_UNAVAILABLE','Tarefa removida, transferida ou fora do seu acesso.');
  return project(t,c,true);
 }
-export async function listTasks(c:AuthenticatedContext,cursor:string|null,search="",type="all") {
- const now=new Date();
+export async function listTasks(c:AuthenticatedContext,cursor:string|null,search="",type="all",now=new Date()) {
  const cohort:Prisma.TaskWhereInput={AND:[readable(c),{OR:[{status:{notIn:["COMPLETED","CANCELLED","NOT_COMPLETED"]}},{status:"COMPLETED",completedAt:{gte:new Date(now.getTime()-27*3600000)}}]},...(type!=="all"?[{taskType:type==="form"?"FORM":"STANDARD"}]:[]),...(search?[{OR:[{title:{contains:search,mode:"insensitive" as const}},{location:{name:{contains:search,mode:"insensitive" as const}}},{process:{name:{contains:search,mode:"insensitive" as const}}},{execution:{process:{name:{contains:search,mode:"insensitive" as const}}}}]}]:[])]};
  const rows=await prisma.task.findMany({where:{...cohort,...(cursor?{AND:[...(cohort.AND as Prisma.TaskWhereInput[]),cursorWhere(cursor)]}:{})},include:includeTask,orderBy:[{priority:"desc"},{deadlineAt:"asc"},{id:"asc"}],take:101});
  const page=rows.slice(0,100);
@@ -118,7 +117,7 @@ async function boardCounts(c:AuthenticatedContext,where:Prisma.TaskWhereInput,no
  for(const t of rows){const timezone=t.location?.timezone??"America/Sao_Paulo";if(t.status==="COMPLETED"&&(!t.completedAt||dayKey(t.completedAt.getTime(),timezone)!==dayKey(now.getTime(),timezone)))continue;const column=columnFor({status:t.status,deadlineAt:t.deadlineAt?.toISOString(),slaDueAt:t.slaDueAt?.toISOString(),scheduledDate:t.scheduledDate?.toISOString(),toleranceMinutes:t.toleranceMinutes,isUnassigned:!t.assignments.some(a=>a.type==="PRIMARY"),timezone},now.getTime());const key=t.origin==="PROCESS"&&t.executionId?"execution:"+t.executionId:"task:"+t.id;groups.set(key,[...(groups.get(key)??[]),column]);}
  const counts:Record<string,number>={today:0,overdue:0,unassigned:0,completed:0,upcoming:0},columns:Record<string,string>={};for(const [key,cols] of groups.entries()){const active=cols.filter(c=>c!=="completed");const chosen=active.includes("today")?"today":active.includes("overdue")?"overdue":active[0]??cols[0]!;counts[chosen]++;columns[key]=chosen;}return {counts,columns};
 }
-export async function searchTasks(c:AuthenticatedContext,term:string){const rows=await prisma.task.findMany({where:{AND:[readable(c),{OR:[{title:{contains:term,mode:"insensitive" as const}},{location:{name:{contains:term,mode:"insensitive" as const}}},{process:{name:{contains:term,mode:"insensitive" as const}}}]}]},include:includeTask,orderBy:[{updatedAt:"desc"},{id:"desc"}],take:20});return Promise.all(rows.map(t=>project(t,c)));}
+export async function searchTasks(c:AuthenticatedContext,term:string){const rows=await prisma.task.findMany({where:{AND:[readable(c),{OR:[{title:{contains:term,mode:"insensitive" as const}},{location:{name:{contains:term,mode:"insensitive" as const}}},{process:{name:{contains:term,mode:"insensitive" as const}}},{execution:{process:{name:{contains:term,mode:"insensitive" as const}}}}]}]},include:includeTask,orderBy:[{updatedAt:"desc"},{id:"desc"}],take:20});return Promise.all(rows.map(t=>project(t,c)));}
 
 function encodeCursor(t:{id:string;priority:string;deadlineAt:Date|null}){return Buffer.from(JSON.stringify({id:t.id,priority:t.priority,date:t.deadlineAt?.toISOString()??null})).toString("base64url");}
 function cursorWhere(cursor:string):Prisma.TaskWhereInput{let parsed:{id:string;priority:"LOW"|"MEDIUM"|"HIGH"|"CRITICAL";date:string|null};try{parsed=JSON.parse(Buffer.from(cursor,"base64url").toString("utf8"));if(!["LOW","MEDIUM","HIGH","CRITICAL"].includes(parsed.priority)||!/^[a-zA-Z0-9_-]{1,128}$/.test(parsed.id)||parsed.date!==null&&!Number.isFinite(Date.parse(parsed.date)))throw new Error();}catch{fail(400,"CURSOR_INVALID","Atualize a lista para continuar.");}return {OR:[{priority:{in:(["LOW","MEDIUM","HIGH","CRITICAL"] as Array<"LOW"|"MEDIUM"|"HIGH"|"CRITICAL">).slice(0,["LOW","MEDIUM","HIGH","CRITICAL"].indexOf(parsed.priority))}},...(parsed.date?[{priority:parsed.priority,deadlineAt:{gt:new Date(parsed.date)}},{priority:parsed.priority,deadlineAt:null},{priority:parsed.priority,deadlineAt:new Date(parsed.date),id:{gt:parsed.id}}]:[{priority:parsed.priority,deadlineAt:null,id:{gt:parsed.id}}])]};}

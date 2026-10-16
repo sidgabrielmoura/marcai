@@ -21,7 +21,7 @@ import { idempotent } from "./idempotency";
 import {fail,MobileError} from "./http";
 import { mutable, verifyFormAttachments } from "./attachments";
 
-export type ActionResult = { success?: boolean; error?: string; committed?:boolean };
+export type ActionResult = { success?: boolean; error?: string; committed?:boolean;status?:"SUBMITTED"|"COMPLETED" };
 function refresh(id: string) { for (const p of ["/tasks", "/history", "/notifications", "/management/tasks"]) revalidatePath(p); }
 export async function saveEvidence(req: Request|null, taskId: string, requirementId: string, value: string, file: File | null, expectedRoundId?: string): Promise<ActionResult> {
   const c = await getAuthenticatedContext(); if (!c) return { error: "Não autenticado." };
@@ -273,7 +273,7 @@ export async function completeTask(req: Request|null, taskId: string, formAnswer
     }
 
     await synchronizeExecution(tx, c.organizationId, task.executionId);
-    return { success: true };
+    return { success: true,status:review?"SUBMITTED" as const:"COMPLETED" as const };
   });
 
   if (result.success) {

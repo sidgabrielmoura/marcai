@@ -57,7 +57,7 @@ export const AppReloadLoader: React.FC<AppReloadLoaderProps> = ({
 
   return (
     <div
-      id="marcai-reload-loader"
+      id="tarefai-reload-loader"
       aria-hidden={fading}
       className={`fixed inset-0 z-[9999] flex items-center justify-center bg-[var(--background,#f4f5f1)] transition-opacity duration-300 ease-out select-none ${
         fading ? "opacity-0 pointer-events-none" : "opacity-100"

@@ -33,7 +33,7 @@ export function usePushNotifications() {
     onForegroundMessage((payload) => {
       console.log("[usePushNotifications] Notificação em primeiro plano:", payload);
 
-      const title = payload.notification?.title || payload.data?.title || "Marcaí";
+      const title = payload.notification?.title || payload.data?.title || "Tarefaí";
       const body = payload.notification?.body || payload.data?.body || payload.data?.message || "";
 
       // Se o navegador permitir e estiver em foco, exibe notificação nativa

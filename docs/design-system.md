@@ -1,4 +1,4 @@
-# Design system — Marcai
+# Design system — Tarefaí
 
 Atualização de UX/UI: setembro de 2026. Esta versão substitui a antiga identidade azul e o layout desktop com navegação no topo. A referência visual fornecida pelo usuário é a base: sidebar clara, cartões brancos sobre cinza suave, verde profundo e hierarquia discreta.
 

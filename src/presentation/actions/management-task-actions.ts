@@ -1,4 +1,5 @@
 "use server";
+import {operate as employeeOperate} from "@/application/mobile/operations";
 
 import { z } from "zod";
 import { taskEditSchema, canEditTaskDefinition } from "@/domain/rules/task-edit";
@@ -449,6 +450,7 @@ export async function transferTaskAction(taskId: string, newMemberId: string, re
 }
 
 export async function claimTaskAction(taskId: string): Promise<ActionResult> {
+  const employee=await getAuthenticatedContext();if(employee?.role==='EMPLOYEE'){try{const result=await employeeOperate(null,taskId,'claim',{});revalidatePath('/tasks');revalidatePath('/history');return result;}catch(e){return {error:e instanceof Error?e.message:'Não foi possível continuar.'};}}
   const c = await getAuthenticatedContext(); if (!c) return { error: "Não autenticado." };
   const result = await prisma.$transaction(async tx => {
     await lockTask(tx, c.organizationId, taskId);
@@ -490,22 +492,10 @@ export async function pauseTaskAction(taskId: string, category = "OUTROS", note?
   return { error: "O sistema não permite pausar tarefas. A tarefa permanece aberta até ser cancelada ou concluída." };
 }
 export async function resumeTaskAction(taskId: string): Promise<ActionResult> {
-  return operate(taskId, false, async (tx, task, c) => {
-    const check = canResumeTask(task.status); if (!check.allowed) return { error: check.reason };
-    await tx.taskPause.updateMany({ where: { session: { taskId }, endedAt: null }, data: { endedAt: new Date() } });
-    await tx.task.update({ where: { id: taskId }, data: { status: "IN_PROGRESS" } });
-    await audit(tx, task, c, "TASK_RESUMED");
-    await notifyManagers(
-      tx,
-      task,
-      "Tarefa retomada",
-      `A tarefa “${task.title}” foi retomada por ${c.userName || "um colaborador"}.`,
-      { type: "TASK_RESUMED", priority: "LOW", excludeUserId: c.userId }
-    );
-    return { success: true };
-  });
+  return { error: "O sistema não permite pausar nem retomar tarefas. A tarefa permanece aberta até ser cancelada ou concluída." };
 }
 export async function reportImpedimentAction(taskId: string, category: string, reason: string): Promise<ActionResult> {
+  const employee=await getAuthenticatedContext();if(employee?.role==='EMPLOYEE'){try{const result=await employeeOperate(null,taskId,'impediment',{category,reason});revalidatePath('/tasks');revalidatePath('/history');return result;}catch(e){return {error:e instanceof Error?e.message:'Não foi possível continuar.'};}}
   return operate(taskId, false, async (tx, task, c) => {
     const check = canReportImpediment(task.status); if (!check.allowed) return { error: check.reason };
     if (!reasonSchema.safeParse(reason).success || !reasonSchema.safeParse(category).success) return { error: "Informe a categoria e descreva o impedimento." };

@@ -32,7 +32,7 @@ export function verifyTotp(secret: string, code: string, lastCounter = -1, now =
   return null;
 }
 export function buildTotpUri(params: { secret: string; accountName: string; issuer?: string }) {
-  const issuer = params.issuer || "Marcai";
+  const issuer = params.issuer || "Tarefaí";
   const account = params.accountName || "usuario";
   const label = `${encodeURIComponent(issuer)}:${encodeURIComponent(account)}`;
   const cleanSecret = params.secret.trim().toUpperCase().replace(/[\s=-]+/g, "");

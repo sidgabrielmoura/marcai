@@ -185,7 +185,7 @@ export function SetupBiometricsClient({
               </h1>
 
               <p className="text-xs text-[var(--text-secondary)] mt-2 leading-relaxed max-w-sm">
-                Olá, <strong>{userName || "colaborador"}</strong>! Você pode entrar no Marcaí em 1 toque usando sua impressão digital ou reconhecimento facial, sem precisar digitar sua senha ou PIN.
+                Olá, <strong>{userName || "colaborador"}</strong>! Você pode entrar no Tarefaí em 1 toque usando sua impressão digital ou reconhecimento facial, sem precisar digitar sua senha ou PIN.
               </p>
 
               {/* Destaques / Vantagens estilo bancário */}

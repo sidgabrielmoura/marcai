@@ -70,7 +70,7 @@ export function formatOperationalAlertMessage(params: SendWhatsAppAlertParams): 
   const priorityBadge = isCritical ? "🚨 *URGENTE / CRÍTICA*" : params.priority ? `⚠️ *${params.priority}*` : "";
 
   const lines: string[] = [
-    `*Marcaí Alertas* · _${params.organizationName}_`,
+    `*Tarefaí Alertas* · _${params.organizationName}_`,
     "",
     `🔔 *${params.title}*`,
   ];
@@ -105,7 +105,7 @@ export function formatOperationalAlertMessage(params: SendWhatsAppAlertParams): 
   }
 
   lines.push("");
-  lines.push(`_Enviado automaticamente pelo sistema de monitoramento operacional Marcaí._`);
+  lines.push(`_Enviado automaticamente pelo sistema de monitoramento operacional Tarefaí._`);
 
   return lines.join("\n");
 }
@@ -187,7 +187,7 @@ export async function sendWahaTextMessage(
 }
 
 /**
- * Resolve as credenciais do WAHA utilizando prioritariamente as variáveis de ambiente globais do Marcaí
+ * Resolve as credenciais do WAHA utilizando prioritariamente as variáveis de ambiente globais do Tarefaí
  * ou configurações específicas caso informadas.
  */
 export function resolveWahaConfig(customConfig?: Partial<WahaConfig>): WahaConfig | null {

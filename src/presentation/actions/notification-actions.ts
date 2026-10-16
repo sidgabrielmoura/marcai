@@ -1,4 +1,5 @@
 "use server";
+import {projectNotice} from "@/application/mobile/notifications";
 
 import { getAuthenticatedContext } from "@/application/security/auth-context";
 import { prisma } from "@/infrastructure/database/prisma";
@@ -58,22 +59,15 @@ export async function markNotificationReadAction(input?: FormData | string): Pro
 export async function markNotificationReadAndNavigateAction(form: FormData) {
   const c = await getAuthenticatedContext();
   const id = String(form.get("id") || "");
-  const url = String(form.get("url") || "/notifications");
+  if(!c||!id)redirect('/notifications');
+  const notice=await prisma.notification.findFirst({where:{id,userId:c.userId,organizationId:c.organizationId}});
+  if(!notice)redirect('/notifications');
+  const projected=await projectNotice(c,notice),destination=projected.destination;
+  if(!destination.taskId&&!destination.executionId)redirect('/notifications');
+  await prisma.notification.updateMany({where:{id,userId:c.userId,organizationId:c.organizationId,readAt:null},data:{readAt:new Date()}});
+  revalidateNotificationPaths();
+  redirect(destination.taskId?'/tasks/'+destination.taskId:'/executions/'+destination.executionId);
 
-  if (c && id) {
-    await prisma.notification.updateMany({
-      where: {
-        id,
-        organizationId: c.organizationId,
-        userId: c.userId,
-        readAt: null,
-      },
-      data: { readAt: new Date() },
-    });
-    revalidateNotificationPaths();
-  }
-
-  redirect(url);
 }
 
 /**

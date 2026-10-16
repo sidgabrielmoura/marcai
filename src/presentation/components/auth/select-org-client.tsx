@@ -158,7 +158,7 @@ export function SelectOrgClient({
               className="text-[var(--text-secondary)] hover:text-[var(--brand-900)] rounded-full px-3 gap-1.5 font-medium shadow-none"
             >
               <ArrowLeft className="size-4" />
-              <span>Voltar ao Marcai</span>
+              <span>Voltar ao Tarefaí</span>
             </Button>
           ) : (
             <Link href="/" className="inline-block hover:opacity-90 transition-opacity">
@@ -398,7 +398,7 @@ export function SelectOrgClient({
       </main>
 
       <footer className="w-full max-w-xl text-center mt-6 text-xs text-[var(--text-secondary)]">
-        <p>Marcaí • Gestão operacional simplificada e transparente</p>
+        <p>Tarefaí • Gestão operacional simplificada e transparente</p>
       </footer>
     </div>
   );

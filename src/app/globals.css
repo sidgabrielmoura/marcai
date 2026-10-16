@@ -4,7 +4,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Marcaí superadmin contract: docs/SUPERADMIN_LAYOUT.md. Scoped to platform. */
+/* Tarefaí superadmin contract: docs/SUPERADMIN_LAYOUT.md. Scoped to platform. */
 .app-frame--platform,
 .superadmin-dialog {
   --type-small: .75rem;

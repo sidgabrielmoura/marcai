@@ -76,7 +76,7 @@ export function BiometricSetup({ hasBiometricsEnabled }: BiometricSetupProps) {
           <div className="flex items-center gap-3 p-3 bg-brand-50 border border-brand-200 rounded-[14px]">
             <CheckCircle2 className="size-5 text-brand-700" />
             <span className="text-brand-900 font-semibold text-[length:var(--type-label)]">
-              Biometria ativada neste dispositivo.
+              Existe uma chave de acesso cadastrada na sua conta. A disponibilidade neste aparelho depende do autenticador.
             </span>
           </div>
         ) : (

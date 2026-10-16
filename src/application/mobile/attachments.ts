@@ -20,13 +20,14 @@ export async function mutable(tx:Prisma.TransactionClient,c:AuthenticatedContext
  return task;
 }
 export async function createUpload(req:Request,c:AuthenticatedContext,taskId:string,input:unknown) {
- const b=z.object({fieldId:z.string().max(100).optional(),requirementId:z.string().max(128).optional(),name:z.string().min(1).max(200),mime:z.enum(['image/jpeg','image/png','image/webp','video/mp4','application/pdf']),size:z.number().int().positive().max(12*1024*1024)}).strict().refine(v=>!!v.fieldId!==!!v.requirementId).parse(input);
+ const b=z.object({roundId:z.string().min(1).max(128).optional(),fieldId:z.string().max(100).optional(),requirementId:z.string().max(128).optional(),name:z.string().min(1).max(200),mime:z.enum(['image/jpeg','image/png','image/webp','video/mp4','application/pdf']),size:z.number().int().positive().max(12*1024*1024)}).strict().refine(v=>!!v.fieldId!==!!v.requirementId).parse(input);
  return idempotent(req,c,{taskId,upload:b},async tx=>{
  await lockTask(tx,c.organizationId,taskId); const task=await mutable(tx,c,taskId);
  if(b.fieldId){const fields=task.formFields as Array<{id:string;type:string}>;if(!Array.isArray(fields)||!fields.some(f=>f.id===b.fieldId&&['PHOTO','VIDEO','FILE'].includes(f.type)))fail(400,'FORM_FIELD','Este campo não aceita arquivo.');}
  if(b.requirementId&&!task.evidenceRequirements.some(r=>r.id===b.requirementId))fail(400,'REQUIREMENT','Comprovação desconhecida.');
  if(b.requirementId&&b.size>10*1024*1024)fail(413,'FILE_LIMIT','A comprovação deve ter até 10 MB.');
  const round=await getEvidenceRound(tx,c.organizationId,taskId),id=randomUUID();
+ if(b.roundId&&b.roundId!==(round?.id??'initial'))fail(409,'ROUND_CHANGED','A rodada mudou. Atualize a tarefa antes de enviar arquivos.');
  await tx.$executeRaw`INSERT INTO mobile_uploads(id,user_id,organization_id,task_id,field_id,requirement_id,round_id,name,mime,size,expires_at) VALUES(${id}::uuid,${c.userId},${c.organizationId},${taskId},${b.fieldId??null},${b.requirementId??null},${round?.id??'initial'},${b.name},${b.mime},${b.size},now()+interval '24 hours')`;
  return {uploadId:id,chunkSize:1048576};
  });
@@ -43,6 +44,7 @@ export async function chunk(c:AuthenticatedContext,id:string,part:number,bytes:B
  if(!Number.isInteger(part)||part<0||part>=Math.ceil(u.size/1048576)||bytes.length!==Math.min(1048576,u.size-part*1048576))fail(400,'CHUNK_INVALID','Parte de arquivo inválida.');
  await prisma.$transaction(async tx=>{
  await lockTask(tx,c.organizationId,u.task_id);await mutable(tx,c,u.task_id);
+ const round=await getEvidenceRound(tx,c.organizationId,u.task_id);if((round?.id??'initial')!==u.round_id)fail(409,'ROUND_CHANGED','A rodada mudou. Revise o envio.');
  const [old]=await tx.$queryRaw<Array<{bytes:Uint8Array}>>`SELECT bytes FROM mobile_upload_chunks WHERE upload_id=${id}::uuid AND part=${part}`;
  if(old&&!Buffer.from(old.bytes).equals(bytes))fail(409,'CHUNK_CONFLICT','Esta parte já contém outros dados.');
  await tx.$executeRaw`INSERT INTO mobile_upload_chunks(upload_id,part,bytes) VALUES(${id}::uuid,${part},${bytes}) ON CONFLICT DO NOTHING`;

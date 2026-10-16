@@ -6,7 +6,10 @@ import { encryptSession } from "../src/infrastructure/security/session";
 import { secondFactorProof } from "../src/infrastructure/security/totp";
 
 async function main() {
-  const baseUrl = process.env.MARCAI_UI_BASE_URL ?? "http://localhost:3001";
+  const baseUrl =
+    process.env.TAREFAI_UI_BASE_URL ??
+    process.env.MARCAI_UI_BASE_URL ??
+    "http://localhost:3001";
   console.log("Using baseUrl:", baseUrl);
   const user = await prisma.user.findFirst({
     where: {

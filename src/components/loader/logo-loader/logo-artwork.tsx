@@ -57,14 +57,14 @@ export interface LogoArtworkProps {
 }
 
 /**
- * High-fidelity vector animated artwork for the Marcaí logo.
+ * High-fidelity vector animated artwork for the Tarefaí logo.
  * Time is expressed in 60 fps reference frames.
  */
 export const LogoArtwork: React.FC<LogoArtworkProps> = ({
   frame,
   className,
   style,
-  title = "Marcaí - Carregando",
+  title = "Tarefaí - Carregando",
 }) => {
   const rawId = useId();
   const id = `ml-${rawId.replace(/[^a-zA-Z0-9_-]/g, "")}`;

@@ -1,4 +1,6 @@
 "use server";
+import {execution as employeeExecution} from "@/application/mobile/data";
+import {webTaskDetail} from "@/application/mobile/web-task-contract";
 import { z } from "zod";
 import { saveProcessInTransaction } from "@/application/processes/save-process";
 import { TemplateInputError } from "@/application/templates/template-library";
@@ -160,6 +162,8 @@ export async function updateProcessToTemplateVersionAction(processId: string, ne
 }
 
 export type EmployeeProcessTaskItem = {
+  roundId?:string;
+  requiresApproval?:boolean;
   id: string;
   title: string;
   description: string | null;
@@ -198,6 +202,7 @@ export type EmployeeProcessTaskItem = {
 };
 
 export type EmployeeProcessExecutionDetail = {
+  requiredTotal?:number;requiredCompleted?:number;personalTotal?:number;personalCompleted?:number;hasHiddenSteps?:boolean;
   id: string;
   processId: string;
   processName: string;
@@ -216,17 +221,26 @@ export async function getEmployeeProcessExecutionAction(
   const context = await getAuthenticatedContext();
   if (!context) return { error: "Não autenticado." };
 
+  if(context.role==='EMPLOYEE'){
+    try{
+      const dto=await employeeExecution(context,executionId);
+      const record=await prisma.processExecution.findFirstOrThrow({where:{id:executionId,organizationId:context.organizationId},include:{process:{select:{description:true}},location:{select:{name:true}}}});
+      const tasks=await Promise.all(dto.visibleTasks.map(async(t,index)=>({...await webTaskDetail(context,t.id),orderIndex:index+1,completedAt:t.status==='COMPLETED'?t.endedAt:null,formFields:Array.isArray(t.formFields)?t.formFields:[],isAssignedToCurrent:!!t.assignmentType,assignedMemberName:t.assignedNames.join(', ')||null,isBlocked:!t.actions.complete.allowed&&t.actions.complete.code==='DEPENDENCY',dependsOnIds:[]})));
+      return {execution:{...dto,processId:record.processId,processName:dto.name,processDescription:record.process.description,locationName:record.location?.name??null,scheduledAt:record.scheduledAt.toISOString(),completedAt:record.completedAt?.toISOString()??null,orderRule:'CUSTOM',tasks}};
+    }catch{return {error:'Execução removida, transferida ou fora do seu acesso.'};}
+  }
+
   const execution = await prisma.processExecution.findFirst({
     where: {
       id: executionId,
       organizationId: context.organizationId,
-      tasks: { some: context.role === "EMPLOYEE" ? readable(context) : taskScope(context) },
+      tasks: { some: taskScope(context) },
     },
     include: {
       process: { select: { id: true, name: true, description: true } },
       location: { select: { id: true, name: true } },
       tasks: {
-        where: { AND: [{ deletedAt: null }, context.role === "EMPLOYEE" ? readable(context) : taskScope(context)] },
+        where: { AND: [{ deletedAt: null }, taskScope(context)] },
         include: {
           assignments: {
             where: { removedAt: null },

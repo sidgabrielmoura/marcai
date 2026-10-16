@@ -1,9 +1,9 @@
 /**
- * Templates de E-mail Transacionais do Marcai.
+ * Templates de E-mail Transacionais do Tarefaí.
  * Em conformidade com a skill de email-systems:
  * - Suporte estrito a Multipart (HTML responsivo + Plain Text alternativo)
  * - Preview Text oculto (preheader) para otimização de taxa de abertura
- * - Identidade visual consistente com o design system do Marcai (#1b382b)
+ * - Identidade visual consistente com o design system do Tarefaí (#1b382b)
  * - Botões bulletproof com compatibilidade universal (Outlook, Apple Mail, Gmail)
  * - Rodapé com compliance, identificação da organização e contexto de segurança
  */
@@ -23,7 +23,7 @@ interface BaseLayoutOptions {
 }
 
 const BRAND = {
-  name: "Marcai",
+  name: "Tarefaí",
   colorDark: "#1b382b",
   colorAccent: "#2e5c46",
   colorSage: "#eef4f0",
@@ -78,7 +78,7 @@ function renderBaseHtmlLayout(opts: BaseLayoutOptions): string {
               <table border="0" cellspacing="0" cellpadding="0">
                 <tr>
                   <td style="background-color: ${BRAND.colorDark}; color: #ffffff; font-weight: 800; font-size: 20px; letter-spacing: -0.5px; padding: 8px 16px; border-radius: 12px; font-family: -apple-system, BlinkMacSystemFont, sans-serif;">
-                    marcai
+                    tarefaí
                   </td>
                 </tr>
               </table>
@@ -174,7 +174,7 @@ function renderBaseHtmlLayout(opts: BaseLayoutOptions): string {
           <tr>
             <td align="center" style="padding: 24px 16px 0 16px;">
               <p style="margin: 0; font-size: 12px; color: #8a968f; line-height: 1.5;">
-                &copy; ${currentYear} Marcai Gestão Operacional. Todos os direitos reservados.<br>
+                &copy; ${currentYear} Tarefaí Gestão Operacional. Todos os direitos reservados.<br>
                 Este é um e-mail transacional automático. Por favor, não responda diretamente a esta mensagem.
               </p>
             </td>
@@ -200,12 +200,12 @@ export interface PasswordResetEmailParams {
 
 export function renderPasswordResetEmail(params: PasswordResetEmailParams) {
   const expires = params.expiresMinutes || 60;
-  const preheader = `Instruções para redefinir sua senha no Marcai. Válido por ${expires} minutos.`;
+  const preheader = `Instruções para redefinir sua senha no Tarefaí. Válido por ${expires} minutos.`;
   const title = "Redefinição de Senha";
 
   const paragraphs = [
     `Olá, <strong>${params.name}</strong>.`,
-    `Recebemos uma solicitação para redefinir a senha de acesso da sua conta no Marcai.`,
+    `Recebemos uma solicitação para redefinir a senha de acesso da sua conta no Tarefaí.`,
     `Clique no botão abaixo para escolher uma nova senha. Por segurança, este link é válido por <strong>${expires} minutos</strong>.`,
   ];
 
@@ -225,7 +225,7 @@ export function renderPasswordResetEmail(params: PasswordResetEmailParams) {
 
   const text = `Olá, ${params.name}.
 
-Recebemos uma solicitação para redefinir a senha da sua conta no Marcai.
+Recebemos uma solicitação para redefinir a senha da sua conta no Tarefaí.
 
 Para criar uma nova senha, acesse o link abaixo (válido por ${expires} minutos):
 ${params.resetUrl}
@@ -233,10 +233,10 @@ ${params.resetUrl}
 Se você não fez essa solicitação, ignore este e-mail. Sua conta continua segura.
 
 ---
-Marcai Gestão Operacional
+Tarefaí Gestão Operacional
 Este é um e-mail transacional de segurança.`;
 
-  return { subject: "Redefinição de senha da sua conta no Marcai", html, text };
+  return { subject: "Redefinição de senha da sua conta no Tarefaí", html, text };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -253,8 +253,8 @@ export interface MemberInviteEmailParams {
 
 export function renderMemberInviteEmail(params: MemberInviteEmailParams) {
   const expires = params.expiresDays || 7;
-  const preheader = `Você foi convidado para participar da organização ${params.orgName} no Marcai.`;
-  const title = "Você recebeu um convite no Marcai";
+  const preheader = `Você foi convidado para participar da organização ${params.orgName} no Tarefaí.`;
+  const title = "Você recebeu um convite no Tarefaí";
 
   const inviterText = params.inviterName
     ? `<strong>${params.inviterName}</strong> convidou você para fazer parte da equipe de <strong>${params.orgName}</strong>.`
@@ -262,7 +262,7 @@ export function renderMemberInviteEmail(params: MemberInviteEmailParams) {
 
   const paragraphs = [
     inviterText,
-    `No Marcai, você terá acesso à gestão de tarefas operacionais, rotinas e processos da sua unidade de forma simples e transparente.`,
+    `No Tarefaí, você terá acesso à gestão de tarefas operacionais, rotinas e processos da sua unidade de forma simples e transparente.`,
     `Clique no botão abaixo para aceitar o convite e configurar seu acesso. Este convite é válido por <strong>${expires} dias</strong>.`,
   ];
 
@@ -284,7 +284,7 @@ export function renderMemberInviteEmail(params: MemberInviteEmailParams) {
     footerNote: "Caso não reconheça esta organização, nenhuma ação adicional é necessária.",
   });
 
-  const text = `Você recebeu um convite para ingressar em ${params.orgName} no Marcai.
+  const text = `Você recebeu um convite para ingressar em ${params.orgName} no Tarefaí.
 
 ${params.inviterName ? `Convidado por: ${params.inviterName}` : ""}
 Organização: ${params.orgName}
@@ -295,9 +295,9 @@ Para aceitar o convite e configurar seu acesso, utilize o link:
 ${params.inviteUrl}
 
 ---
-Marcai Gestão Operacional`;
+Tarefaí Gestão Operacional`;
 
-  return { subject: `Convite para ingressar em ${params.orgName} no Marcai`, html, text };
+  return { subject: `Convite para ingressar em ${params.orgName} no Tarefaí`, html, text };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -319,7 +319,7 @@ export function renderTwoFactorOtpEmail(params: TwoFactorOtpEmailParams) {
 
   const paragraphs = [
     `Olá, <strong>${params.name}</strong>.`,
-    `Utilize o código de 6 dígitos abaixo para concluir sua autenticação em duas etapas no Marcai:`,
+    `Utilize o código de 6 dígitos abaixo para concluir sua autenticação em duas etapas no Tarefaí:`,
     `<div style="text-align: center; margin: 16px 0;">
       <span style="display: inline-block; font-size: 32px; font-weight: 800; letter-spacing: 8px; color: ${BRAND.colorDark}; background-color: ${BRAND.colorSage}; padding: 12px 24px; border-radius: 12px; border: 1px dashed ${BRAND.borderSubtle}; font-family: monospace;">
         ${params.code}
@@ -339,21 +339,21 @@ export function renderTwoFactorOtpEmail(params: TwoFactorOtpEmailParams) {
     title,
     paragraphs,
     detailsBox: details.length ? details : undefined,
-    footerNote: "Nunca compartilhe este código com ninguém. O Marcai nunca solicitará seu código por WhatsApp ou telefone.",
+    footerNote: "Nunca compartilhe este código com ninguém. O Tarefaí nunca solicitará seu código por WhatsApp ou telefone.",
   });
 
   const text = `Olá, ${params.name}.
 
-Seu código de verificação do Marcai é: ${params.code}
+Seu código de verificação do Tarefaí é: ${params.code}
 
 Este código expira em ${expires} minutos.
 ${params.ipAddress ? `IP do solicitante: ${params.ipAddress}\n` : ""}${params.userAgent ? `Dispositivo: ${params.userAgent}\n` : ""}
-Se você não tentou acessar o Marcai, altere sua senha imediatamente.
+Se você não tentou acessar o Tarefaí, altere sua senha imediatamente.
 
 ---
-Marcai Gestão Operacional`;
+Tarefaí Gestão Operacional`;
 
-  return { subject: `${params.code} é seu código de verificação do Marcai`, html, text };
+  return { subject: `${params.code} é seu código de verificação do Tarefaí`, html, text };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -407,7 +407,7 @@ ${params.details ? params.details.map((d) => `${d.label}: ${d.value}`).join("\n"
 ${params.actionUrl ? `Acesse pelo link: ${params.actionUrl}` : ""}
 
 ---
-Marcai Gestão Operacional`;
+Tarefaí Gestão Operacional`;
 
   return {
     subject: `[${params.orgName}] ${params.priority === "CRITICAL" ? "🔴 " : ""}${params.title}`,
@@ -481,7 +481,7 @@ ${details.map((d) => `- ${d.label}: ${d.value}`).join("\n")}
 ${params.downloadUrl ? `Para visualizar ou baixar o relatório: ${params.downloadUrl}` : ""}
 
 ---
-Marcai Gestão Operacional`;
+Tarefaí Gestão Operacional`;
 
   return {
     subject: `[${params.orgName}] Relatório ${frequencyLabel}: ${params.reportName}`,

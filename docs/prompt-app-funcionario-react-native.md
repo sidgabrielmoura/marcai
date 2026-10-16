@@ -1,14 +1,14 @@
-# Prompt completo — aplicativo Marcaí para funcionários
+# Prompt completo — aplicativo Tarefaí para funcionários
 
 Referência: código local inspecionado em 13/10/2026. Copie este documento integralmente para a IA responsável pela implementação. Os caminhos referem-se ao projeto original; confirme o estado mais recente dos arquivos antes de implementar.
 
 ---
 
-Atue como especialista sênior em UX/UI mobile, arquitetura React Native, segurança de aplicações e notificações operacionais. Implemente o aplicativo **Marcaí para funcionários**, para iOS e Android, reproduzindo integralmente as capacidades da área do funcionário do projeto localizado em:
+Atue como especialista sênior em UX/UI mobile, arquitetura React Native, segurança de aplicações e notificações operacionais. Implemente o aplicativo **Tarefaí para funcionários**, para iOS e Android, reproduzindo integralmente as capacidades da área do funcionário do projeto localizado em:
 
 `C:/Users/gabriel/development/marcai`
 
-O resultado deve ser um aplicativo nativo em React Native, conectado ao backend existente, funcional e preparado tecnicamente para distribuição na App Store e no Google Play. A experiência deve ser simples, clara, minimalista, rápida e reconhecível como Marcaí, com forte inspiração nos aplicativos nativos de iPhone.
+O resultado deve ser um aplicativo nativo em React Native, conectado ao backend existente, funcional e preparado tecnicamente para distribuição na App Store e no Google Play. A experiência deve ser simples, clara, minimalista, rápida e reconhecível como Tarefaí, com forte inspiração nos aplicativos nativos de iPhone.
 
 **As notificações push são o principal diferencial do produto e o requisito de maior prioridade.** Trate confiabilidade, precisão de destinatários, segurança, navegação ao tocar no aviso, recuperação de falhas e observabilidade como parte central da arquitetura.
 
@@ -303,7 +303,7 @@ Use OWASP MASVS como referência de verificação, com evidências de controles 
 
 Aplicar as dez heurísticas de Nielsen: visibilidade do estado, linguagem familiar, controle do usuário, consistência, prevenção de erros, reconhecimento em vez de memorização, eficiência, simplicidade, recuperação de erro e ajuda contextual. [Heurísticas de usabilidade](https://www.nngroup.com/articles/ten-usability-heuristics/).
 
-Para o Marcaí, isso se traduz em:
+Para o Tarefaí, isso se traduz em:
 
 - O funcionário entende imediatamente **o que fazer agora**, **quando precisa entregar**, **qual comprovação falta** e **por que algo está bloqueado**.
 - Uma ação principal por contexto: Assumir, Concluir, Enviar para aprovação ou Corrigir. Não colocar cinco ações concorrentes no rodapé.
@@ -419,7 +419,7 @@ Registre as correções em relatório de rastreabilidade, com arquivo, regra, ri
 
 Entregar configuração e documentação completas de distribuição; distinguir **preparado tecnicamente**, **validado em aparelhos**, **submetido** e **aprovado**. Aprovação e entrega push não são garantias que o código possa prometer.
 
-- Identificadores permanentes de pacote/bundle, versão/build number, nome Marcaí, ícones/adaptive icons e splash corretos.
+- Identificadores permanentes de pacote/bundle, versão/build number, nome Tarefaí, ícones/adaptive icons e splash corretos.
 - Ambientes de desenvolvimento, homologação e produção; backend HTTPS real; configuração Firebase nativa por ambiente; APNs, signing e credenciais gerenciados com segurança.
 - Builds Android AAB e iOS assinados quando houver credenciais; pipelines reproduzíveis, lockfile, verificações e perfis de build. Não deixar domínio localhost ou credencial de teste no release.
 - EAS Build/Submit é opção para preparar e enviar; envio não substitui configuração da loja nem revisão. iOS exige ambiente macOS/Xcode ou serviço de build equivalente; Windows não comprova build local iOS. [Submissão com Expo](https://docs.expo.dev/deploy/submit-to-app-stores/).

@@ -426,7 +426,7 @@ export function AppShell({
         <Link
           href={home}
           className="sidebar-brand"
-          aria-label="Marcai, página inicial"
+          aria-label="Tarefaí, página inicial"
         >
           <Brand />
         </Link>
@@ -639,7 +639,7 @@ export function AppShell({
           <Link
             className="mobile-brand"
             href={home}
-            aria-label="Marcai, início"
+            aria-label="Tarefaí, início"
           >
             <Brand compact />
           </Link>
@@ -648,10 +648,10 @@ export function AppShell({
             className="shell-search justify-start font-medium h-auto text-left"
             type="button"
             onClick={() => setSearchOpen(true)}
-            aria-label="Buscar no Marcai"
+            aria-label="Buscar no Tarefaí"
           >
             <Search size={18} />
-            <span>Buscar no Marcai</span>
+            <span>Buscar no Tarefaí</span>
             <kbd>Ctrl K</kbd>
           </Button>
           {mode !== "platform" && (

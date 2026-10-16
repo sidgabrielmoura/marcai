@@ -1,5 +1,6 @@
 "use client";
 
+import {useSubmissionReceipts} from "@/presentation/lib/submission-receipts";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { completeTaskAction } from "@/presentation/actions/task-actions";
@@ -8,6 +9,7 @@ import { Check, Loader2 } from "lucide-react";
 
 interface QuickCompleteButtonProps {
   taskId: string;
+  roundId:string;
   taskTitle?: string;
   className?: string;
   disabled?: boolean;
@@ -15,11 +17,13 @@ interface QuickCompleteButtonProps {
 
 export function QuickCompleteButton({
   taskId,
+  roundId,
   taskTitle,
   className = "",
   disabled = false,
 }: QuickCompleteButtonProps) {
   const router = useRouter();
+  const receipt=useSubmissionReceipts(taskId+":"+roundId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -32,7 +36,7 @@ export function QuickCompleteButton({
     setError("");
 
     try {
-      const result = await completeTaskAction(taskId);
+      const result = await completeTaskAction(taskId,undefined,roundId,await receipt("complete",{}));
       if (result.error) {
         setError(result.error);
         alert(`Não foi possível concluir: ${result.error}`);

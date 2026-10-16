@@ -6,13 +6,16 @@ import type { AuthenticatedContext } from '@/application/security/auth-context';
 import { readable } from './data';
 import { fail } from './http';
 import { parseDestination } from './policy';
+export async function projectNotice(c:AuthenticatedContext,n:{id:string;type:string;priority:string;title:string;message:string;createdAt:Date;readAt:Date|null;organizationId:string;data:unknown}){
+ const raw=n.data as Record<string,unknown>|null;
+ const destination=parseDestination({...raw,organizationId:n.organizationId,notificationId:n.id});
+ const authorized=!!destination&&(destination.taskId?!!await prisma.task.findFirst({where:{...readable(c),id:destination.taskId},select:{id:true}}):destination.executionId?!!await prisma.processExecution.findFirst({where:{id:destination.executionId,organizationId:c.organizationId,tasks:{some:readable(c)}},select:{id:true}}):true);
+ return {id:n.id,type:n.type,priority:n.priority,title:authorized?n.title:'Acesso alterado',message:authorized?n.message:'Este recurso foi removido, transferido ou saiu do seu acesso. Confira as orientações da gestão.',createdAt:n.createdAt.toISOString(),readAt:n.readAt?.toISOString()??null,destination:authorized?destination!:{organizationId:n.organizationId,notificationId:n.id}};
+}
 export async function notices(c:AuthenticatedContext,filter:string,cursor:string|null) {
  const where:Prisma.NotificationWhereInput={organizationId:c.organizationId,userId:c.userId,...(filter==='unread'?{readAt:null}:filter==='read'?{readAt:{not:null}}:{}),...(cursor?{AND:[notificationCursor(cursor)]}:{})};
  const [items,unreadCount]=await Promise.all([prisma.notification.findMany({where,orderBy:[{createdAt:'desc'},{id:'desc'}],take:21}),prisma.notification.count({where:{organizationId:c.organizationId,userId:c.userId,readAt:null}})]);
- const projected=await Promise.all(items.slice(0,20).map(async n=>{
- const data=n.data as {taskId?:string;executionId?:string}|null;
- const authorized=data?.taskId?!!await prisma.task.findFirst({where:{...readable(c),id:data.taskId},select:{id:true}}):data?.executionId?!!await prisma.processExecution.findFirst({where:{id:data.executionId,organizationId:c.organizationId,tasks:{some:readable(c)}},select:{id:true}}):true;
- return ({id:n.id,type:n.type,priority:n.priority,title:authorized?n.title:"Acesso alterado",message:authorized?n.message:"Este recurso foi removido, transferido ou saiu do seu acesso. Confira as orientações da gestão.",createdAt:n.createdAt.toISOString(),readAt:n.readAt?.toISOString()??null,destination:authorized?parseDestination({...(n.data as Record<string,unknown>??{}),organizationId:n.organizationId,notificationId:n.id})??{organizationId:n.organizationId,notificationId:n.id}:{organizationId:n.organizationId,notificationId:n.id}});}));
+ const projected=await Promise.all(items.slice(0,20).map(n=>projectNotice(c,n)));
  return {items:projected,nextCursor:items.length>20?Buffer.from(JSON.stringify({date:items[19]!.createdAt.toISOString(),id:items[19]!.id})).toString("base64url"):null,unreadCount};
 }
 export async function read(c:AuthenticatedContext,id:string|'all') {

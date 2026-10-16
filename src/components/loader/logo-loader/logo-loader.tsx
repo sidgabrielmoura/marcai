@@ -46,8 +46,8 @@ export interface LogoLoaderProps {
 }
 
 /**
- * Official Marcaí animated logo loader.
- * Traces the 'm' letterform, forms and detaches the droplet, and resolves to the brand mark.
+ * Official Tarefaí animated logo loader.
+ * Traces the letterform, forms and detaches the droplet, and resolves to the brand mark.
  */
 export const LogoLoader: React.FC<LogoLoaderProps> = ({
   size = 72,

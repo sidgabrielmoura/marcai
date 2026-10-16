@@ -22,7 +22,7 @@ export function getResendClient(): Resend | null {
 }
 
 /**
- * Endereço de remetente padrão para e-mails transacionais do Marcai.
+ * Endereço de remetente padrão para e-mails transacionais do Tarefaí.
  * Configurável via variável de ambiente EMAIL_FROM.
  */
 export function getDefaultEmailSender(): string {
@@ -32,10 +32,10 @@ export function getDefaultEmailSender(): string {
 
   // Em ambiente de teste/desenvolvimento do Resend, onboarding@resend.dev é permitido
   if (process.env.NODE_ENV !== "production") {
-    return "Marcai <onboarding@resend.dev>";
+    return "Tarefaí <onboarding@resend.dev>";
   }
 
-  return "Marcai <nao-responder@marcai.com.br>";
+  return "Tarefaí <nao-responder@tarefai.com.br>";
 }
 
 /**

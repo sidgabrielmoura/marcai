@@ -6,6 +6,8 @@ import {
   generateAuthenticationOptions,
   verifyAuthenticationResponse,
 } from "@simplewebauthn/server";
+import {savePasskeyChallenge,pendingPasskeyChallenge,consumePasskeyChallenge,clearPasskeyChallenge} from "@/infrastructure/security/passkey-challenge";
+import {rate} from "@/application/mobile/security";
 import { prisma } from "@/infrastructure/database/prisma";
 import { getSession, createSession, clearSession } from "@/infrastructure/security/session";
 import { Role } from "@/domain/types";
@@ -13,60 +15,18 @@ import { redirect } from "next/navigation";
 import { beginLoginChallenge } from "@/infrastructure/security/login-challenge";
 
 // Helper to dynamically resolve WebAuthn RP configuration & allowed origins
-async function getWebAuthnConfig() {
-  let hostname = "localhost";
-  let proto = "http";
-  let host = "";
-
-  try {
-    const { headers } = await import("next/headers");
-    const reqHeaders = await headers();
-    host = reqHeaders.get("x-forwarded-host") || reqHeaders.get("host") || "";
-    hostname = host.split(":")[0];
-    proto = reqHeaders.get("x-forwarded-proto") || (process.env.NODE_ENV === "production" ? "https" : "http");
-  } catch {
-    // Fallback outside request context
-  }
-
-  let rpID = "localhost";
-  if (process.env.NODE_ENV === "production") {
-    const envUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL;
-    if (envUrl) {
-      try {
-        rpID = new URL(envUrl).hostname;
-      } catch {}
-    } else if (hostname && hostname !== "localhost") {
-      rpID = hostname;
-    } else {
-      rpID = "marcai-coral.vercel.app";
-    }
-  } else {
-    rpID = hostname || "localhost";
-  }
-
-  const origins = new Set<string>();
-  if (host) {
-    origins.add(`${proto}://${host}`);
-  }
-  // Standard development origins
-  origins.add("http://localhost:3000");
-  origins.add("http://localhost:3001");
-  origins.add("http://127.0.0.1:3000");
-  origins.add("http://127.0.0.1:3001");
-
-  const envUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL;
-  if (envUrl) {
-    try {
-      origins.add(new URL(envUrl).origin);
-    } catch {}
-  }
-  origins.add("https://marcai-coral.vercel.app");
-
-  return {
-    rpName: "Marcai",
-    rpID,
-    origins: Array.from(origins),
-  };
+async function getWebAuthnConfig(){
+ const canonical='https://marcai-coral.vercel.app';
+ if(process.env.NODE_ENV==='production'){
+  const url=new URL(process.env.NEXT_PUBLIC_APP_URL||process.env.APP_URL||canonical);
+  if(url.origin!==canonical)throw new Error('Origem de produção inválida.');
+  return {rpName:'Marcaí',rpID:url.hostname,origins:[url.origin]};
+ }
+ const {headers}=await import('next/headers'),h=await headers();
+ const host=h.get('host')||'localhost:3000';
+ const url=new URL('http://'+host);
+ if(!['localhost','127.0.0.1'].includes(url.hostname))throw new Error('Configure uma origem de desenvolvimento autorizada.');
+ return {rpName:'Marcaí',rpID:url.hostname,origins:[url.origin]};
 }
 
 export async function generateWebAuthnRegistration() {
@@ -92,7 +52,7 @@ export async function generateWebAuthnRegistration() {
     // Require user verification for biometric
     authenticatorSelection: {
       residentKey: "preferred",
-      userVerification: "preferred",
+      userVerification: "required",
     },
     // Prevent re-registration of existing credentials
     excludeCredentials: user.passkeys.map((passkey: any) => ({
@@ -102,11 +62,7 @@ export async function generateWebAuthnRegistration() {
     })),
   });
 
-  // Save the challenge in the DB to verify later
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { webauthnChallenge: options.challenge },
-  });
+  await savePasskeyChallenge(options.challenge,'registration',user.id);
 
   return options;
 }
@@ -121,7 +77,9 @@ export async function verifyWebAuthnRegistration(response: any) {
     where: { id: session.userId },
   });
 
-  if (!user || !user.webauthnChallenge) throw new Error("Desafio não encontrado");
+  const expectedChallenge=await pendingPasskeyChallenge('registration');
+  if (!user || !expectedChallenge) throw new Error('Desafio não encontrado');
+  await rate('web-passkey-register:'+user.id,10);
 
   const { rpID, origins } = await getWebAuthnConfig();
 
@@ -129,14 +87,14 @@ export async function verifyWebAuthnRegistration(response: any) {
   try {
     verification = await verifyRegistrationResponse({
       response,
-      expectedChallenge: user.webauthnChallenge,
+      expectedChallenge,
       expectedOrigin: origins,
       expectedRPID: rpID,
-      requireUserVerification: false,
+      requireUserVerification: true,
     });
   } catch (error: any) {
     console.error("Verification failed", error);
-    return { error: error.message };
+    return { error: "Não foi possível verificar a chave de acesso. Tente novamente." };
   }
 
   const { verified, registrationInfo } = verification;
@@ -147,7 +105,9 @@ export async function verifyWebAuthnRegistration(response: any) {
     const credentialPublicKey = Buffer.from(credential.publicKey);
     const counter = BigInt(credential.counter);
 
-    await prisma.passkeyAuthenticator.create({
+    await prisma.$transaction(async tx=>{
+    await consumePasskeyChallenge(tx,expectedChallenge,'registration',user.id);
+    await tx.passkeyAuthenticator.create({
       data: {
         userId: user.id,
         credentialID: credentialID,
@@ -159,11 +119,8 @@ export async function verifyWebAuthnRegistration(response: any) {
       },
     });
 
-    // Clear challenge
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { webauthnChallenge: null },
     });
+    await clearPasskeyChallenge('registration');
 
     return { success: true };
   }
@@ -180,21 +137,10 @@ export async function generateWebAuthnAuthentication() {
   const { rpID } = await getWebAuthnConfig();
   const options = await generateAuthenticationOptions({
     rpID,
-    userVerification: "preferred",
+    userVerification: "required",
   });
 
-  // We need to store this challenge somewhere, but the user is not logged in.
-  // We can't store it in the user's DB record because we don't know the user yet.
-  // Storing it in an anonymous session or a separate "LoginChallenge" table/cookie.
-  // For simplicity, we can set a cookie with the challenge.
-  const { cookies } = await import("next/headers");
-  const cookieStore = await cookies();
-  cookieStore.set("webauthn_challenge", options.challenge, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 60 * 5, // 5 minutes
-    path: "/",
-  });
+  await savePasskeyChallenge(options.challenge,'authentication');
 
   return options;
 }
@@ -202,7 +148,8 @@ export async function generateWebAuthnAuthentication() {
 export async function verifyWebAuthnAuthentication(response: any, mobileAuthToken?: string) {
   const { cookies } = await import("next/headers");
   const cookieStore = await cookies();
-  const expectedChallenge = cookieStore.get("webauthn_challenge")?.value;
+  const expectedChallenge=await pendingPasskeyChallenge('authentication');
+  if(expectedChallenge)await rate('web-passkey-auth:'+expectedChallenge,10);
 
   if (!expectedChallenge) {
     return { error: "Desafio de login expirado ou não encontrado." };
@@ -242,27 +189,23 @@ export async function verifyWebAuthnAuthentication(response: any, mobileAuthToke
         counter: Number(authenticator.counter),
         transports: authenticator.transports ? (authenticator.transports.split(",") as any[]) : undefined,
       },
-      requireUserVerification: false,
+      requireUserVerification: true,
     });
   } catch (error: any) {
     console.error("Authentication failed", error);
-    return { error: error.message };
+    return { error: "Não foi possível verificar a chave de acesso. Tente novamente." };
   }
 
   if (!verification.verified) {
     return { error: "Verificação falhou." };
   }
 
-  // Update counter
-  await prisma.passkeyAuthenticator.update({
-    where: { id: authenticator.id },
-    data: {
-      counter: BigInt(verification.authenticationInfo.newCounter),
-      lastUsedAt: new Date(),
-    },
+  await prisma.$transaction(async tx=>{
+    await consumePasskeyChallenge(tx,expectedChallenge,'authentication');
+    const updated=await tx.passkeyAuthenticator.updateMany({where:{id:authenticator.id,counter:authenticator.counter},data:{counter:BigInt(verification.authenticationInfo.newCounter),lastUsedAt:new Date()}});
+    if(updated.count!==1)throw new Error('A chave foi utilizada em outra tentativa. Tente novamente.');
   });
-
-  cookieStore.delete("webauthn_challenge");
+  await clearPasskeyChallenge('authentication');
 
   const user = authenticator.user;
 
@@ -281,8 +224,8 @@ export async function verifyWebAuthnAuthentication(response: any, mobileAuthToke
     // Choose the first active member as the logged in identity
     const memberId = activeMembers[0].id;
 
-    await prisma.mobileAuthSession.update({
-      where: { token: mobileAuthToken },
+    const approved=await prisma.mobileAuthSession.updateMany({
+      where: { token: mobileAuthToken,status:"PENDING",createdAt:{gt:new Date(Date.now()-300000)} },
       data: {
         status: "APPROVED",
         userId: user.id,
@@ -290,6 +233,7 @@ export async function verifyWebAuthnAuthentication(response: any, mobileAuthToke
       },
     });
 
+    if(approved.count!==1)return {error:"QR expirado ou já utilizado."};
     return { success: true, isMobileAuth: true };
   }
 

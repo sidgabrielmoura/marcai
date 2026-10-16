@@ -1,4 +1,6 @@
 "use client";
+import {useEmployeeDraft} from "@/presentation/hooks/use-employee-draft";
+import {useSubmissionReceipts} from "@/presentation/lib/submission-receipts";
 import { FormChoiceInput } from "@/presentation/components/shared/form-choice-input";
 
 import { useState } from "react";
@@ -26,9 +28,9 @@ import {
   submitEvidenceAction,
   uploadEvidenceAction,
   uploadTaskFormFileAction,
+  getTaskDetailAction,
 } from "@/presentation/actions/task-actions";
 import {
-  resumeTaskAction,
   reportImpedimentAction,
   claimTaskAction,
 } from "@/presentation/actions/management-task-actions";
@@ -75,7 +77,14 @@ function cleanReason(reason: string): string {
 }
 
 interface TaskDetailClientProps {
+  onCompleted?:()=>void;
+  embedded?:boolean;
   task: {
+    draftScope:string;
+    roundId: string;
+    correctionReason?:string|null;
+    approvalHistory?:Array<{id:string;decision:string;note:string|null;createdAt:string}>;
+    timeline?:Array<{id:string;action:string;createdAt:Date|string}>;
     id: string;
     title: string;
     description: string | null;
@@ -113,8 +122,9 @@ interface TaskDetailClientProps {
   };
 }
 
-export function TaskDetailClient({ task }: TaskDetailClientProps) {
+export function TaskDetailClient({ task,onCompleted,embedded }: TaskDetailClientProps) {
   const router = useRouter();
+  const receipt=useSubmissionReceipts(task.id+":"+task.roundId);
   const [busy, setBusy] = useState(false);
   const [dialog, setDialog] = useState<"impediment" | null>(null);
   const [reason, setReason] = useState("");
@@ -122,8 +132,10 @@ export function TaskDetailClient({ task }: TaskDetailClientProps) {
   const [evidenceDrafts, setEvidenceDrafts] = useState<Record<string, EvidenceDraft>>({});
   const [formAnswers, setFormAnswers] = useState<Record<string, any>>(task.formAnswers ?? {});
   const [occurrencesOpen, setOccurrencesOpen] = useState(false);
+  const [requirements,setRequirements]=useState(task.evidenceRequirements);
 
-  const terminal = ["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status);
+  const terminal = ["COMPLETED", "CANCELLED", "NOT_COMPLETED", "SUBMITTED"].includes(task.status);
+  const draft=useEmployeeDraft(task.draftScope,{formAnswers,evidenceDrafts},value=>{setFormAnswers(value.formAnswers);setEvidenceDrafts(value.evidenceDrafts);},terminal);
   const scheduled = !!task.scheduledDate && new Date(task.scheduledDate) > new Date();
 
   const deadlines = [task.deadlineAt, task.slaDueAt]
@@ -135,10 +147,12 @@ export function TaskDetailClient({ task }: TaskDetailClientProps) {
   const toleranceLimitAt = dueAt !== null ? dueAt + toleranceMinutes * 60 * 1000 : null;
   const isToleranceExceeded = toleranceLimitAt !== null && !terminal && Date.now() > toleranceLimitAt;
 
-  const totalRequirements = task.evidenceRequirements.length;
-  const completedRequirements = task.evidenceRequirements.filter(
+  const totalRequirements = requirements.length;
+  const completedRequirements = requirements.filter(
     (req) => req.submissions.filter((s) => s.validationStatus === "VALID").length >= req.minQuantity
   ).length;
+
+  if(!draft.ready)return <div role="status"><Spinner/>Recuperando rascunho…</div>;
 
   async function run(
     action: () => Promise<{ success?: boolean; error?: string }>,
@@ -161,7 +175,7 @@ export function TaskDetailClient({ task }: TaskDetailClientProps) {
         });
         setDialog(null);
         if (options?.complete) {
-          router.push("/tasks");
+          if(onCompleted)onCompleted();else router.push("/tasks");
         }
         router.refresh();
       }
@@ -174,6 +188,24 @@ export function TaskDetailClient({ task }: TaskDetailClientProps) {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function registerRequirement(req:TaskEvidenceRequirement){
+    setBusy(true);
+    try{
+      const entry=evidenceDrafts[req.id];if(!entry)throw new Error('Preencha ou capture a comprovação antes de enviar.');
+      let file=entry.file;
+      if(req.type==='SIGNATURE'){const blob=await entry.getSignatureBlob?.();if(!blob)throw new Error('Desenhe a assinatura antes de enviar.');file=new File([blob],'assinatura.png',{type:'image/png'});}
+      let result;
+      if(file){const form=new FormData();form.set('taskId',task.id);form.set('requirementId',req.id);form.set('roundId',task.roundId);form.set('file',file);form.set('receipt',await receipt('evidence-upload',{requirementId:req.id,file}));result=await uploadEvidenceAction(form);}
+      else result=await submitEvidenceAction(task.id,req.id,entry.value,{roundId:task.roundId,receipt:await receipt('evidence',{id:req.id,value:entry.value.trim()})});
+      const updated=await getTaskDetailAction(task.id);
+      if(updated.task&&updated.task.roundId===task.roundId)setRequirements(updated.task.evidenceRequirements);
+      if(result.error)throw new Error(result.error);
+      setEvidenceDrafts(previous=>{const next={...previous};delete next[req.id];return next;});
+      toast.add({title:'Comprovação enviada',description:'Você pode registrar a próxima comprovação exigida.',type:'success'});
+    }catch(error){toast.add({title:'Não foi possível enviar',description:error instanceof Error?error.message:'Tente novamente.',type:'error'});}
+    finally{setBusy(false);}
   }
 
   async function handleCompleteWithEvidence() {
@@ -195,7 +227,7 @@ export function TaskDetailClient({ task }: TaskDetailClientProps) {
     }
     setBusy(true);
     try {
-      const pendingRequirements = task.evidenceRequirements.filter((req) => {
+      const pendingRequirements = requirements.filter((req) => {
         const validCount = req.submissions.filter((s) => s.validationStatus === "VALID").length;
         return validCount < req.minQuantity;
       });
@@ -301,8 +333,10 @@ export function TaskDetailClient({ task }: TaskDetailClientProps) {
             const sigFile = new File([blob], "assinatura.png", { type: "image/png" });
             const form = new FormData();
             form.set("taskId", task.id);
+            form.set("roundId", task.roundId);
             form.set("requirementId", req.id);
             form.set("file", sigFile);
+            form.set("receipt",await receipt("evidence-upload",{requirementId:form.get("requirementId"),file:form.get("file")}));
             const uploadRes = await uploadEvidenceAction(form);
             if (uploadRes.error) {
               toast.add({
@@ -317,9 +351,11 @@ export function TaskDetailClient({ task }: TaskDetailClientProps) {
         } else if (["PHOTO", "VIDEO", "FILE"].includes(req.type) && draft.file) {
           const form = new FormData();
           form.set("taskId", task.id);
+            form.set("roundId", task.roundId);
           form.set("requirementId", req.id);
           form.set("file", draft.file);
-          const uploadRes = await uploadEvidenceAction(form);
+          form.set("receipt",await receipt("evidence-upload",{requirementId:form.get("requirementId"),file:form.get("file")}));
+            const uploadRes = await uploadEvidenceAction(form);
           if (uploadRes.error) {
             const meta = evidenceTypeMeta[req.type] || { label: req.type };
             toast.add({
@@ -331,7 +367,7 @@ export function TaskDetailClient({ task }: TaskDetailClientProps) {
             return;
           }
         } else if (["TEXT", "NUMBER", "LOCATION"].includes(req.type) && draft.value?.trim()) {
-          const submitRes = await submitEvidenceAction(task.id, req.id, draft.value.trim());
+          const submitRes = await submitEvidenceAction(task.id, req.id, draft.value.trim(),{roundId:task.roundId,receipt:await receipt("evidence",{id:req.id,value:draft.value.trim()})});
           if (submitRes.error) {
             const meta = evidenceTypeMeta[req.type] || { label: req.type };
             toast.add({
@@ -353,8 +389,10 @@ export function TaskDetailClient({ task }: TaskDetailClientProps) {
             const file = finalFormAnswers[field.id] as File;
             const form = new FormData();
             form.set("taskId", task.id);
+            form.set("roundId", task.roundId);
             form.set("fieldId", field.id);
             form.set("file", file);
+            form.set("receipt",await receipt("form-upload",{fieldId:field.id,file}));
             const uploadRes = await uploadTaskFormFileAction(form);
             if (uploadRes.error) {
               toast.add({
@@ -370,14 +408,13 @@ export function TaskDetailClient({ task }: TaskDetailClientProps) {
               fileName: uploadRes.fileName,
               fileSize: uploadRes.fileSize,
               mimeType: uploadRes.mimeType,
-              type: field.type,
             };
           }
         }
       }
 
       // Conclui a tarefa
-      const completeRes = await completeTaskAction(task.id, task.taskType === "FORM" ? finalFormAnswers : undefined);
+      const completeRes = await completeTaskAction(task.id, task.taskType === "FORM" ? finalFormAnswers : undefined,task.roundId,await receipt("complete",finalFormAnswers));
       if (completeRes.error) {
         toast.add({
           title: "Erro ao concluir tarefa",
@@ -388,10 +425,11 @@ export function TaskDetailClient({ task }: TaskDetailClientProps) {
       } else {
         toast.add({
           title: "Sucesso",
-          description: task.requiresApproval ? "Enviado para aprovação!" : "Tarefa concluída!",
+          description: completeRes.status === "SUBMITTED" ? "Enviado para aprovação!" : "Tarefa concluída!",
           type: "success",
         });
-        router.push("/tasks");
+        await draft.discard();
+        if(onCompleted)onCompleted();else router.push("/tasks");
         router.refresh();
       }
     } catch {
@@ -407,15 +445,19 @@ export function TaskDetailClient({ task }: TaskDetailClientProps) {
 
   return (
     <div className="max-w-4xl mx-auto w-full px-4 sm:px-6 py-5 flex flex-col gap-4">
+      {draft.error?<p role="alert">{draft.error}</p>:!terminal?<p role="status">{draft.saving?'Salvando rascunho…':'Rascunho protegido neste navegador por até 24 horas. Ao sair da conta ou fechar esta aba, o acesso local é descartado.'}</p>:null}
+      {task.correctionReason&&<Card><CardContent><h2>Correção solicitada</h2><p>{task.correctionReason}</p></CardContent></Card>}
+      {!!task.approvalHistory?.length&&<Card><CardContent><h2>Histórico de revisão</h2>{task.approvalHistory.map(review=><p key={review.id}>{review.decision}{review.note?' · '+review.note:''}</p>)}</CardContent></Card>}
+      {!!task.timeline?.length&&<details><summary>Atividade da tarefa</summary><ul>{task.timeline.map(event=><li key={event.id}>{event.action+' · '+new Date(event.createdAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</li>)}</ul></details>}
       {/* Botão de retorno e cabeçalho alinhado ao padrão do Drawer */}
       <div className="flex flex-col gap-2">
-        <Link
+        {!embedded&&<Link
           href="/tasks"
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--brand-900)] transition-colors w-fit"
         >
           <ArrowLeft className="size-3.5" />
           Voltar às tarefas
-        </Link>
+        </Link>}
 
         <div className="flex flex-col gap-2 bg-[var(--surface)] p-4 sm:p-5 rounded-2xl border border-[var(--border-subtle)] shadow-xs">
           <h1 className="text-lg sm:text-xl font-bold leading-snug text-[var(--text-primary)]">
@@ -498,7 +540,7 @@ export function TaskDetailClient({ task }: TaskDetailClientProps) {
                   <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200 mb-2.5">
                     {idx + 1}. {field.question} {field.required && <span className="text-red-500">*</span>}
                   </label>
-                  {field.type === "MULTIPLE_CHOICE" && <FormChoiceInput options={field.options ?? []} value={formAnswers[field.id]} onChange={value => setFormAnswers(prev => ({ ...prev, [field.id]: value }))} />}
+                  {field.type === "MULTIPLE_CHOICE" && <FormChoiceInput disabled={terminal || busy} options={field.options ?? []} value={formAnswers[field.id]} onChange={value => setFormAnswers(prev => ({ ...prev, [field.id]: value }))} />}
                             {field.type === "SHORT_TEXT" && (
                     <Input
                       value={formAnswers[field.id] || ""}
@@ -523,6 +565,8 @@ export function TaskDetailClient({ task }: TaskDetailClientProps) {
                       {[1, 2, 3, 4, 5].map((star) => (
                         <button
                           key={star}
+                          aria-label={star+" de 5 estrelas"}
+                          aria-pressed={formAnswers[field.id]===star}
                           type="button"
                           disabled={terminal || busy}
                           onClick={() => setFormAnswers((prev) => ({ ...prev, [field.id]: star }))}
@@ -687,7 +731,7 @@ export function TaskDetailClient({ task }: TaskDetailClientProps) {
                           }`}>
                           <Paperclip className="size-6 mb-1 text-[var(--brand-700)] opacity-80" />
                           <span className="text-xs font-semibold text-[var(--brand-900)]">Anexar arquivo</span>
-                          <span className="text-[10px] text-muted-foreground mt-0.5">Imagens, vídeos ou documentos (máx. 10 MB)</span>
+                          <span className="text-[10px] text-muted-foreground mt-0.5">Imagens, vídeos ou documentos (máx. 12 MB)</span>
                           <input
                             type="file"
                             accept="image/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
@@ -760,12 +804,11 @@ export function TaskDetailClient({ task }: TaskDetailClientProps) {
               Nenhuma evidência documental exigida. Basta confirmar o término do trabalho no botão abaixo.
             </div>
           ) : (
-            task.evidenceRequirements.map((req) => (
-              <TaskEvidenceItem
-                key={req.id}
+            requirements.map((req) => (
+              <div key={req.id+":"+req.submissions.length}><TaskEvidenceItem
                 taskId={task.id}
                 requirement={req}
-                disabled={terminal || task.status === "BLOCKED" || !!task.isUnassigned || isToleranceExceeded}
+                disabled={terminal || busy || scheduled || task.status === "BLOCKED" || !!task.isUnassigned || isToleranceExceeded}
                 draft={evidenceDrafts[req.id]}
                 onDraftChange={(draft) =>
                   setEvidenceDrafts((prev) => ({ ...prev, [req.id]: draft }))
@@ -786,6 +829,8 @@ export function TaskDetailClient({ task }: TaskDetailClientProps) {
                   });
                 }}
               />
+              {!terminal&&!task.isUnassigned&&req.submissions.filter(s=>s.validationStatus==='VALID').length<req.minQuantity?<Button variant="outline" disabled={busy||scheduled||isToleranceExceeded||task.status==='BLOCKED'} onClick={()=>{void registerRequirement(req);}}>Registrar comprovação</Button>:null}
+              </div>
             ))
           )}
         </CardContent>

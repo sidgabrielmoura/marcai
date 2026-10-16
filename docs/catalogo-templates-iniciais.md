@@ -173,7 +173,7 @@ Objetivo: organizar materiais, execução e conferência de um serviço agendado
 - Chaves estáveis propostas: V01–V03, A01–A03, L01–L03, E01–E03 e M01–M03; usar slugs ASCII correspondentes no catálogo técnico e versionar desde v1.
 - Converter a ordem descrita em dependências locais; nos casos APPROVAL_CONDITION, manter o slot de aprovador na tarefa anterior.
 - Inserir os títulos, objetivos, instruções e perguntas integralmente, sem tarefas vazias ou conteúdo genérico de preenchimento.
-- “Conferente”, “Supervisor” e “Responsável técnico” são rótulos de papéis do procedimento. Para aprovação, o mapeamento deve escolher membro com papel de gestão e autorização conforme as regras do MarcAI.
+- “Conferente”, “Supervisor” e “Responsável técnico” são rótulos de papéis do procedimento. Para aprovação, o mapeamento deve escolher membro com papel de gestão e autorização conforme as regras do Tarefaí.
 - Nenhum template aprova automaticamente um resultado porque uma resposta é “Sim”. As perguntas registram a informação; a aprovação usa o fluxo existente.
 - Ao receber “Não”, “Com divergência” ou “Indisponível”, o colaborador registra o encaminhamento conforme as instruções. Desvios automáticos condicionados a respostas não fazem parte do motor atual nem desta entrega.
 - SLA por duração e limiares setoriais não são prescritos. Prazos relativos e criticidades adicionais são configurados explicitamente pelo admin.

@@ -31,7 +31,7 @@ function Command({
 }
 
 function CommandDialog({
-  title = "Buscar no Marcaí",
+  title = "Buscar no Tarefaí",
   description = "Encontre páginas, tarefas e atalhos.",
   children,
   className,

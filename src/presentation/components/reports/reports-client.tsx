@@ -148,7 +148,7 @@ export function ReportsClient({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `marcai_relatorio_${period}dias.csv`;
+    link.download = `tarefai_relatorio_${period}dias.csv`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }

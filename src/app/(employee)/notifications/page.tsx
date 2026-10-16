@@ -1,3 +1,4 @@
+import {projectNotice} from "@/application/mobile/notifications";
 import Link from "next/link";
 import { getAuthenticatedContext } from "@/application/security/auth-context";
 import { prisma } from "@/infrastructure/database/prisma";
@@ -37,7 +38,7 @@ export default async function NotificationsPage({
         : {}),
   };
 
-  const [notifications, count, unread] = await Promise.all([
+  const [rawNotifications, count, unread] = await Promise.all([
     prisma.notification.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -54,6 +55,7 @@ export default async function NotificationsPage({
     }),
   ]);
 
+  const notifications=await Promise.all(rawNotifications.map(async n=>({...await projectNotice(c,n),createdAt:n.createdAt})));
   return (
     <EmployeeShell
       userName={c.userName}
@@ -113,11 +115,9 @@ export default async function NotificationsPage({
         ) : (
           <div className="flex flex-col gap-3">
             {notifications.map((n) => {
-              const data = (n.data as Record<string, any>) || null;
-              const taskId = data?.taskId ? String(data.taskId) : null;
-              const taskLink = taskId
-                ? (c.role === "EMPLOYEE" ? `/tasks/${taskId}` : `/management/tasks/${taskId}`)
-                : null;
+              const destination=n.destination;
+              const taskLink=destination.taskId?'/tasks/'+destination.taskId:destination.executionId?'/executions/'+destination.executionId:null;
+
 
               return (
                 <Card key={n.id}>
@@ -178,7 +178,7 @@ export default async function NotificationsPage({
                             type="submit"
                             className="w-full"
                           >
-                            Ver tarefa
+                            {destination.taskId?"Ver tarefa":"Ver processo"}
                           </Button>
                         </form>
                       )}

@@ -41,7 +41,7 @@ async function main() {
   const userSuperadmin = await prisma.user.create({
     data: {
       name: "Administrador Global",
-      email: "superadmin@marcai.io",
+      email: "superadmin@tarefai.io",
       passwordHash: defaultPasswordHash,
       platformRole: "SUPERADMIN",
       twoFactorEnabled: false, // First password login requires actual authenticator enrollment.
@@ -515,7 +515,7 @@ async function main() {
   console.log("Seed completo executado com sucesso!");
   console.log("-----------------------------------------------------------------");
   console.log("Credenciais para teste:");
-  console.log("1. Superadmin Plataforma: superadmin@marcai.io  | Senha: senha123");
+  console.log("1. Superadmin Plataforma: superadmin@tarefai.io  | Senha: senha123");
   console.log("2. Proprietário Alpha:   carlos@alphavarejo.com | Senha: senha123");
   console.log("3. Gerente Alpha:        marina@alphavarejo.com | Senha: senha123");
   console.log("4. Funcionário 1 Alpha:  lucas@alphavarejo.com  | Senha: senha123");

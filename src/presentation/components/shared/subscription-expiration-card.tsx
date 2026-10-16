@@ -57,7 +57,7 @@ export function SubscriptionExpirationCard({
   useEffect(() => {
     if (!notice?.endsOn) return;
     try {
-      const stored = sessionStorage.getItem(`marcai_sub_notice_${notice.endsOn}`);
+      const stored = sessionStorage.getItem(`tarefai_sub_notice_${notice.endsOn}`);
       if (stored === "dismissed") {
         setDismissed(true);
       }
@@ -76,7 +76,7 @@ export function SubscriptionExpirationCard({
     if (!notice?.endsOn) return;
     setDismissed(true);
     try {
-      sessionStorage.setItem(`marcai_sub_notice_${notice.endsOn}`, "dismissed");
+      sessionStorage.setItem(`tarefai_sub_notice_${notice.endsOn}`, "dismissed");
     } catch {
       // ignore
     }
@@ -244,7 +244,7 @@ export function SubscriptionExpirationCard({
               <Sparkles className="size-5" />
             </div>
             <DialogTitle className="text-base font-bold text-[var(--text-primary)]">
-              Continuidade do Plano Marcai
+              Continuidade do Plano Tarefaí
             </DialogTitle>
             <DialogDescription className="text-xs text-[var(--text-secondary)] mt-1">
               Organização: <strong>{orgName}</strong> · Plano atual:{" "}
@@ -279,7 +279,7 @@ export function SubscriptionExpirationCard({
 
             {/* Opção Email */}
             <a
-              href={`mailto:comercial@marcai.com.br?subject=${encodeURIComponent(
+              href={`mailto:comercial@tarefai.com.br?subject=${encodeURIComponent(
                 `Renovação de Plano - ${orgName}`
               )}&body=${prefilledMessage}`}
               onClick={() => setContactModalOpen(false)}
@@ -294,7 +294,7 @@ export function SubscriptionExpirationCard({
                     Contato por E-mail
                   </strong>
                   <span className="text-[11px] text-[var(--text-secondary)]">
-                    Envie os dados de faturamento para comercial@marcai.com.br
+                    Envie os dados de faturamento para comercial@tarefai.com.br
                   </span>
                 </div>
               </div>

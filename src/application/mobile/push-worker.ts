@@ -58,10 +58,10 @@ export async function processPushBatch(deadlineAt=Date.now()+35000) {
  const remaining=Math.max(1,ttl-Math.floor((Date.now()-n.createdAt.getTime())/1000));
  try{
  const providerId=await getFirebaseAdminMessaging().send({
- ...('address_type' in device&&device.address_type==='fid'?{fid:device.token}:{token:device.token}),notification:{title:'Marcaí',body:'Há uma atualização para você. Toque para conferir.'},data,
+ ...('address_type' in device&&device.address_type==='fid'?{fid:device.token}:{token:device.token}),notification:{title:'Tarefaí',body:'Há uma atualização para você. Toque para conferir.'},data,
  android:{priority:['HIGH','CRITICAL'].includes(n.priority)?'high':'normal',ttl:remaining*1000,notification:{channelId:'marcai-operational',icon:'ic_stat_marcai',tag:n.id}},
  apns:{headers:{'apns-push-type':'alert','apns-priority':'10','apns-expiration':String(Math.floor(Date.now()/1000)+remaining)},payload:{aps:{sound:'default'}}},
- webpush:{headers:{TTL:String(remaining)},notification:{tag:n.id},fcmOptions:{link:'https://marcai-coral.vercel.app'+(d.taskId?'/tasks/'+d.taskId:'/notifications')}}
+ webpush:{headers:{TTL:String(remaining)},notification:{tag:n.id},fcmOptions:{link:(process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://tarefai.com.br')+(d.taskId?'/tasks/'+d.taskId:'/notifications')}}
  });
  await prisma.$executeRaw`UPDATE mobile_push_deliveries SET state='PROVIDER_ACCEPTED',provider_id=${providerId},accepted_at=now(),error_code=NULL WHERE notification_id=${n.id} AND installation_id=${device.id}`;accepted++;
  }catch(e){

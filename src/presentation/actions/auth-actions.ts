@@ -1,5 +1,6 @@
 "use server";
 
+import {qrInitiatorHash,clearQrBinding} from "@/infrastructure/security/qr-binding";
 import { headers } from "next/headers";
 import { rate } from "@/application/mobile/security";
 import { z } from "zod";
@@ -16,15 +17,16 @@ import { beginLoginChallenge, clearLoginChallenge } from "@/infrastructure/secur
 import { hasSecondFactorProof } from "@/infrastructure/security/totp";
 
 const LoginPasswordSchema = z.object({
-  email: z.string().email("E-mail inválido"),
+  email: z.string().trim().email("E-mail inválido"),
+  organizationSlug: z.string().trim().toLowerCase().optional(),
   password: z.string().min(6, "Senha deve ter no mínimo 6 caracteres"),
 });
 
 const LoginPinSchema = z.object({
   organizationSlug: z
-    .string()
+    .string().trim().toLowerCase()
     .min(2, "Identificador da organização é obrigatório"),
-  employeeCode: z.string().min(1, "Código do funcionário é obrigatório"),
+  employeeCode: z.string().trim().min(1, "Código do funcionário é obrigatório"),
   pin: z.string().regex(/^\d{6}$/, "O PIN deve conter exatamente 6 dígitos numéricos"),
 });
 
@@ -42,13 +44,14 @@ export async function loginWithPasswordAction(
   const parsed = LoginPasswordSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
+    organizationSlug: formData.get("organizationSlug")??undefined,
   });
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message || "Dados inválidos." };
   }
 
-  const { email, password } = parsed.data;
+  const { email, password, organizationSlug } = parsed.data;
   const rateError = await loginRate("password",email);if(rateError)return {error:rateError};
 
   // Busca do usuário
@@ -73,10 +76,16 @@ export async function loginWithPasswordAction(
     return { error: "Credenciais inválidas. Verifique seu e-mail e senha." };
   }
 
+  if(organizationSlug){
+    const selected=user.memberships.find(m=>m.organization.slug===organizationSlug);
+    if(!selected)return {error:"Credenciais inválidas para esta organização."};
+    user.memberships=[selected];
+  }
+
   // A platform administrator does not need an operational organization membership.
   if (user.platformRole === "SUPERADMIN" || user.twoFactorEnabled) {
     await clearSession();
-    await beginLoginChallenge(user, null);
+    await beginLoginChallenge(user, organizationSlug?user.memberships[0]?.id??null:null);
     redirect("/verify-access");
   }
 
@@ -159,6 +168,7 @@ export async function loginWithPinAction(
       organizationId: org.id,
       employeeCode: employeeCode.trim(),
       status: "ACTIVE",
+      user: {status:"ACTIVE"},
     },
     take: 2,
     include: {
@@ -304,19 +314,17 @@ export async function logoutAction() {
 }
 
 export async function loginWithMobileSessionAction(token: string) {
-  const mobileSession = await prisma.mobileAuthSession.findUnique({
-    where: { token },
-  });
-
-  if (!mobileSession || mobileSession.status !== "APPROVED" || !mobileSession.userId || !mobileSession.memberId) {
-    return { error: "Sessão inválida ou não aprovada." };
-  }
-
+  const binding=await qrInitiatorHash();if(!binding)return {error:"Sessão inválida ou expirada."};
+  // A single delete-returning consumes the approved QR, including the 2FA branch.
+  const [mobileSession]=await prisma.$queryRaw<Array<{userId:string;memberId:string}>>`DELETE FROM mobile_auth_sessions q USING web_qr_bindings b WHERE q.token=${token} AND b.token=q.token AND b.initiator_hash=${binding} AND b.expires_at>now() AND q.status='APPROVED' AND q."createdAt">now()-interval '5 minutes' RETURNING q."userId",q."memberId"`;
+  if(!mobileSession?.userId||!mobileSession.memberId)return {error:"Sessão inválida, expirada ou já utilizada."};
+  await prisma.$executeRaw`DELETE FROM web_qr_bindings WHERE token=${token}`;
+  await clearQrBinding();
   const user = await prisma.user.findUnique({
     where: { id: mobileSession.userId },
     include: {
       memberships: {
-        where: { id: mobileSession.memberId },
+        where: { id: mobileSession.memberId,status:"ACTIVE",organization:{status:"ACTIVE"} },
       },
       passkeys: {
         select: { id: true },
@@ -324,7 +332,7 @@ export async function loginWithMobileSessionAction(token: string) {
     },
   });
 
-  if (!user || user.memberships.length === 0) {
+  if (!user || user.status!=="ACTIVE" || user.memberships.length === 0) {
     return { error: "Usuário ou vínculo não encontrado." };
   }
 
@@ -346,7 +354,7 @@ export async function loginWithMobileSessionAction(token: string) {
     employeeCode: member.employeeCode,
   });
 
-  await prisma.mobileAuthSession.delete({ where: { id: mobileSession.id } });
+
 
   const destination = member.role === "EMPLOYEE" ? "/tasks" : "/overview";
   if (user.passkeys.length === 0) {

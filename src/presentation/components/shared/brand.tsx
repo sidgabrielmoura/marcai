@@ -1,10 +1,10 @@
 export function Brand({ compact = false }: { compact?: boolean }) {
   if (compact) {
     return (
-      <span className="brand-lockup justify-center" title="marcaí">
+      <span className="brand-lockup justify-center" title="tarefaí">
         <img
           src="/brand-icon-sem-fundo.svg"
-          alt="marcaí"
+          alt="tarefaí"
           className="w-8 h-8 object-contain"
         />
       </span>
@@ -20,7 +20,7 @@ export function Brand({ compact = false }: { compact?: boolean }) {
           className="w-8 h-8 object-contain mr-0.5"
         />
         <span>
-          arcaí<span className="brand-dot">.</span>
+          tarefaí<span className="brand-dot">.</span>
         </span>
       </span>
     </span>
