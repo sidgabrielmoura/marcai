@@ -1,5 +1,5 @@
 {
-  "name": "Tarefaí — Gestão e Execução Operacional",
+  "name": "Tarefaí - Gestão e Execução Operacional",
   "short_name": "Tarefaí",
   "description": "Plataforma SaaS B2B de Gestão e Execução Operacional de Processos, Rotinas, Tarefas e Equipes",
   "start_url": "/",
@@ -9,7 +9,11 @@
   "orientation": "any",
   "background_color": "#f5f6f5",
   "theme_color": "#164d36",
-  "categories": ["business", "productivity", "utilities"],
+  "categories": [
+    "business",
+    "productivity",
+    "utilities"
+  ],
   "icons": [
     {
       "src": "/web-app-manifest-192x192.png",

@@ -16,6 +16,7 @@ import {
   assertCanAddMember,
 } from "@/domain/rules/subscription-limits";
 import { revalidatePath } from "next/cache";
+import { reusableTemplateDraftSchema } from "@/domain/rules/reusable-template-definition";
 
 export type ActionResult = {
   success?: boolean;
@@ -38,10 +39,11 @@ const roleSchema = z.enum(["OWNER", "ADMIN", "MANAGER", "EMPLOYEE"]);
 export async function createOrganizationAction(input: {
   name: string;
   slug: string;
-  ownerEmail?: string;
+  ownerEmail: string;
   ownerName?: string;
   ownerPassword?: string;
   createDefaultLocation?: boolean;
+  businessSegmentId?: string;
   reason?: string;
 }): Promise<ActionResult & { organizationId?: string }> {
   const actor = await getSuperadminContext(false);
@@ -51,10 +53,11 @@ export async function createOrganizationAction(input: {
     .object({
       name: z.string().trim().min(2, "O nome deve ter pelo menos 2 caracteres.").max(100),
       slug: slugSchema,
-      ownerEmail: z.string().trim().email("E-mail inválido.").toLowerCase().optional().or(z.literal("")),
+      ownerEmail: z.string().trim().email("E-mail do proprietário inválido.").toLowerCase(),
       ownerName: z.string().trim().max(100).optional().or(z.literal("")),
       ownerPassword: z.string().min(8, "A senha deve ter pelo menos 8 caracteres.").optional().or(z.literal("")),
       createDefaultLocation: z.boolean().optional(),
+      businessSegmentId: z.string().trim().optional().or(z.literal("")),
       reason: z.string().trim().max(2000).optional().default("Criação de organização via painel Superadmin"),
     })
     .safeParse(input);
@@ -63,7 +66,7 @@ export async function createOrganizationAction(input: {
     return { error: parsed.error.issues[0].message };
   }
 
-  const { name, slug, ownerEmail, ownerName, ownerPassword, createDefaultLocation, reason } = parsed.data;
+  const { name, slug, ownerEmail, ownerName, ownerPassword, createDefaultLocation, businessSegmentId, reason } = parsed.data;
 
   try {
     const existing = await prisma.organization.findUnique({
@@ -81,6 +84,7 @@ export async function createOrganizationAction(input: {
           name,
           slug,
           status: "ACTIVE",
+          businessSegmentId: businessSegmentId?.trim() ? businessSegmentId.trim() : null,
           settings: {
             delayMilestones: [15, 30, 60],
             operationalRetentionMonths: 6,
@@ -105,39 +109,48 @@ export async function createOrganizationAction(input: {
         });
       }
 
-      if (ownerEmail) {
-        let user = await tx.user.findUnique({ where: { email: ownerEmail } });
-        if (!user) {
-          const passwordHash = ownerPassword ? await bcrypt.hash(ownerPassword, 10) : null;
-          user = await tx.user.create({
-            data: {
-              name: ownerName || `${name} Administrador`,
-              email: ownerEmail,
-              passwordHash,
-              status: "ACTIVE",
-            },
-          });
-        }
+      // Criação ou vínculo automático do usuário proprietário
+      let user = await tx.user.findUnique({ where: { email: ownerEmail } });
+      const initialPassword = ownerPassword?.trim() || "tarefai123@";
+      const passwordHash = await bcrypt.hash(initialPassword, 10);
 
-        const existingMembership = await tx.organizationMember.findUnique({
-          where: {
-            organizationId_userId: {
-              organizationId: org.id,
-              userId: user.id,
-            },
+      if (!user) {
+        user = await tx.user.create({
+          data: {
+            name, // Nome do proprietário recebe o nome da empresa
+            email: ownerEmail,
+            passwordHash,
+            platformRole: null, // Usuário comum (não superadmin)
+            status: "ACTIVE",
           },
         });
+      } else if (!user.passwordHash) {
+        user = await tx.user.update({
+          where: { id: user.id },
+          data: { passwordHash },
+        });
+      }
 
-        if (!existingMembership) {
-          await tx.organizationMember.create({
-            data: {
-              organizationId: org.id,
-              userId: user.id,
-              role: Role.OWNER,
-              status: "ACTIVE",
-            },
-          });
-        }
+      const existingMembership = await tx.organizationMember.findUnique({
+        where: {
+          organizationId_userId: {
+            organizationId: org.id,
+            userId: user.id,
+          },
+        },
+      });
+
+      if (!existingMembership) {
+        await tx.organizationMember.create({
+          data: {
+            organizationId: org.id,
+            userId: user.id,
+            role: Role.OWNER,
+            status: "ACTIVE",
+            employeeCode: null,
+            pinHash: null,
+          },
+        });
       }
 
       await tx.activityLog.create({
@@ -147,7 +160,7 @@ export async function createOrganizationAction(input: {
           action: "ORGANIZATION_CREATED",
           entityType: "ORGANIZATION",
           entityId: org.id,
-          metadata: { name, slug, ownerEmail: ownerEmail || null, reason },
+          metadata: { name, slug, ownerEmail, reason },
         },
       });
 
@@ -167,6 +180,7 @@ export async function updateOrganizationAction(input: {
   name: string;
   slug: string;
   status: "ACTIVE" | "SUSPENDED";
+  businessSegmentId?: string | null;
   reason: string;
 }): Promise<ActionResult> {
   const actor = await getSuperadminContext(false);
@@ -178,6 +192,7 @@ export async function updateOrganizationAction(input: {
       name: z.string().trim().min(2, "Nome deve ter pelo menos 2 caracteres.").max(100),
       slug: slugSchema,
       status: statusSchema,
+      businessSegmentId: z.string().trim().nullable().optional(),
       reason: reasonSchema,
     })
     .safeParse(input);
@@ -186,14 +201,14 @@ export async function updateOrganizationAction(input: {
     return { error: parsed.error.issues[0].message };
   }
 
-  const { organizationId, name, slug, status, reason } = parsed.data;
+  const { organizationId, name, slug, status, businessSegmentId, reason } = parsed.data;
 
   try {
     const result = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM organizations WHERE id = ${organizationId} FOR UPDATE`;
       const current = await tx.organization.findUnique({
         where: { id: organizationId },
-        select: { id: true, name: true, slug: true, status: true },
+        select: { id: true, name: true, slug: true, status: true, businessSegmentId: true },
       });
       if (!current) return { error: "Organização não encontrada." };
 
@@ -209,7 +224,12 @@ export async function updateOrganizationAction(input: {
 
       await tx.organization.update({
         where: { id: organizationId },
-        data: { name, slug, status },
+        data: {
+          name,
+          slug,
+          status,
+          ...(businessSegmentId !== undefined ? { businessSegmentId: businessSegmentId || null } : {}),
+        },
       });
 
       await tx.activityLog.create({
@@ -1175,4 +1195,480 @@ export async function addSupportNoteAction(organizationId: string, status: strin
   revalidatePath("/superadmin");
   return { success: true };
 }
+
+export async function createBusinessSegmentAction(input: {
+  name: string;
+  description?: string;
+}): Promise<ActionResult & { segmentId?: string; segment?: any }> {
+  const actor = await getSuperadminContext(false);
+  if (!actor) return { error: "Acesso negado." };
+
+  const parsed = z
+    .object({
+      name: z.string().trim().min(2, "Nome deve ter pelo menos 2 caracteres.").max(100),
+      description: z.string().trim().max(500).optional().or(z.literal("")),
+    })
+    .safeParse(input);
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message };
+  }
+
+  const { name, description } = parsed.data;
+  const slug = name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+
+  try {
+    const existing = await prisma.platformBusinessSegment.findFirst({
+      where: { OR: [{ slug }, { name: { equals: name, mode: "insensitive" } }] },
+    });
+    if (existing) {
+      return { error: "Já existe um tipo de negócio com este nome." };
+    }
+
+    const created = await prisma.platformBusinessSegment.create({
+      data: {
+        name,
+        slug,
+        description: description || null,
+        status: "ACTIVE",
+      },
+    });
+
+    revalidatePath("/superadmin");
+    return { success: true, segmentId: created.id, segment: created };
+  } catch (err: any) {
+    return { error: err?.message || "Erro ao cadastrar tipo de negócio." };
+  }
+}
+
+export async function updateBusinessSegmentAction(input: {
+  id: string;
+  name: string;
+  description?: string;
+  status?: "ACTIVE" | "INACTIVE";
+}): Promise<ActionResult> {
+  const actor = await getSuperadminContext(false);
+  if (!actor) return { error: "Acesso negado." };
+
+  const parsed = z
+    .object({
+      id: idSchema,
+      name: z.string().trim().min(2, "Nome deve ter pelo menos 2 caracteres.").max(100),
+      description: z.string().trim().max(500).optional().or(z.literal("")),
+      status: z.enum(["ACTIVE", "INACTIVE"]).optional().default("ACTIVE"),
+    })
+    .safeParse(input);
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message };
+  }
+
+  const { id, name, description, status } = parsed.data;
+
+  try {
+    const current = await prisma.platformBusinessSegment.findUnique({ where: { id } });
+    if (!current) return { error: "Tipo de negócio não encontrado." };
+
+    await prisma.platformBusinessSegment.update({
+      where: { id },
+      data: {
+        name,
+        description: description || null,
+        status,
+      },
+    });
+
+    revalidatePath("/superadmin");
+    return { success: true };
+  } catch (err: any) {
+    return { error: err?.message || "Erro ao atualizar tipo de negócio." };
+  }
+}
+
+export async function deleteBusinessSegmentAction(input: { id: string }): Promise<ActionResult> {
+  const actor = await getSuperadminContext(false);
+  if (!actor) return { error: "Acesso negado." };
+
+  const parsed = z.object({ id: idSchema }).safeParse(input);
+  if (!parsed.success) return { error: "Identificador inválido." };
+
+  try {
+    const segment = await prisma.platformBusinessSegment.findUnique({
+      where: { id: parsed.data.id },
+      include: { _count: { select: { organizations: true, templates: true } } },
+    });
+    if (!segment) return { error: "Tipo de negócio não encontrado." };
+
+    if (segment._count.organizations > 0) {
+      // Se houver organizações vinculadas, desativa ao invés de deletar
+      await prisma.platformBusinessSegment.update({
+        where: { id: segment.id },
+        data: { status: "INACTIVE" },
+      });
+      revalidatePath("/superadmin");
+      return { success: true };
+    }
+
+    await prisma.platformBusinessSegment.delete({
+      where: { id: segment.id },
+    });
+
+    revalidatePath("/superadmin");
+    return { success: true };
+  } catch (err: any) {
+    return { error: err?.message || "Erro ao remover tipo de negócio." };
+  }
+}
+
+export async function createPlatformTemplateAction(input: {
+  segmentId: string;
+  name: string;
+  description?: string;
+  criticality?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  tasks: Array<{
+    title: string;
+    instructions?: string;
+    evidenceType?: string;
+    required?: boolean;
+    slaMinutes?: number;
+    toleranceMinutes?: number;
+    taskType?: string;
+    formFields?: Array<{
+      question: string;
+      type: string;
+      required: boolean;
+      options?: string[];
+    }>;
+  }>;
+}): Promise<ActionResult & { templateId?: string }> {
+  const actor = await getSuperadminContext(false);
+  if (!actor) return { error: "Acesso negado." };
+
+  const parsed = z
+    .object({
+      segmentId: idSchema,
+      name: z.string().trim().min(2, "Nome deve ter pelo menos 2 caracteres.").max(150),
+      description: z.string().trim().max(1000).optional().or(z.literal("")),
+      criticality: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).default("MEDIUM"),
+      tasks: z
+        .array(
+          z.object({
+            title: z.string().trim().min(1, "Título da etapa obrigatório.").max(200),
+            instructions: z.string().trim().max(2000).optional().default(""),
+            evidenceType: z.string().optional().default("PHOTO"),
+            required: z.boolean().optional().default(true),
+            slaMinutes: z.number().int().min(1).max(10080).optional().default(60),
+            toleranceMinutes: z.number().int().min(0).max(1440).optional().default(20),
+            taskType: z.enum(["STANDARD", "FORM"]).optional().default("STANDARD"),
+            formFields: z
+              .array(
+                z.object({
+                  question: z.string().trim().min(1).max(500),
+                  type: z.string().default("TEXT"),
+                  required: z.boolean().default(false),
+                  options: z.array(z.string()).default([]),
+                })
+              )
+              .optional()
+              .default([]),
+          })
+        )
+        .min(1, "Adicione pelo menos 1 etapa ao template."),
+    })
+    .safeParse(input);
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message };
+  }
+
+  const { segmentId, name, description, criticality, tasks } = parsed.data;
+
+  try {
+    const segment = await prisma.platformBusinessSegment.findUnique({
+      where: { id: segmentId },
+    });
+    if (!segment) return { error: "Tipo de negócio não encontrado." };
+
+    const definition = {
+      schemaVersion: 1,
+      name,
+      description: description || "",
+      jobKey: "CUSTOM",
+      criticality,
+      teamSlots: [{ id: "team-1", label: "Operação" }],
+      memberSlots: [{ id: "approver-1", label: "Gestor", kind: "APPROVER" }],
+      tasks: tasks.map((t, idx) => ({
+        id: `task-${idx + 1}`,
+        title: t.title,
+        taskType: t.taskType,
+        objective: "",
+        instructions: t.instructions || "",
+        formFields: t.formFields.map((f, fIdx) => ({
+          id: `field-${fIdx + 1}`,
+          question: f.question,
+          type: f.type,
+          required: f.required,
+          options: f.options,
+        })),
+        teamSlotId: "team-1",
+        assigneeSlotId: "",
+        priority: "MEDIUM",
+        criticality: "MEDIUM",
+        slaMinutes: t.slaMinutes,
+        toleranceMinutes: t.toleranceMinutes,
+        required: t.required,
+        evidenceType: t.evidenceType,
+        dependsOn: [],
+        dependencyType: "BLOCKING",
+        dependencyLogic: "AND",
+        approverSlotIds: [],
+        approvalMode: "SEQUENTIAL",
+      })),
+      schedule: null,
+    };
+
+    const created = await prisma.platformTemplate.create({
+      data: {
+        segmentId,
+        name,
+        description: description || null,
+        definition,
+        version: 1,
+        status: "ACTIVE",
+      },
+    });
+
+    revalidatePath("/superadmin");
+    return { success: true, templateId: created.id };
+  } catch (err: any) {
+    return { error: err?.message || "Erro ao criar template de plataforma." };
+  }
+}
+
+export async function updatePlatformTemplateAction(input: {
+  id: string;
+  name: string;
+  description?: string;
+  criticality?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  tasks: Array<{
+    title: string;
+    instructions?: string;
+    evidenceType?: string;
+    required?: boolean;
+    slaMinutes?: number;
+    toleranceMinutes?: number;
+    taskType?: string;
+    formFields?: Array<{
+      question: string;
+      type: string;
+      required: boolean;
+      options?: string[];
+    }>;
+  }>;
+  status?: "ACTIVE" | "INACTIVE";
+}): Promise<ActionResult> {
+  const actor = await getSuperadminContext(false);
+  if (!actor) return { error: "Acesso negado." };
+
+  const parsed = z
+    .object({
+      id: idSchema,
+      name: z.string().trim().min(2, "Nome deve ter pelo menos 2 caracteres.").max(150),
+      description: z.string().trim().max(1000).optional().or(z.literal("")),
+      criticality: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).default("MEDIUM"),
+      status: z.enum(["ACTIVE", "INACTIVE"]).optional().default("ACTIVE"),
+      tasks: z
+        .array(
+          z.object({
+            title: z.string().trim().min(1, "Título da etapa obrigatório.").max(200),
+            instructions: z.string().trim().max(2000).optional().default(""),
+            evidenceType: z.string().optional().default("PHOTO"),
+            required: z.boolean().optional().default(true),
+            slaMinutes: z.number().int().min(1).max(10080).optional().default(60),
+            toleranceMinutes: z.number().int().min(0).max(1440).optional().default(20),
+            taskType: z.enum(["STANDARD", "FORM"]).optional().default("STANDARD"),
+            formFields: z
+              .array(
+                z.object({
+                  question: z.string().trim().min(1).max(500),
+                  type: z.string().default("TEXT"),
+                  required: z.boolean().default(false),
+                  options: z.array(z.string()).default([]),
+                })
+              )
+              .optional()
+              .default([]),
+          })
+        )
+        .min(1, "Adicione pelo menos 1 etapa ao template."),
+    })
+    .safeParse(input);
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message };
+  }
+
+  const { id, name, description, criticality, tasks, status } = parsed.data;
+
+  try {
+    const current = await prisma.platformTemplate.findUnique({ where: { id } });
+    if (!current) return { error: "Template não encontrado." };
+
+    const definition = {
+      schemaVersion: 1,
+      name,
+      description: description || "",
+      jobKey: "CUSTOM",
+      criticality,
+      teamSlots: [{ id: "team-1", label: "Operação" }],
+      memberSlots: [{ id: "approver-1", label: "Gestor", kind: "APPROVER" }],
+      tasks: tasks.map((t, idx) => ({
+        id: `task-${idx + 1}`,
+        title: t.title,
+        taskType: t.taskType,
+        objective: "",
+        instructions: t.instructions || "",
+        formFields: t.formFields.map((f, fIdx) => ({
+          id: `field-${fIdx + 1}`,
+          question: f.question,
+          type: f.type,
+          required: f.required,
+          options: f.options,
+        })),
+        teamSlotId: "team-1",
+        assigneeSlotId: "",
+        priority: "MEDIUM",
+        criticality: "MEDIUM",
+        slaMinutes: t.slaMinutes,
+        toleranceMinutes: t.toleranceMinutes,
+        required: t.required,
+        evidenceType: t.evidenceType,
+        dependsOn: [],
+        dependencyType: "BLOCKING",
+        dependencyLogic: "AND",
+        approverSlotIds: [],
+        approvalMode: "SEQUENTIAL",
+      })),
+      schedule: null,
+    };
+
+    await prisma.platformTemplate.update({
+      where: { id },
+      data: {
+        name,
+        description: description || null,
+        definition,
+        version: current.version + 1,
+        status,
+      },
+    });
+
+    revalidatePath("/superadmin");
+    return { success: true };
+  } catch (err: any) {
+    return { error: err?.message || "Erro ao atualizar template." };
+  }
+}
+
+export async function deletePlatformTemplateAction(input: { id: string }): Promise<ActionResult> {
+  const actor = await getSuperadminContext(false);
+  if (!actor) return { error: "Acesso negado." };
+
+  const parsed = z.object({ id: idSchema }).safeParse(input);
+  if (!parsed.success) return { error: "Identificador inválido." };
+
+  try {
+    await prisma.platformTemplate.delete({ where: { id: parsed.data.id } });
+    revalidatePath("/superadmin");
+    return { success: true };
+  } catch (err: any) {
+    return { error: err?.message || "Erro ao excluir template." };
+  }
+}
+
+export async function savePlatformTemplateDefinitionAction(input: {
+  id?: string;
+  segmentId: string;
+  definition: unknown;
+}): Promise<ActionResult & { id?: string; segmentId?: string }> {
+  const actor = await getSuperadminContext(false);
+  if (!actor) return { error: "Acesso negado." };
+
+  const parsed = z
+    .object({
+      id: idSchema.optional(),
+      segmentId: idSchema,
+      definition: z.unknown(),
+    })
+    .safeParse(input);
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message };
+  }
+
+  const { id, segmentId } = parsed.data;
+
+  const segment = await prisma.platformBusinessSegment.findUnique({
+    where: { id: segmentId },
+  });
+  if (!segment) {
+    return { error: "Segmento de negócio não encontrado." };
+  }
+
+  const defParsed = reusableTemplateDraftSchema.safeParse(input.definition);
+  if (!defParsed.success) {
+    return { error: defParsed.error.issues[0]?.message || "Definição do template inválida." };
+  }
+
+  const d = defParsed.data;
+
+  try {
+    if (id) {
+      const existing = await prisma.platformTemplate.findUnique({ where: { id } });
+      if (!existing) return { error: "Template não encontrado." };
+
+      const updated = await prisma.platformTemplate.update({
+        where: { id },
+        data: {
+          segmentId,
+          name: d.name || "Template sem nome",
+          description: d.description || null,
+          definition: d as any,
+          version: existing.version + 1,
+          updatedAt: new Date(),
+        },
+      });
+
+      revalidatePath("/superadmin");
+      revalidatePath("/management/templates");
+      return { success: true, id: updated.id, segmentId };
+    } else {
+      const created = await prisma.platformTemplate.create({
+        data: {
+          segmentId,
+          name: d.name || "Template sem nome",
+          description: d.description || null,
+          definition: d as any,
+          version: 1,
+          status: "ACTIVE",
+        },
+      });
+
+      revalidatePath("/superadmin");
+      revalidatePath("/management/templates");
+      return { success: true, id: created.id, segmentId };
+    }
+  } catch (err: any) {
+    return { error: err?.message || "Erro ao salvar template da plataforma." };
+  }
+}
+
+
 

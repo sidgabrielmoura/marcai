@@ -502,7 +502,7 @@ export function ManagementTaskDrawer({
             )}
 
             {loading ? (
-              <div className="flex flex-col items-center justify-center p-12 gap-3 min-h-[300px]">
+              <div className="flex flex-col items-center justify-center p-12 gap-3 min-h-75">
                 <LogoLoader size={64} text="Carregando detalhes da tarefa..." />
               </div>
             ) : task ? (
@@ -641,11 +641,10 @@ export function ManagementTaskDrawer({
                                       Aguardando resposta do colaborador
                                     </span>
                                   ) : field.type === "BOOLEAN" ? (
-                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                      answer === true || answer === "true"
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${answer === true || answer === "true"
                                         ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
                                         : "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300"
-                                    }`}>
+                                      }`}>
                                       {answer === true || answer === "true" ? "✓ Sim" : "✕ Não"}
                                     </span>
                                   ) : field.type === "RATING" ? (
@@ -663,9 +662,9 @@ export function ManagementTaskDrawer({
                                         <Camera className="size-3.5 shrink-0" />
                                         <span className="truncate">{typeof answer === "object" ? answer.fileName : String(answer)}</span>
                                       </div>
-                                      {typeof answer === "object" && answer.storageKey && (
+                                      {typeof answer === "object" && (answer.fileUrl || answer.storageKey) && (
                                         <a
-                                          href={`/api/tasks/${task.id}/form-file/${answer.storageKey}`}
+                                          href={answer.fileUrl || `/api/tasks/${task.id}/form-file/${answer.storageKey}`}
                                           target="_blank"
                                           rel="noreferrer"
                                           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-brand-900 dark:text-brand-300 hover:underline w-fit"
@@ -681,9 +680,9 @@ export function ManagementTaskDrawer({
                                         <Video className="size-3.5 shrink-0" />
                                         <span className="truncate">{typeof answer === "object" ? answer.fileName : String(answer)}</span>
                                       </div>
-                                      {typeof answer === "object" && answer.storageKey && (
+                                      {typeof answer === "object" && (answer.fileUrl || answer.storageKey) && (
                                         <a
-                                          href={`/api/tasks/${task.id}/form-file/${answer.storageKey}`}
+                                          href={answer.fileUrl || `/api/tasks/${task.id}/form-file/${answer.storageKey}`}
                                           target="_blank"
                                           rel="noreferrer"
                                           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-brand-900 dark:text-brand-300 hover:underline w-fit"
@@ -702,9 +701,9 @@ export function ManagementTaskDrawer({
                                           <span className="text-[10px] text-muted-foreground">({Math.round(answer.fileSize / 1024)} KB)</span>
                                         )}
                                       </div>
-                                      {typeof answer === "object" && answer.storageKey && (
+                                      {typeof answer === "object" && (answer.fileUrl || answer.storageKey) && (
                                         <a
-                                          href={`/api/tasks/${task.id}/form-file/${answer.storageKey}`}
+                                          href={answer.fileUrl || `/api/tasks/${task.id}/form-file/${answer.storageKey}`}
                                           target="_blank"
                                           rel="noreferrer"
                                           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-brand-900 dark:text-brand-300 hover:underline w-fit"
@@ -810,8 +809,8 @@ export function ManagementTaskDrawer({
                                       : s.validationStatus === "REJECTED"
                                         ? <XCircle className="size-3.5 text-red-600 shrink-0" />
                                         : <Clock className="size-3.5 text-slate-400 shrink-0" />}
-                                    {s.storageKey ? (
-                                      <a href={`/api/evidence/${s.id}`} className="underline text-blue-600 hover:text-blue-800 font-medium truncate" target="_blank" rel="noopener noreferrer">
+                                    {(s as any).fileUrl || s.storageKey ? (
+                                      <a href={(s as any).fileUrl || `/api/evidence/${s.id}`} className="underline text-blue-600 hover:text-blue-800 font-medium truncate" target="_blank" rel="noopener noreferrer">
                                         Ver comprovação #{s.attemptNumber}
                                       </a>
                                     ) : (

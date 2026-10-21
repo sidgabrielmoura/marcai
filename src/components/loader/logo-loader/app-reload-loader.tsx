@@ -26,12 +26,10 @@ export const AppReloadLoader: React.FC<AppReloadLoaderProps> = ({
   size = 128,
   minDurationMs = 700,
 }) => {
-  const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(true);
   const [fading, setFading] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
 
     // If user prefers reduced motion, dismiss immediately
     if (
@@ -42,15 +40,15 @@ export const AppReloadLoader: React.FC<AppReloadLoaderProps> = ({
       return;
     }
 
+    let removeTimer: ReturnType<typeof setTimeout> | undefined;
     const timer = setTimeout(() => {
       setFading(true);
-      const removeTimer = setTimeout(() => {
+      removeTimer = setTimeout(() => {
         setVisible(false);
       }, 350);
-      return () => clearTimeout(removeTimer);
     }, minDurationMs);
 
-    return () => clearTimeout(timer);
+    return () => { clearTimeout(timer); clearTimeout(removeTimer); };
   }, [minDurationMs]);
 
   if (!visible) return null;

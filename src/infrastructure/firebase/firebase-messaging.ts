@@ -73,11 +73,22 @@ export async function requestPushNotificationToken(): Promise<string | null> {
     const registration = await registerFirebaseServiceWorker();
     const swRegistration = registration || (await navigator.serviceWorker.ready);
 
+    if (swRegistration && swRegistration.installing) {
+      await new Promise<void>((resolve) => {
+        const sw = swRegistration.installing;
+        if (!sw) return resolve();
+        sw.addEventListener("statechange", () => {
+          if (sw.state === "activated") resolve();
+        });
+        setTimeout(resolve, 1000);
+      });
+    }
+
     const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || undefined;
 
     const token = await getToken(messaging, {
       serviceWorkerRegistration: swRegistration,
-      vapidKey,
+      ...(vapidKey ? { vapidKey } : {}),
     });
 
     return token || null;

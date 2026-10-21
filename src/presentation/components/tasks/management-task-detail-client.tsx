@@ -1,4 +1,5 @@
 "use client";
+import { ManagementTaskBlockButton } from "./management-task-block-button";
 
 import { useState } from "react";
 import { canEditTaskDefinition } from "@/domain/rules/task-edit";
@@ -31,10 +32,17 @@ import {
   trashTaskAction,
   submitApprovalDecisionAction,
 } from "@/presentation/actions/management-task-actions";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from "@/components/ui/native-select";
 import { uiLabel } from "../shared/ui-labels";
 
-function isPauseOccurrence(o: { type?: string; category?: string; reason?: string }): boolean {
+function isPauseOccurrence(o: {
+  type?: string;
+  category?: string;
+  reason?: string;
+}): boolean {
   const type = (o.type || "").toUpperCase();
   const category = (o.category || "").toUpperCase();
   const reason = (o.reason || "").toLowerCase();
@@ -75,24 +83,45 @@ function formatOccurrenceCategory(category: string, type: string): string {
   return labels[category] || category;
 }
 
-function formatSeverity(severity: string): { label: string; badgeClass: string } {
+function formatSeverity(severity: string): {
+  label: string;
+  badgeClass: string;
+} {
   switch (severity) {
     case "CRITICAL":
-      return { label: "Crítica", badgeClass: "bg-red-100 text-red-800 border-red-200" };
+      return {
+        label: "Crítica",
+        badgeClass: "bg-red-100 text-red-800 border-red-200",
+      };
     case "HIGH":
-      return { label: "Alta", badgeClass: "bg-rose-100 text-rose-800 border-rose-200" };
+      return {
+        label: "Alta",
+        badgeClass: "bg-rose-100 text-rose-800 border-rose-200",
+      };
     case "MEDIUM":
-      return { label: "Média", badgeClass: "bg-slate-100 text-slate-800 border-slate-300" };
+      return {
+        label: "Média",
+        badgeClass: "bg-slate-100 text-slate-800 border-slate-300",
+      };
     case "LOW":
-      return { label: "Baixa", badgeClass: "bg-slate-100 text-slate-700 border-slate-200" };
+      return {
+        label: "Baixa",
+        badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
+      };
     default:
-      return { label: severity, badgeClass: "bg-slate-100 text-slate-700 border-slate-200" };
+      return {
+        label: severity,
+        badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
+      };
   }
 }
 
 function cleanReason(reason: string): string {
   return reason
-    .replace(/O prazo de SLA foi excedido\.?/gi, "O prazo de execução foi excedido.")
+    .replace(
+      /O prazo de SLA foi excedido\.?/gi,
+      "O prazo de execução foi excedido.",
+    )
     .replace(/SLA excedido há/gi, "Prazo limite excedido há")
     .replace(/SLA excedido/gi, "Prazo limite excedido")
     .replace(/\bSLA\b/g, "prazo limite");
@@ -149,6 +178,7 @@ interface ManagementTaskDetailProps {
     formAnswers?: any;
     origin: string;
     status: string;
+    managementBlocked?: boolean;
     startedAt: Date | string | null;
     priority: string;
     criticality: string;
@@ -177,6 +207,8 @@ interface ManagementTaskDetailProps {
         id: string;
         value: string | null;
         storageKey: string | null;
+        fileUrl?: string | null;
+        publicId?: string | null;
         validationStatus: string;
         attemptNumber: number;
         createdAt: Date | string;
@@ -242,9 +274,11 @@ export function ManagementTaskDetailClient({
   // Modais de Controle
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState(
-    task.assignments.find((a) => a.type === "PRIMARY")?.memberId || ""
+    task.assignments.find((a) => a.type === "PRIMARY")?.memberId || "",
   );
-  const [reassignDeadlineType, setReassignDeadlineType] = useState<"15" | "30" | "60" | "120" | "eod" | "custom">("60");
+  const [reassignDeadlineType, setReassignDeadlineType] = useState<
+    "15" | "30" | "60" | "120" | "eod" | "custom"
+  >("60");
   const [reassignCustomDate, setReassignCustomDate] = useState("");
   const [reassignReason, setReassignReason] = useState("");
 
@@ -264,14 +298,20 @@ export function ManagementTaskDetailClient({
   const primaryAssignment = task.assignments.find((a) => a.type === "PRIMARY");
 
   const isForm = task.taskType === "FORM";
-  const formFieldsList: any[] = Array.isArray(task.formFields) ? task.formFields : [];
+  const formFieldsList: any[] = Array.isArray(task.formFields)
+    ? task.formFields
+    : [];
   const totalQuestions = formFieldsList.length;
   const answeredQuestions = formFieldsList.filter((f) => {
     const val = task.formAnswers?.[f.id];
     return val !== undefined && val !== null && val !== "";
   }).length;
-  const completionPercentage = totalQuestions > 0 ? Math.round((answeredQuestions / totalQuestions) * 100) : 0;
-  const isFullyAnswered = totalQuestions > 0 && answeredQuestions === totalQuestions;
+  const completionPercentage =
+    totalQuestions > 0
+      ? Math.round((answeredQuestions / totalQuestions) * 100)
+      : 0;
+  const isFullyAnswered =
+    totalQuestions > 0 && answeredQuestions === totalQuestions;
 
   function getDeadlinePreview(type: string, customDate: string) {
     const now = new Date();
@@ -281,7 +321,15 @@ export function ManagementTaskDetailClient({
       target = new Date(customDate);
       if (isNaN(target.getTime())) return "Data inválida";
     } else if (type === "eod") {
-      target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 18, 0, 0, 0);
+      target = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        18,
+        0,
+        0,
+        0,
+      );
       if (target <= now) {
         target.setHours(23, 59, 0, 0);
       }
@@ -290,8 +338,14 @@ export function ManagementTaskDetailClient({
     }
     const diffMinutes = Math.round((target.getTime() - now.getTime()) / 60000);
     const isToday = target.toDateString() === now.toDateString();
-    const timeStr = target.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-    const dateStr = target.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+    const timeStr = target.toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const dateStr = target.toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+    });
     if (diffMinutes <= 0) {
       return "Prazo no passado (escolha um horário futuro)";
     }
@@ -318,11 +372,22 @@ export function ManagementTaskDetailClient({
         customDeadlineAt = new Date(reassignCustomDate).toISOString();
       } else if (reassignDeadlineType === "eod") {
         const now = new Date();
-        const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 18, 0, 0, 0);
+        const target = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          18,
+          0,
+          0,
+          0,
+        );
         if (target <= now) {
           target.setHours(23, 59, 0, 0);
         }
-        deadlineMinutes = Math.max(15, Math.round((target.getTime() - now.getTime()) / 60000));
+        deadlineMinutes = Math.max(
+          15,
+          Math.round((target.getTime() - now.getTime()) / 60000),
+        );
       } else {
         deadlineMinutes = Number(reassignDeadlineType);
       }
@@ -473,7 +538,20 @@ export function ManagementTaskDetailClient({
         action={
           userRole !== "EMPLOYEE" ? (
             <div className="flex flex-wrap items-center gap-2">
-              {!["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status) && (
+              {![
+                "COMPLETED",
+                "CANCELLED",
+                "NOT_COMPLETED",
+                "SUBMITTED",
+              ].includes(task.status) ? (
+                <ManagementTaskBlockButton
+                  taskId={task.id}
+                  blocked={!!task.managementBlocked}
+                />
+              ) : null}
+              {!["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(
+                task.status,
+              ) && (
                 <Button
                   type="button"
                   variant="default"
@@ -492,7 +570,11 @@ export function ManagementTaskDetailClient({
                 </Button>
               )}
               {canEditTaskDefinition(task) && (
-                <Button variant="outline" disabled={loading} onClick={() => setShowEditDialog(true)}>
+                <Button
+                  variant="outline"
+                  disabled={loading}
+                  onClick={() => setShowEditDialog(true)}
+                >
                   {isForm ? "Editar tarefa com perguntas" : "Editar tarefa"}
                 </Button>
               )}
@@ -500,7 +582,12 @@ export function ManagementTaskDetailClient({
                 type="button"
                 variant="outline"
                 onClick={() => setShowCancelDialog(true)}
-                disabled={loading || ["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status)}
+                disabled={
+                  loading ||
+                  ["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(
+                    task.status,
+                  )
+                }
                 className="h-10 px-3.5 rounded-[12px] bg-[var(--surface)] border-[var(--border-subtle)] text-[var(--brand-900)] text-[length:var(--type-label)] font-semibold hover:bg-[var(--canvas)]"
               >
                 Cancelar
@@ -523,46 +610,54 @@ export function ManagementTaskDetailClient({
         }
       />
 
-      {showEditDialog && <EditTaskDialog task={task} onClose={() => setShowEditDialog(false)} />}
+      {showEditDialog && (
+        <EditTaskDialog task={task} onClose={() => setShowEditDialog(false)} />
+      )}
 
       {/* Banner se a tarefa estiver bloqueada ou com SLA violado */}
-      {!["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status) && (task.status === "BLOCKED" || (task.deadlineAt && new Date(task.deadlineAt) < new Date())) && (
-        <div className="p-4 rounded-[16px] bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 flex items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2.5">
-            <AlertCircle className="size-4 text-slate-600 dark:text-slate-400 shrink-0" />
-            <span>
-              {task.status === "BLOCKED"
-                ? (isForm
+      {!["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status) &&
+        (task.status === "BLOCKED" ||
+          (task.deadlineAt && new Date(task.deadlineAt) < new Date())) && (
+          <div className="p-4 rounded-[16px] bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5">
+              <AlertCircle className="size-4 text-slate-600 dark:text-slate-400 shrink-0" />
+              <span>
+                {task.status === "BLOCKED"
+                  ? isForm
                     ? "Esta tarefa com perguntas está bloqueada. O gestor pode reatribuí-la ou renovar o prazo para liberá-la para preenchimento."
-                    : "Esta tarefa está bloqueada. O gestor pode reatribuí-la ou renovar o prazo para liberá-la para execução.")
-                : (isForm
+                    : "Esta tarefa está bloqueada. O gestor pode reatribuí-la ou renovar o prazo para liberá-la para execução."
+                  : isForm
                     ? "Prazo ou tolerância expirados. Renove o prazo para que o colaborador possa responder às perguntas."
-                    : "Prazo ou tolerância expirados. Renove o prazo para que o colaborador possa concluir a entrega.")}
-            </span>
+                    : "Prazo ou tolerância expirados. Renove o prazo para que o colaborador possa concluir a entrega."}
+              </span>
+            </div>
+            {userRole !== "EMPLOYEE" && (
+              <Button
+                size="sm"
+                className="h-8 text-xs bg-slate-900 hover:bg-slate-800 text-white shrink-0 font-medium px-3 rounded-lg"
+                onClick={() => {
+                  setSelectedMemberId(primaryAssignment?.memberId || "");
+                  setReassignDeadlineType("60");
+                  setReassignCustomDate("");
+                  setReassignReason("");
+                  setShowTransferModal(true);
+                }}
+              >
+                Destravar {isForm ? "tarefa com perguntas" : "tarefa"}
+              </Button>
+            )}
           </div>
-          {userRole !== "EMPLOYEE" && (
-            <Button
-              size="sm"
-              className="h-8 text-xs bg-slate-900 hover:bg-slate-800 text-white shrink-0 font-medium px-3 rounded-lg"
-              onClick={() => {
-                setSelectedMemberId(primaryAssignment?.memberId || "");
-                setReassignDeadlineType("60");
-                setReassignCustomDate("");
-                setReassignReason("");
-                setShowTransferModal(true);
-              }}
-            >
-              Destravar {isForm ? "tarefa com perguntas" : "tarefa"}
-            </Button>
-          )}
-        </div>
-      )}
+        )}
 
       <Card className="bg-[var(--surface)] rounded-[18px] p-5 shadow-none border-[var(--border-subtle)]">
         <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
           <div className="flex items-center gap-2 flex-wrap">
             <StatusBadge status={task.status} size="sm" showIcon />
-            <PriorityBadge priority={task.priority} size="sm" className="w-fit! flex-none!" />
+            <PriorityBadge
+              priority={task.priority}
+              size="sm"
+              className="w-fit! flex-none!"
+            />
             {isForm && (
               <Badge className="bg-purple-100 text-purple-900 border-purple-200 dark:bg-purple-950/60 dark:text-purple-300 font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1.5 text-xs">
                 <ClipboardList className="size-3.5" />
@@ -574,7 +669,11 @@ export function ManagementTaskDetailClient({
             variant="secondary"
             className="text-(length:--type-caption) font-semibold"
           >
-            {task.origin === "PROCESS" ? "Processo" : (isForm ? "Tarefa com perguntas" : "Tarefa avulsa")}
+            {task.origin === "PROCESS"
+              ? "Processo"
+              : isForm
+                ? "Tarefa com perguntas"
+                : "Tarefa avulsa"}
           </Badge>
         </div>
 
@@ -592,7 +691,9 @@ export function ManagementTaskDetailClient({
         ) : null}
 
         {/* Metadados de Localização, Prazo e SLA */}
-        <div className={`grid grid-cols-2 ${isForm ? "sm:grid-cols-4" : "sm:grid-cols-3"} gap-3 pt-4 border-t border-[var(--border-subtle)] text-[length:var(--type-label)]`}>
+        <div
+          className={`grid grid-cols-2 ${isForm ? "sm:grid-cols-4" : "sm:grid-cols-3"} gap-3 pt-4 border-t border-[var(--border-subtle)] text-[length:var(--type-label)]`}
+        >
           <div>
             <span className="text-[length:var(--type-caption)] uppercase font-semibold text-[var(--text-secondary)] block">
               Unidade
@@ -635,9 +736,13 @@ export function ManagementTaskDetailClient({
               <span className="font-semibold text-[var(--brand-900)] flex items-center gap-1.5">
                 {answeredQuestions} de {totalQuestions} respondidas
                 {totalQuestions > 0 && (
-                  <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${
-                    isFullyAnswered ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
-                  }`}>
+                  <span
+                    className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${
+                      isFullyAnswered
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "bg-amber-100 text-amber-800"
+                    }`}
+                  >
                     {completionPercentage}%
                   </span>
                 )}
@@ -652,16 +757,19 @@ export function ManagementTaskDetailClient({
           <h3 className="text-[var(--text-secondary)] text-[length:var(--type-card-title)] font-bold">
             {isForm ? "Responsável pelo preenchimento" : "Responsáveis"}
           </h3>
-          {userRole !== "EMPLOYEE" && !["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status) && (
-            <Button
-              type="button"
-              variant="link"
-              onClick={() => setShowTransferModal(true)}
-              className="text-[length:var(--type-label)] font-semibold text-[var(--brand-700)] p-0 h-auto"
-            >
-              Alterar responsável
-            </Button>
-          )}
+          {userRole !== "EMPLOYEE" &&
+            !["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(
+              task.status,
+            ) && (
+              <Button
+                type="button"
+                variant="link"
+                onClick={() => setShowTransferModal(true)}
+                className="text-[length:var(--type-label)] font-semibold text-[var(--brand-700)] p-0 h-auto"
+              >
+                Alterar responsável
+              </Button>
+            )}
         </div>
 
         <div className="flex items-center justify-between p-3 rounded-[14px] bg-[var(--canvas)] border border-[var(--border-subtle)]">
@@ -698,7 +806,8 @@ export function ManagementTaskDetailClient({
                 </h3>
               </div>
               <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                Respostas registradas pelo colaborador para cada pergunta desta tarefa.
+                Respostas registradas pelo colaborador para cada pergunta desta
+                tarefa.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -710,10 +819,14 @@ export function ManagementTaskDetailClient({
               ) : answeredQuestions > 0 ? (
                 <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 font-semibold px-3 py-1 rounded-full flex items-center gap-1.5 text-xs">
                   <Clock className="size-3.5 text-amber-600" />
-                  {answeredQuestions} de {totalQuestions} respondidas ({completionPercentage}%)
+                  {answeredQuestions} de {totalQuestions} respondidas (
+                  {completionPercentage}%)
                 </Badge>
               ) : (
-                <Badge variant="outline" className="text-slate-600 border-slate-300 font-medium px-3 py-1 rounded-full flex items-center gap-1.5 text-xs">
+                <Badge
+                  variant="outline"
+                  className="text-slate-600 border-slate-300 font-medium px-3 py-1 rounded-full flex items-center gap-1.5 text-xs"
+                >
                   <Clock className="size-3.5 text-slate-400" />
                   Aguardando respostas ({totalQuestions} perguntas)
                 </Badge>
@@ -743,7 +856,8 @@ export function ManagementTaskDetailClient({
           <div className="space-y-3 pt-1">
             {formFieldsList.map((field: any, idx: number) => {
               const answer = task.formAnswers?.[field.id];
-              const isAnswered = answer !== undefined && answer !== null && answer !== "";
+              const isAnswered =
+                answer !== undefined && answer !== null && answer !== "";
               return (
                 <div
                   key={field.id}
@@ -756,7 +870,9 @@ export function ManagementTaskDetailClient({
                       </span>
                       <div className="flex flex-col gap-0.5">
                         <span className="text-sm font-semibold text-[var(--brand-900)] leading-snug">
-                          {field.question || field.label || "Pergunta sem título"}
+                          {field.question ||
+                            field.label ||
+                            "Pergunta sem título"}
                         </span>
                         {field.required && (
                           <span className="text-[11px] font-semibold text-red-600 flex items-center gap-0.5">
@@ -778,7 +894,19 @@ export function ManagementTaskDetailClient({
                       {field.type === "FILE" && "Arquivos"}
                       {field.type === "NUMBER" && "Número"}
                       {field.type === "MULTIPLE_CHOICE" && "Múltipla escolha"}
-                      {(!field.type || !["SHORT_TEXT", "LONG_TEXT", "RATING", "BOOLEAN", "PHOTO", "VIDEO", "FILE", "NUMBER", "MULTIPLE_CHOICE"].includes(field.type)) && (field.type || "Texto")}
+                      {(!field.type ||
+                        ![
+                          "SHORT_TEXT",
+                          "LONG_TEXT",
+                          "RATING",
+                          "BOOLEAN",
+                          "PHOTO",
+                          "VIDEO",
+                          "FILE",
+                          "NUMBER",
+                          "MULTIPLE_CHOICE",
+                        ].includes(field.type)) &&
+                        (field.type || "Texto")}
                     </Badge>
                   </div>
 
@@ -804,11 +932,13 @@ export function ManagementTaskDetailClient({
                           >
                             {answer === true || answer === "true" ? (
                               <>
-                                <CheckCircle2 className="size-3.5 text-emerald-600" /> Sim
+                                <CheckCircle2 className="size-3.5 text-emerald-600" />{" "}
+                                Sim
                               </>
                             ) : (
                               <>
-                                <XCircle className="size-3.5 text-slate-500" /> Não
+                                <XCircle className="size-3.5 text-slate-500" />{" "}
+                                Não
                               </>
                             )}
                           </span>
@@ -817,7 +947,9 @@ export function ManagementTaskDetailClient({
                         <div className="flex items-center gap-3">
                           <div className="flex gap-1 text-amber-500 text-base">
                             {Array.from({ length: 5 }).map((_, i) => (
-                              <span key={i}>{i < Number(answer) ? "★" : "☆"}</span>
+                              <span key={i}>
+                                {i < Number(answer) ? "★" : "☆"}
+                              </span>
                             ))}
                           </div>
                           <span className="text-xs font-semibold text-[var(--brand-900)]">
@@ -829,51 +961,65 @@ export function ManagementTaskDetailClient({
                           <div className="flex items-center gap-2.5 text-brand-900 dark:text-primary">
                             <Camera className="size-4 text-brand-700 shrink-0" />
                             <span className="font-semibold text-xs">
-                              {typeof answer === "object" ? answer.fileName : String(answer)}
+                              {typeof answer === "object"
+                                ? answer.fileName
+                                : String(answer)}
                             </span>
                           </div>
-                          {typeof answer === "object" && answer.storageKey && (
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <a
-                                href={`/api/tasks/${task.id}/form-file/${answer.storageKey}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--canvas)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--brand-900)] hover:bg-[var(--surface)] transition-colors"
-                              >
-                                <ExternalLink className="size-3.5" />
-                                <span>Visualizar foto</span>
-                              </a>
-                            </div>
-                          )}
+                          {typeof answer === "object" &&
+                            (answer.fileUrl || answer.storageKey) && (
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <a
+                                  href={
+                                    answer.fileUrl ||
+                                    `/api/tasks/${task.id}/form-file/${answer.storageKey}`
+                                  }
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--canvas)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--brand-900)] hover:bg-[var(--surface)] transition-colors"
+                                >
+                                  <ExternalLink className="size-3.5" />
+                                  <span>Visualizar foto</span>
+                                </a>
+                              </div>
+                            )}
                         </div>
                       ) : field.type === "VIDEO" ? (
                         <div className="flex flex-col gap-2">
                           <div className="flex items-center gap-2.5 text-brand-900 dark:text-primary">
                             <Video className="size-4 text-brand-700 shrink-0" />
                             <span className="font-semibold text-xs">
-                              {typeof answer === "object" ? answer.fileName : String(answer)}
+                              {typeof answer === "object"
+                                ? answer.fileName
+                                : String(answer)}
                             </span>
                           </div>
-                          {typeof answer === "object" && answer.storageKey && (
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <a
-                                href={`/api/tasks/${task.id}/form-file/${answer.storageKey}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--canvas)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--brand-900)] hover:bg-[var(--surface)] transition-colors"
-                              >
-                                <ExternalLink className="size-3.5" />
-                                <span>Assistir / Baixar vídeo</span>
-                              </a>
-                            </div>
-                          )}
+                          {typeof answer === "object" &&
+                            (answer.fileUrl || answer.storageKey) && (
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <a
+                                  href={
+                                    answer.fileUrl ||
+                                    `/api/tasks/${task.id}/form-file/${answer.storageKey}`
+                                  }
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--canvas)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--brand-900)] hover:bg-[var(--surface)] transition-colors"
+                                >
+                                  <ExternalLink className="size-3.5" />
+                                  <span>Assistir / Baixar vídeo</span>
+                                </a>
+                              </div>
+                            )}
                         </div>
                       ) : field.type === "FILE" ? (
                         <div className="flex flex-col gap-2">
                           <div className="flex items-center gap-2.5 text-brand-900 dark:text-primary">
                             <Paperclip className="size-4 text-brand-700 shrink-0" />
                             <span className="font-semibold text-xs">
-                              {typeof answer === "object" ? answer.fileName : String(answer)}
+                              {typeof answer === "object"
+                                ? answer.fileName
+                                : String(answer)}
                             </span>
                             {typeof answer === "object" && answer.fileSize && (
                               <span className="text-[11px] text-muted-foreground">
@@ -881,19 +1027,23 @@ export function ManagementTaskDetailClient({
                               </span>
                             )}
                           </div>
-                          {typeof answer === "object" && answer.storageKey && (
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <a
-                                href={`/api/tasks/${task.id}/form-file/${answer.storageKey}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--canvas)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--brand-900)] hover:bg-[var(--surface)] transition-colors"
-                              >
-                                <Download className="size-3.5" />
-                                <span>Baixar anexo</span>
-                              </a>
-                            </div>
-                          )}
+                          {typeof answer === "object" &&
+                            (answer.fileUrl || answer.storageKey) && (
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <a
+                                  href={
+                                    answer.fileUrl ||
+                                    `/api/tasks/${task.id}/form-file/${answer.storageKey}`
+                                  }
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--canvas)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--brand-900)] hover:bg-[var(--surface)] transition-colors"
+                                >
+                                  <Download className="size-3.5" />
+                                  <span>Baixar anexo</span>
+                                </a>
+                              </div>
+                            )}
                         </div>
                       ) : (
                         <p className="whitespace-pre-wrap leading-relaxed text-xs sm:text-sm">
@@ -959,7 +1109,13 @@ export function ManagementTaskDetailClient({
                       variant="outline"
                       className="text-[length:var(--type-caption)] font-semibold px-2 py-0.5 rounded-full bg-[var(--surface)] border-[var(--border-subtle)] text-[var(--brand-900)]"
                     >
-                      {({ START: "Antes de iniciar", DURING: "Durante a execução", COMPLETION: "Para concluir" } as Record<string, string>)[req.executionStage] || req.executionStage}
+                      {(
+                        {
+                          START: "Antes de iniciar",
+                          DURING: "Durante a execução",
+                          COMPLETION: "Para concluir",
+                        } as Record<string, string>
+                      )[req.executionStage] || req.executionStage}
                     </Badge>
                   </div>
 
@@ -976,7 +1132,20 @@ export function ManagementTaskDetailClient({
                         >
                           <div>
                             <span className="font-semibold text-[var(--brand-900)]">
-                              {sub.storageKey ? <a className="underline" href={`/api/evidence/${sub.id}`}>Baixar {sub.value || "arquivo"}</a> : sub.value || "Evidência enviada"}
+                              {sub.fileUrl || sub.storageKey ? (
+                                <a
+                                  className="underline hover:text-brand-700"
+                                  href={
+                                    sub.fileUrl || `/api/evidence/${sub.id}`
+                                  }
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  Visualizar / Baixar {sub.value || "arquivo"}
+                                </a>
+                              ) : (
+                                sub.value || "Evidência enviada"
+                              )}
                             </span>
                             <span className="text-[length:var(--type-caption)] text-[var(--text-secondary)] block">
                               Tentativa #{sub.attemptNumber} •{" "}
@@ -995,12 +1164,15 @@ export function ManagementTaskDetailClient({
                                 ? "default"
                                 : "destructive"
                             }
-                            className={`text-[length:var(--type-caption)] font-semibold px-2 py-0.5 rounded-full ${sub.validationStatus === "VALID"
-                              ? "bg-emerald-100 text-emerald-900 border-transparent"
-                              : "bg-red-100 text-red-900 border-transparent"
-                              }`}
+                            className={`text-[length:var(--type-caption)] font-semibold px-2 py-0.5 rounded-full ${
+                              sub.validationStatus === "VALID"
+                                ? "bg-emerald-100 text-emerald-900 border-transparent"
+                                : "bg-red-100 text-red-900 border-transparent"
+                            }`}
                           >
-                            {sub.validationStatus === "VALID" ? "Validada" : "Rejeitada"}
+                            {sub.validationStatus === "VALID"
+                              ? "Validada"
+                              : "Rejeitada"}
                           </Badge>
                         </Card>
                       ))
@@ -1119,8 +1291,12 @@ export function ManagementTaskDetailClient({
 
       {/* Ocorrências e Alertas Operacionais - Inicialmente colapsado, layout limpo e neutro */}
       {(() => {
-        const validOccurrences = (task.occurrences || []).filter((o) => !isPauseOccurrence(o));
-        const impediments = validOccurrences.filter((o) => o.type !== "SLA_BREACH");
+        const validOccurrences = (task.occurrences || []).filter(
+          (o) => !isPauseOccurrence(o),
+        );
+        const impediments = validOccurrences.filter(
+          (o) => o.type !== "SLA_BREACH",
+        );
         const slaBreaches = validOccurrences
           .filter((o) => o.type === "SLA_BREACH")
           .sort((a, b) => {
@@ -1149,12 +1325,15 @@ export function ManagementTaskDetailClient({
                       : "bg-transparent text-slate-500 border-slate-200"
                   }`}
                 >
-                  {validOccurrences.length} {validOccurrences.length === 1 ? "registro" : "registros"}
+                  {validOccurrences.length}{" "}
+                  {validOccurrences.length === 1 ? "registro" : "registros"}
                 </Badge>
               </div>
 
               <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium shrink-0">
-                <span>{occurrencesOpen ? "Ocultar detalhes" : "Ver detalhes"}</span>
+                <span>
+                  {occurrencesOpen ? "Ocultar detalhes" : "Ver detalhes"}
+                </span>
                 {occurrencesOpen ? (
                   <ChevronUp className="size-4 text-slate-500" />
                 ) : (
@@ -1167,7 +1346,8 @@ export function ManagementTaskDetailClient({
               <div className="px-5 pb-5 pt-1 border-t border-[var(--border-subtle)] flex flex-col gap-4">
                 {validOccurrences.length === 0 ? (
                   <p className="text-[length:var(--type-label)] text-[var(--text-secondary)] py-3">
-                    Nenhuma ocorrência ou violação de prazo registrada nesta tarefa.
+                    Nenhuma ocorrência ou violação de prazo registrada nesta
+                    tarefa.
                   </p>
                 ) : (
                   <>
@@ -1180,7 +1360,10 @@ export function ManagementTaskDetailClient({
                         <div className="flex flex-col gap-2">
                           {impediments.map((imp) => {
                             const sev = formatSeverity(imp.severity);
-                            const catLabel = formatOccurrenceCategory(imp.category, imp.type);
+                            const catLabel = formatOccurrenceCategory(
+                              imp.category,
+                              imp.type,
+                            );
                             return (
                               <div
                                 key={imp.id}
@@ -1188,7 +1371,10 @@ export function ManagementTaskDetailClient({
                               >
                                 <div className="flex items-center justify-between gap-2 flex-wrap">
                                   <div className="flex items-center gap-2">
-                                    <Badge variant="destructive" className="text-[10px] uppercase font-bold px-1.5 py-0.2">
+                                    <Badge
+                                      variant="destructive"
+                                      className="text-[10px] uppercase font-bold px-1.5 py-0.2"
+                                    >
                                       Impedimento
                                     </Badge>
                                     <span className="font-semibold text-slate-900 dark:text-slate-100 text-xs">
@@ -1196,14 +1382,19 @@ export function ManagementTaskDetailClient({
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <Badge className={`text-[10px] font-semibold ${sev.badgeClass}`}>
+                                    <Badge
+                                      className={`text-[10px] font-semibold ${sev.badgeClass}`}
+                                    >
                                       Severidade: {sev.label}
                                     </Badge>
                                     <span className="text-[11px] text-muted-foreground font-mono">
-                                      {new Date(imp.createdAt).toLocaleString("pt-BR", {
-                                        dateStyle: "short",
-                                        timeStyle: "short",
-                                      })}
+                                      {new Date(imp.createdAt).toLocaleString(
+                                        "pt-BR",
+                                        {
+                                          dateStyle: "short",
+                                          timeStyle: "short",
+                                        },
+                                      )}
                                     </span>
                                   </div>
                                 </div>
@@ -1218,89 +1409,116 @@ export function ManagementTaskDetailClient({
                     )}
 
                     {/* 2. Violação de Prazo Limite / Marcos de Atraso */}
-                    {slaBreaches.length > 0 && (() => {
-                      const latestBreach = slaBreaches[0];
-                      const latestMins = parseInt(latestBreach.category.replace(/^SLA_/, ""), 10) || 0;
-                      const sev = formatSeverity(latestBreach.severity);
+                    {slaBreaches.length > 0 &&
+                      (() => {
+                        const latestBreach = slaBreaches[0];
+                        const latestMins =
+                          parseInt(
+                            latestBreach.category.replace(/^SLA_/, ""),
+                            10,
+                          ) || 0;
+                        const sev = formatSeverity(latestBreach.severity);
 
-                      return (
-                        <div className="flex flex-col gap-2.5 pt-2">
-                          <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wide">
-                            Alertas de Prazo & Atraso
-                          </span>
+                        return (
+                          <div className="flex flex-col gap-2.5 pt-2">
+                            <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wide">
+                              Alertas de Prazo & Atraso
+                            </span>
 
-                          {/* Resumo executivo do atraso atual - Neutro, limpo, moderno */}
-                          <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div className="flex items-start gap-2.5">
-                              <Clock className="size-5 text-slate-600 dark:text-slate-400 shrink-0 mt-0.5" />
-                              <div>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="font-bold text-slate-900 dark:text-slate-100 text-xs sm:text-sm">
-                                    Prazo Excedido
-                                  </span>
-                                  <Badge variant="outline" className="bg-slate-100 text-slate-800 border-slate-200 dark:bg-slate-800 dark:text-slate-200 text-[10px] font-semibold">
-                                    {latestMins > 0 ? formatOccurrenceCategory(latestBreach.category, latestBreach.type) : "Prazo original esgotado"}
-                                  </Badge>
-                                  <Badge className={`text-[10px] font-semibold ${sev.badgeClass}`}>
-                                    Severidade: {sev.label}
-                                  </Badge>
+                            {/* Resumo executivo do atraso atual - Neutro, limpo, moderno */}
+                            <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <div className="flex items-start gap-2.5">
+                                <Clock className="size-5 text-slate-600 dark:text-slate-400 shrink-0 mt-0.5" />
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-bold text-slate-900 dark:text-slate-100 text-xs sm:text-sm">
+                                      Prazo Excedido
+                                    </span>
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-slate-100 text-slate-800 border-slate-200 dark:bg-slate-800 dark:text-slate-200 text-[10px] font-semibold"
+                                    >
+                                      {latestMins > 0
+                                        ? formatOccurrenceCategory(
+                                            latestBreach.category,
+                                            latestBreach.type,
+                                          )
+                                        : "Prazo original esgotado"}
+                                    </Badge>
+                                    <Badge
+                                      className={`text-[10px] font-semibold ${sev.badgeClass}`}
+                                    >
+                                      Severidade: {sev.label}
+                                    </Badge>
+                                  </div>
+                                  <p className="text-slate-600 dark:text-slate-400 text-xs mt-1">
+                                    {cleanReason(latestBreach.reason)}
+                                  </p>
                                 </div>
-                                <p className="text-slate-600 dark:text-slate-400 text-xs mt-1">
-                                  {cleanReason(latestBreach.reason)}
-                                </p>
+                              </div>
+                              <div className="text-left sm:text-right shrink-0">
+                                <span className="text-[10px] text-slate-500 block font-medium">
+                                  Último alerta do sistema:
+                                </span>
+                                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 font-mono">
+                                  {new Date(
+                                    latestBreach.createdAt,
+                                  ).toLocaleString("pt-BR", {
+                                    dateStyle: "short",
+                                    timeStyle: "short",
+                                  })}
+                                </span>
                               </div>
                             </div>
-                            <div className="text-left sm:text-right shrink-0">
-                              <span className="text-[10px] text-slate-500 block font-medium">
-                                Último alerta do sistema:
-                              </span>
-                              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 font-mono">
-                                {new Date(latestBreach.createdAt).toLocaleString("pt-BR", {
-                                  dateStyle: "short",
-                                  timeStyle: "short",
-                                })}
-                              </span>
-                            </div>
-                          </div>
 
-                          {/* Histórico limpo dos marcos disparados */}
-                          {slaBreaches.length > 1 && (
-                            <div className="flex flex-col gap-1.5 pt-1">
-                              <span className="text-[11px] text-[var(--text-secondary)] font-medium">
-                                Histórico dos marcos de alerta ({slaBreaches.length} notificações disparadas):
-                              </span>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                                {slaBreaches.map((b) => {
-                                  const mins = parseInt(b.category.replace(/^SLA_/, ""), 10) || 0;
-                                  const label = mins === 0 ? "Prazo esgotado (0 min)" : `Alerta aos +${mins} min`;
-                                  return (
-                                    <div
-                                      key={b.id}
-                                      className="p-2.5 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-xs flex flex-col gap-0.5"
-                                    >
-                                      <div className="flex items-center justify-between gap-1">
-                                        <span className="font-semibold text-slate-800 dark:text-slate-200 text-[11px]">
-                                          {label}
-                                        </span>
-                                        <span className="text-[10px] text-muted-foreground font-mono">
-                                          {new Date(b.createdAt).toLocaleTimeString("pt-BR", {
-                                            hour: "2-digit",
-                                            minute: "2-digit",
-                                          })}
+                            {/* Histórico limpo dos marcos disparados */}
+                            {slaBreaches.length > 1 && (
+                              <div className="flex flex-col gap-1.5 pt-1">
+                                <span className="text-[11px] text-[var(--text-secondary)] font-medium">
+                                  Histórico dos marcos de alerta (
+                                  {slaBreaches.length} notificações disparadas):
+                                </span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                                  {slaBreaches.map((b) => {
+                                    const mins =
+                                      parseInt(
+                                        b.category.replace(/^SLA_/, ""),
+                                        10,
+                                      ) || 0;
+                                    const label =
+                                      mins === 0
+                                        ? "Prazo esgotado (0 min)"
+                                        : `Alerta aos +${mins} min`;
+                                    return (
+                                      <div
+                                        key={b.id}
+                                        className="p-2.5 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-xs flex flex-col gap-0.5"
+                                      >
+                                        <div className="flex items-center justify-between gap-1">
+                                          <span className="font-semibold text-slate-800 dark:text-slate-200 text-[11px]">
+                                            {label}
+                                          </span>
+                                          <span className="text-[10px] text-muted-foreground font-mono">
+                                            {new Date(
+                                              b.createdAt,
+                                            ).toLocaleTimeString("pt-BR", {
+                                              hour: "2-digit",
+                                              minute: "2-digit",
+                                            })}
+                                          </span>
+                                        </div>
+                                        <span className="text-[11px] text-slate-600 dark:text-slate-400 line-clamp-1">
+                                          {cleanReason(b.reason)}
                                         </span>
                                       </div>
-                                      <span className="text-[11px] text-slate-600 dark:text-slate-400 line-clamp-1">
-                                        {cleanReason(b.reason)}
-                                      </span>
-                                    </div>
-                                  );
-                                })}
+                                    );
+                                  })}
+                                </div>
                               </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
+                            )}
+                          </div>
+                        );
+                      })()}
                   </>
                 )}
               </div>
@@ -1349,7 +1567,8 @@ export function ManagementTaskDetailClient({
               <span>Reatribuir tarefa & renovar prazo</span>
             </DialogTitle>
             <DialogDescription>
-              Selecione o colaborador responsável e defina o novo prazo para conclusão.
+              Selecione o colaborador responsável e defina o novo prazo para
+              conclusão.
             </DialogDescription>
           </DialogHeader>
 
@@ -1363,7 +1582,9 @@ export function ManagementTaskDetailClient({
                 onChange={(e) => setSelectedMemberId(e.target.value)}
                 className="text-[length:var(--type-label)]"
               >
-                <NativeSelectOption value="">Selecione um colaborador...</NativeSelectOption>
+                <NativeSelectOption value="">
+                  Selecione um colaborador...
+                </NativeSelectOption>
                 {availableMembers.map((m) => {
                   const isCurrent = m.id === primaryAssignment?.memberId;
                   return (
@@ -1392,11 +1613,14 @@ export function ManagementTaskDetailClient({
                   <Button
                     key={opt.id}
                     type="button"
-                    variant={reassignDeadlineType === opt.id ? "default" : "outline"}
-                    className={`h-8 text-xs font-medium px-2 rounded-lg transition-all ${reassignDeadlineType === opt.id
-                      ? "bg-[var(--brand-900)] text-white font-semibold shadow-xs hover:bg-[var(--brand-800)]"
-                      : "bg-[var(--surface)] hover:bg-slate-100 text-[var(--text-secondary)]"
-                      }`}
+                    variant={
+                      reassignDeadlineType === opt.id ? "default" : "outline"
+                    }
+                    className={`h-8 text-xs font-medium px-2 rounded-lg transition-all ${
+                      reassignDeadlineType === opt.id
+                        ? "bg-[var(--brand-900)] text-white font-semibold shadow-xs hover:bg-[var(--brand-800)]"
+                        : "bg-[var(--surface)] hover:bg-slate-100 text-[var(--text-secondary)]"
+                    }`}
                     onClick={() => setReassignDeadlineType(opt.id as any)}
                   >
                     {opt.label}
@@ -1419,7 +1643,8 @@ export function ManagementTaskDetailClient({
               <div className="p-2.5 rounded-lg bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 flex items-center gap-2 text-xs text-emerald-900 dark:text-emerald-300">
                 <Clock className="size-4 shrink-0 text-emerald-700" />
                 <span>
-                  <strong>Novo prazo:</strong> {getDeadlinePreview(reassignDeadlineType, reassignCustomDate)}
+                  <strong>Novo prazo:</strong>{" "}
+                  {getDeadlinePreview(reassignDeadlineType, reassignCustomDate)}
                 </span>
               </div>
             </div>
@@ -1458,8 +1683,6 @@ export function ManagementTaskDetailClient({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-
 
       {/* DIALOG: CANCELAR TAREFA */}
       <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>

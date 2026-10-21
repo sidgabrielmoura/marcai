@@ -27,6 +27,7 @@ import {
   Building2,
   Activity,
   Workflow, Layers,
+  ClipboardCheck,
   type LucideIcon,
 } from "lucide-react";
 import { logoutAction } from "@/presentation/actions/auth-actions";
@@ -78,7 +79,19 @@ const managementNav: NavItem[] = [
     icon: GitMerge,
     group: "Operação",
   },
+  {
+    label: "Aprovações",
+    href: "/management/approvals",
+    icon: ClipboardCheck,
+    group: "Operação",
+  },
   { label: "Templates", href: "/management/templates", icon: Layers, group: "Operação" },
+  {
+    label: "Execuções",
+    href: "/management/executions",
+    icon: History,
+    group: "Operação",
+  },
   {
     label: "Arquivados",
     href: "/management/archived",
@@ -151,9 +164,21 @@ const platformNav: NavItem[] = [
     group: "Plataforma",
   },
   {
-    label: "assinaturas",
+    label: "Assinaturas",
     href: "/superadmin?view=subscriptions",
     icon: CalendarClock,
+    group: "Plataforma",
+  },
+  {
+    label: "Templates",
+    href: "/superadmin?view=templates",
+    icon: Layers,
+    group: "Plataforma",
+  },
+  {
+    label: "Mapa",
+    href: "/superadmin?view=map",
+    icon: MapPin,
     group: "Plataforma",
   },
   {
@@ -253,6 +278,8 @@ export function AppShell({
 
   const isOperacaoActive = [
     "/management/tasks",
+    "/management/approvals",
+    "/management/executions",
     "/management/processes",
     "/management/archived",
     "/management/templates",
@@ -267,6 +294,8 @@ export function AppShell({
   const [operacaoOpen, setOperacaoOpen] = useState(false);
   const [organizacaoOpen, setOrganizacaoOpen] = useState(false);
 
+  const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
+
   useEffect(() => {
     if (mode === "platform") return;
     let active = true;
@@ -274,6 +303,9 @@ export function AppShell({
       .then((summary) => {
         if (active && summary) {
           setUnreadCount(summary.unreadCount);
+          if ((summary as any).pendingApprovalsCount !== undefined) {
+            setPendingApprovalsCount((summary as any).pendingApprovalsCount);
+          }
           if (summary.userId) setCurrentUserId(summary.userId);
           if (summary.subscriptionNotice !== undefined) {
             setSubscriptionNotice(summary.subscriptionNotice);
@@ -394,17 +426,28 @@ export function AppShell({
   };
 
   const renderSubNav = (item: NavItem) => {
+    const isApprovals = item.href === "/management/approvals";
     return (
       <Link
         key={item.href}
         href={item.href}
         onClick={() => setSearchOpen(false)}
-        className={`sidebar-link min-h-9.5! py-2! pl-7! text-(length:--type-label) ${isActive(item) ? "is-active" : ""
+        className={`sidebar-link min-h-9.5! py-2! pl-7! text-(length:--type-label) flex items-center justify-between ${isActive(item) ? "is-active" : ""
           }`}
         aria-current={isActive(item) ? "page" : undefined}
       >
-        <item.icon size={16} strokeWidth={1.7} />
-        <span>{item.label}</span>
+        <span className="flex items-center gap-2">
+          <item.icon size={16} strokeWidth={1.7} />
+          <span>{item.label}</span>
+        </span>
+        {isApprovals && pendingApprovalsCount > 0 && (
+          <span
+            className="ml-auto px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-white"
+            title={`${pendingApprovalsCount} aprovações pendentes`}
+          >
+            {pendingApprovalsCount > 99 ? "99+" : pendingApprovalsCount}
+          </span>
+        )}
       </Link>
     );
   };
@@ -660,7 +703,7 @@ export function AppShell({
           <div className="topbar-account">
             {mode !== "platform" && (
               <Link
-                href="/notifications"
+                href={mode === "management" ? "/management/notifications" : "/notifications"}
                 className="icon-button relative"
                 aria-label={unreadCount > 0 ? `${unreadCount} notificações não lidas` : "Notificações"}
               >

@@ -1,6 +1,6 @@
 "use client";
 
-import {useSubmissionReceipts} from "@/presentation/lib/submission-receipts";
+import { useSubmissionReceipts } from "@/presentation/lib/submission-receipts";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { completeTaskAction } from "@/presentation/actions/task-actions";
@@ -9,10 +9,11 @@ import { Check, Loader2 } from "lucide-react";
 
 interface QuickCompleteButtonProps {
   taskId: string;
-  roundId:string;
+  roundId: string;
   taskTitle?: string;
   className?: string;
   disabled?: boolean;
+  requiresApproval?: boolean;
 }
 
 export function QuickCompleteButton({
@@ -21,9 +22,10 @@ export function QuickCompleteButton({
   taskTitle,
   className = "",
   disabled = false,
+  requiresApproval = false,
 }: QuickCompleteButtonProps) {
   const router = useRouter();
-  const receipt=useSubmissionReceipts(taskId+":"+roundId);
+  const receipt = useSubmissionReceipts(taskId + ":" + roundId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -36,7 +38,12 @@ export function QuickCompleteButton({
     setError("");
 
     try {
-      const result = await completeTaskAction(taskId,undefined,roundId,await receipt("complete",{}));
+      const result = await completeTaskAction(
+        taskId,
+        undefined,
+        roundId,
+        await receipt("complete", {}),
+      );
       if (result.error) {
         setError(result.error);
         alert(`Não foi possível concluir: ${result.error}`);
@@ -57,7 +64,7 @@ export function QuickCompleteButton({
       size="sm"
       disabled={busy || disabled}
       onClick={handleComplete}
-      aria-label={`Concluir tarefa: ${taskTitle || ""}`}
+      aria-label={`${requiresApproval ? "Enviar para aprovação" : "Concluir tarefa"}: ${taskTitle || ""}`}
       className={`w-full h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all flex items-center justify-center gap-1.5 ${disabled ? "opacity-60 cursor-not-allowed bg-slate-300 text-slate-500 hover:bg-slate-300" : ""} ${className}`}
     >
       {busy ? (
@@ -68,7 +75,9 @@ export function QuickCompleteButton({
       ) : (
         <>
           <Check className="size-3.5 stroke-[2.5]" />
-          <span>Concluir tarefa</span>
+          <span>
+            {requiresApproval ? "Enviar para aprovação" : "Concluir tarefa"}
+          </span>
         </>
       )}
     </Button>

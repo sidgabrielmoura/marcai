@@ -188,53 +188,8 @@ export function SetupBiometricsClient({
                 Olá, <strong>{userName || "colaborador"}</strong>! Você pode entrar no Tarefaí em 1 toque usando sua impressão digital ou reconhecimento facial, sem precisar digitar sua senha ou PIN.
               </p>
 
-              {/* Destaques / Vantagens estilo bancário */}
-              <div className="w-full my-6 flex flex-col gap-2.5 text-left">
-                <div className="flex items-start gap-3 p-3 rounded-xl bg-[var(--canvas)] border border-[var(--border-subtle)]">
-                  <div className="size-8 rounded-lg bg-brand-100 text-brand-900 flex items-center justify-center shrink-0 mt-0.5">
-                    <Zap className="size-4" />
-                  </div>
-                  <div>
-                    <h2 className="text-xs font-semibold text-[var(--text-primary)]">
-                      Entrada rápida em 1 toque
-                    </h2>
-                    <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
-                      Comece seu turno ou acesse o painel instantaneamente.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3 p-3 rounded-xl bg-[var(--canvas)] border border-[var(--border-subtle)]">
-                  <div className="size-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0 mt-0.5">
-                    <ShieldCheck className="size-4" />
-                  </div>
-                  <div>
-                    <h2 className="text-xs font-semibold text-[var(--text-primary)]">
-                      Máxima proteção de hardware
-                    </h2>
-                    <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
-                      Seus dados biométricos não saem do aparelho.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3 p-3 rounded-xl bg-[var(--canvas)] border border-[var(--border-subtle)]">
-                  <div className="size-8 rounded-lg bg-slate-100 text-slate-800 flex items-center justify-center shrink-0 mt-0.5">
-                    <KeyRound className="size-4" />
-                  </div>
-                  <div>
-                    <h2 className="text-xs font-semibold text-[var(--text-primary)]">
-                      Sua senha continua funcionando
-                    </h2>
-                    <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
-                      Você pode usar sua senha ou PIN tradicional quando quiser.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
               {/* Botões de Ação */}
-              <div className="w-full flex flex-col gap-2.5">
+              <div className="w-full flex flex-col gap-2.5 pt-5">
                 <Button
                   onClick={handleRegisterBiometrics}
                   disabled={isRegistering}

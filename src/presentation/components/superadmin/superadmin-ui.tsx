@@ -41,16 +41,16 @@ export function SuperadminModal(props: ComponentProps<typeof Modal>) {
 
 export function PlatformPage({
   children,
-  subscriptions,
+  subscriptions = false,
   tab,
   onTabChange,
 }: {
   children: ReactNode;
-  subscriptions: boolean;
-  tab: string;
-  onTabChange: (value: string) => void;
+  subscriptions?: boolean;
+  tab?: string;
+  onTabChange?: (value: string) => void;
 }) {
-  return subscriptions ? (
+  return subscriptions && tab && onTabChange ? (
     <Tabs className="superadmin-page" value={tab} onValueChange={onTabChange}>
       {children}
     </Tabs>

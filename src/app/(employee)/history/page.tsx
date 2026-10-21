@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { getAuthenticatedContext } from "@/application/security/auth-context";
-import { taskScope } from "@/application/security/operational-scope";
+import { taskScope, isManagement } from "@/application/security/operational-scope";
+import { redirect } from "next/navigation";
 import { prisma } from "@/infrastructure/database/prisma";
 import { EmployeeShell } from "@/presentation/components/mobile/employee-shell";
 import { PageHeader, EmptyState } from "@/presentation/components/shared";
@@ -17,6 +18,7 @@ export default async function HistoryPage({
 }) {
   const c = await getAuthenticatedContext();
   if (!c) return null;
+  if (isManagement(c)) redirect("/management/executions");
 
   const p = await searchParams;
   const period = ["7", "30", "90", "365"].includes(p.period ?? "") ? p.period! : "30";

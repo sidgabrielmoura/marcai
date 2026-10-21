@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { claimTaskAction } from "@/presentation/actions/management-task-actions";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import { Spinner } from "@/components/ui/spinner";
 
 export function ClaimTaskButton({
@@ -24,7 +25,18 @@ export function ClaimTaskButton({
       const result = await claimTaskAction(taskId);
       if (result.error) {
         setError(result.error);
+        toast.add({
+          title: "Tarefa indisponível",
+          description: result.error,
+          type: "error",
+        });
+        router.refresh();
       } else {
+        toast.add({
+          title: "Tarefa assumida com sucesso!",
+          description: "Você já pode iniciar o registro das atividades.",
+          type: "success",
+        });
         if (onClaimed) {
           onClaimed(taskId);
         } else {

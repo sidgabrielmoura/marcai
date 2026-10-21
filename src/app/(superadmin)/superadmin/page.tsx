@@ -15,8 +15,16 @@ import {
   type PlatformView,
 } from "@/presentation/components/superadmin/superadmin-dashboard-client";
 import type { PlatformOverviewData } from "@/presentation/components/superadmin/platform-overview";
+import type { MapOrganization } from "@/presentation/components/superadmin/superadmin-map";
+import { buildMapOrganizations } from "@/application/superadmin/map-data";
+import {
+  listPlatformBusinessSegments,
+  listPlatformTemplatesBySegment,
+  type BusinessSegmentWithCounts,
+  type PlatformTemplateModel,
+} from "@/application/superadmin/business-segment-service";
 
-const views: PlatformView[] = ["overview", "organizations", "users", "subscriptions", "usage", "audit", "support"];
+const views: PlatformView[] = ["overview", "organizations", "users", "subscriptions", "templates", "usage", "audit", "support", "map"];
 
 const pageSize = 10;
 
@@ -78,8 +86,38 @@ export default async function SuperadminPage({ searchParams }: { searchParams: P
       return { id: row.id, action: row.action, entityType: row.entityType, entityId: row.entityId, createdAt: row.createdAt.toISOString(), organizationId: row.organizationId, orgName: row.organization.name, actorName: row.actorId ? actorNames.get(row.actorId) ?? "Usuário removido" : "Sistema", note: typeof metadata.note === "string" ? metadata.note : typeof metadata.reason === "string" ? metadata.reason : null, supportStatus: typeof metadata.status === "string" ? metadata.status : null };
     });
   } else {
-    const rows = await prisma.organization.findMany({ where: view === "overview" ? {} : orgWhere, ...(view === "overview" ? { skip: 0, take: 4 } : paging), orderBy: [{ createdAt: "desc" }, { id: "asc" }], include: { _count: { select: { members: { where: { status: "ACTIVE", user: { status: "ACTIVE" } } }, locations: { where: { status: "ACTIVE" } }, processes: true, tasks: { where: { deletedAt: null } }, executions: true } } } });
-    organizations = rows.map((org) => ({ id: org.id, name: org.name, slug: org.slug, status: org.status, createdAt: org.createdAt.toISOString(), membersCount: org._count.members, locationsCount: org._count.locations, processesCount: org._count.processes, tasksCount: org._count.tasks, executionsCount: org._count.executions, subscription: readManualSubscription(org.settings) }));
+    const rows = await prisma.organization.findMany({
+      where: view === "overview" ? {} : orgWhere,
+      ...(view === "overview" ? { skip: 0, take: 4 } : paging),
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      include: {
+        businessSegment: { select: { id: true, name: true } },
+        _count: {
+          select: {
+            members: { where: { status: "ACTIVE", user: { status: "ACTIVE" } } },
+            locations: { where: { status: "ACTIVE" } },
+            processes: true,
+            tasks: { where: { deletedAt: null } },
+            executions: true,
+          },
+        },
+      },
+    });
+    organizations = rows.map((org) => ({
+      id: org.id,
+      name: org.name,
+      slug: org.slug,
+      status: org.status,
+      createdAt: org.createdAt.toISOString(),
+      businessSegmentId: org.businessSegmentId,
+      businessSegmentName: org.businessSegment?.name || null,
+      membersCount: org._count.members,
+      locationsCount: org._count.locations,
+      processesCount: org._count.processes,
+      tasksCount: org._count.tasks,
+      executionsCount: org._count.executions,
+      subscription: readManualSubscription(org.settings),
+    }));
   }
 
   const allOrganizations = await prisma.organization.findMany({
@@ -149,6 +187,41 @@ export default async function SuperadminPage({ searchParams }: { searchParams: P
     updatedAt: p.updatedAt.toISOString(),
   }));
 
+  let mapOrganizations: MapOrganization[] = [];
+  if (view === "map") {
+    const mapRows = await prisma.organization.findMany({
+      where: { ...(organizationId ? { id: organizationId } : {}) },
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      include: {
+        locations: {
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          select: { id: true, name: true, address: true, status: true, createdAt: true },
+        },
+        _count: {
+          select: {
+            members: { where: { status: "ACTIVE", user: { status: "ACTIVE" } } },
+            locations: true,
+            processes: true,
+            tasks: { where: { deletedAt: null } },
+          },
+        },
+      },
+    });
+
+    mapOrganizations = buildMapOrganizations(mapRows);
+  }
+
+  const businessSegments = await listPlatformBusinessSegments(true);
+  const selectedSegmentId = one("segment");
+  let platformTemplates: PlatformTemplateModel[] = [];
+  let selectedSegment: BusinessSegmentWithCounts | null = null;
+  if (selectedSegmentId) {
+    selectedSegment = businessSegments.find((s) => s.id === selectedSegmentId) || null;
+    if (selectedSegment) {
+      platformTemplates = await listPlatformTemplatesBySegment(selectedSegmentId, true);
+    }
+  }
+
   return (
     <SuperadminDashboardClient
       userName={actor.userName}
@@ -165,6 +238,11 @@ export default async function SuperadminPage({ searchParams }: { searchParams: P
       allOrganizations={allOrganizations}
       platformPlans={platformPlans}
       overviewData={overviewData}
+      mapOrganizations={mapOrganizations}
+      businessSegments={businessSegments}
+      platformTemplates={platformTemplates}
+      selectedSegmentId={selectedSegmentId}
+      selectedSegment={selectedSegment}
       pagination={{ page, pages, total, pageSize }}
     />
   );

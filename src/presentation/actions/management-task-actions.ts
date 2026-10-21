@@ -1,14 +1,27 @@
 "use server";
-import {operate as employeeOperate} from "@/application/mobile/operations";
+import { operate as employeeOperate } from "@/application/mobile/operations";
+import { evaluateTaskDependencies } from "@/domain/rules/dependency-rules";
+import { deadline } from "@/domain/rules/employee-workflow";
 
 import { z } from "zod";
-import { taskEditSchema, canEditTaskDefinition } from "@/domain/rules/task-edit";
+import {
+  taskEditSchema,
+  canEditTaskDefinition,
+} from "@/domain/rules/task-edit";
 import type { Prisma } from "@prisma/client";
-import { taskScope, isManagement, eligibleMember } from "@/application/security/operational-scope";
+import {
+  taskScope,
+  isManagement,
+  eligibleMember,
+} from "@/application/security/operational-scope";
 import { lockTask } from "@/application/tasks/task-lock";
 import { effectiveWorkSeconds } from "@/domain/rules/execution-state";
 import { synchronizeExecution } from "@/application/tasks/synchronize-execution";
-import { notifyManagers, notifyTaskAssignees, notifyApprovers } from "@/application/tasks/notify-managers";
+import {
+  notifyManagers,
+  notifyTaskAssignees,
+  notifyApprovers,
+} from "@/application/tasks/notify-managers";
 import { dispatchNotificationAsync } from "@/infrastructure/notifications/notification-service";
 import { prisma } from "@/infrastructure/database/prisma";
 import { getAuthenticatedContext } from "@/application/security/auth-context";
@@ -19,10 +32,20 @@ import {
   canReportImpediment,
   canEditTask,
 } from "@/domain/rules/task-rules";
-import { calculateMemberAvailability, sortMembersByAvailability, type MemberAvailability } from "@/domain/rules/member-availability";
+import {
+  calculateMemberAvailability,
+  sortMembersByAvailability,
+  type MemberAvailability,
+} from "@/domain/rules/member-availability";
 import { isLocationOpenAt } from "@/domain/rules/operating-hours";
 import { eventBus } from "@/infrastructure/events/event-bus";
-import { TaskStatus, Priority, Criticality, EvidenceType, Role } from "@/domain/types";
+import {
+  TaskStatus,
+  Priority,
+  Criticality,
+  EvidenceType,
+  Role,
+} from "@/domain/types";
 import { revalidatePath } from "next/cache";
 
 export type ActionResult = {
@@ -44,7 +67,10 @@ const CreateTaskSchema = z.object({
   required: z.boolean().default(true),
   deadlineAt: z.string().optional().nullable(),
   toleranceMinutes: z.coerce.number().int().min(0).default(20),
-  evidenceType: z.enum(["PHOTO", "VIDEO", "FILE", "TEXT", "NUMBER", "SIGNATURE", "LOCATION"]).optional().nullable(),
+  evidenceType: z
+    .enum(["PHOTO", "VIDEO", "FILE", "TEXT", "NUMBER", "SIGNATURE", "LOCATION"])
+    .optional()
+    .nullable(),
   evidenceRequired: z.boolean().default(true),
   taskType: z.enum(["STANDARD", "FORM"]).default("STANDARD"),
   formFields: z.string().optional().nullable(), // JSON stringified FormFieldDefinition[]
@@ -53,7 +79,9 @@ const CreateTaskSchema = z.object({
 /**
  * Criação de Tarefa Avulsa no Escopo Autorizado (Item 14, 47)
  */
-export async function createAdHocTaskAction(formData: FormData): Promise<ActionResult> {
+export async function createAdHocTaskAction(
+  formData: FormData,
+): Promise<ActionResult> {
   const context = await getAuthenticatedContext();
   if (!context) return { error: "Não autenticado." };
 
@@ -70,9 +98,13 @@ export async function createAdHocTaskAction(formData: FormData): Promise<ActionR
     primaryMemberId: formData.get("primaryMemberId") || null,
     priority: formData.get("priority") || "MEDIUM",
     criticality: formData.get("criticality") || "MEDIUM",
-    required: formData.get("required") === "true" || formData.get("required") === "on",
+    required:
+      formData.get("required") === "true" || formData.get("required") === "on",
     deadlineAt: formData.get("deadlineAt") || null,
-    toleranceMinutes: formData.get("toleranceMinutes") !== null ? Number(formData.get("toleranceMinutes")) : 20,
+    toleranceMinutes:
+      formData.get("toleranceMinutes") !== null
+        ? Number(formData.get("toleranceMinutes"))
+        : 20,
     evidenceType: formData.get("evidenceType") || null,
     evidenceRequired: formData.get("evidenceRequired") !== "false",
     taskType: formData.get("taskType") || "STANDARD",
@@ -105,19 +137,55 @@ export async function createAdHocTaskAction(formData: FormData): Promise<ActionR
   // Validação de escopo do MANAGER (Item 6)
   if (context.role === Role.MANAGER && context.scope) {
     if (!context.scope.locationIds.includes(locationId)) {
-      return { error: "Você não possui escopo para criar tarefas nesta unidade." };
+      return {
+        error: "Você não possui escopo para criar tarefas nesta unidade.",
+      };
     }
     if (teamId && !context.scope.teamIds.includes(teamId)) {
-      return { error: "Você não possui escopo para criar tarefas nesta equipe." };
+      return {
+        error: "Você não possui escopo para criar tarefas nesta equipe.",
+      };
     }
   }
 
-  if (!await prisma.location.findFirst({ where: { id: locationId, organizationId: context.organizationId, status: "ACTIVE" } })) return { error: "Unidade inválida." };
-  if (teamId && !await prisma.team.findFirst({ where: { id: teamId, organizationId: context.organizationId, status: "ACTIVE" } })) return { error: "Equipe inválida." };
-  if (context.role === "MANAGER" && !teamId) return { error: "Escolha uma equipe do seu escopo." };
-  if (primaryMemberId && !await eligibleMember(context.organizationId, primaryMemberId, locationId, teamId ?? null)) return { error: "O responsável precisa pertencer à equipe e ter acesso à unidade." };
+  if (
+    !(await prisma.location.findFirst({
+      where: {
+        id: locationId,
+        organizationId: context.organizationId,
+        status: "ACTIVE",
+      },
+    }))
+  )
+    return { error: "Unidade inválida." };
+  if (
+    teamId &&
+    !(await prisma.team.findFirst({
+      where: {
+        id: teamId,
+        organizationId: context.organizationId,
+        status: "ACTIVE",
+      },
+    }))
+  )
+    return { error: "Equipe inválida." };
+  if (context.role === "MANAGER" && !teamId)
+    return { error: "Escolha uma equipe do seu escopo." };
+  if (
+    primaryMemberId &&
+    !(await eligibleMember(
+      context.organizationId,
+      primaryMemberId,
+      locationId,
+      teamId ?? null,
+    ))
+  )
+    return {
+      error: "O responsável precisa pertencer à equipe e ter acesso à unidade.",
+    };
   const deadlineDate = deadlineAt ? new Date(deadlineAt) : null;
-  if (deadlineDate && Number.isNaN(deadlineDate.getTime())) return { error: "Prazo inválido." };
+  if (deadlineDate && Number.isNaN(deadlineDate.getTime()))
+    return { error: "Prazo inválido." };
   const slaDueDate = deadlineDate;
 
   const now = new Date();
@@ -143,7 +211,10 @@ export async function createAdHocTaskAction(formData: FormData): Promise<ActionR
         slaDueAt: slaDueDate,
         toleranceMinutes: toleranceMinutes ?? 20,
         taskType: taskType as any,
-        formFields: taskType === "FORM" && formFields ? JSON.parse(formFields) : undefined,
+        formFields:
+          taskType === "FORM" && formFields
+            ? JSON.parse(formFields)
+            : undefined,
       },
     });
 
@@ -241,50 +312,203 @@ export async function createAdHocTaskAction(formData: FormData): Promise<ActionR
  * Registra quem transferiu, notifica e revoga acesso do anterior
  */
 const taskInclude = {
+  dependencies: {
+    include: { dependsOnTask: { include: { approvalWorkflow: true } } },
+  },
   assignments: { where: { removedAt: null }, include: { member: true } },
   sessions: { include: { pauses: true } },
-  approvalWorkflow: { include: { steps: { orderBy: { sequence: "asc" as const } } } },
+  approvalWorkflow: {
+    include: { steps: { orderBy: { sequence: "asc" as const } } },
+  },
 } satisfies Prisma.TaskInclude;
 type OperationalTask = Prisma.TaskGetPayload<{ include: typeof taskInclude }>;
 type Context = NonNullable<Awaited<ReturnType<typeof getAuthenticatedContext>>>;
 
-async function operate(taskId: string, management: boolean, fn: (tx: Prisma.TransactionClient, task: OperationalTask, c: Context) => Promise<ActionResult>, deleted = false): Promise<ActionResult> {
+async function operate(
+  taskId: string,
+  management: boolean,
+  fn: (
+    tx: Prisma.TransactionClient,
+    task: OperationalTask,
+    c: Context,
+  ) => Promise<ActionResult>,
+  deleted = false,
+): Promise<ActionResult> {
   const c = await getAuthenticatedContext();
-  if (!c || management && !isManagement(c)) return { error: "Você não tem permissão para esta ação." };
-  const result = await prisma.$transaction(async tx => {
-    await lockTask(tx, c.organizationId, taskId);
-    const task = await tx.task.findFirst({ where: { ...taskScope(c), id: taskId, deletedAt: deleted ? { not: null } : null }, include: taskInclude });
-    if (!task) return { error: "Tarefa não encontrada no seu escopo." };
-    const result = await fn(tx, task, c);
-    if (result.success) await synchronizeExecution(tx, c.organizationId, task.executionId);
-    return result;
-  }, { timeout: 20000 });
-  for (const path of ["/tasks", "/history", "/management/tasks", "/management/tasks/trash", "/overview", "/notifications", "/tasks/" + taskId, "/management/tasks/" + taskId]) revalidatePath(path);
+  if (!c || (management && !isManagement(c)))
+    return { error: "Você não tem permissão para esta ação." };
+  const result = await prisma.$transaction(
+    async (tx) => {
+      await lockTask(tx, c.organizationId, taskId);
+      const task = await tx.task.findFirst({
+        where: {
+          ...taskScope(c),
+          id: taskId,
+          deletedAt: deleted ? { not: null } : null,
+        },
+        include: taskInclude,
+      });
+      if (!task) return { error: "Tarefa não encontrada no seu escopo." };
+      const result = await fn(tx, task, c);
+      if (result.success)
+        await synchronizeExecution(
+          tx,
+          c.organizationId,
+          task.executionId,
+          undefined,
+          task.id,
+        );
+      return result;
+    },
+    { timeout: 20000 },
+  );
+  for (const path of [
+    "/tasks",
+    "/history",
+    "/management/tasks",
+    "/management/tasks/trash",
+    "/overview",
+    "/notifications",
+    "/tasks/" + taskId,
+    "/management/tasks/" + taskId,
+  ])
+    revalidatePath(path);
   return result;
 }
-async function audit(tx: Prisma.TransactionClient, task: OperationalTask, c: Context, action: string, metadata: Prisma.InputJsonValue = {}) {
-  await tx.activityLog.create({ data: { organizationId: c.organizationId, actorId: c.memberId, action, entityType: "TASK", entityId: task.id, metadata } });
+async function audit(
+  tx: Prisma.TransactionClient,
+  task: OperationalTask,
+  c: Context,
+  action: string,
+  metadata: Prisma.InputJsonValue = {},
+) {
+  await tx.activityLog.create({
+    data: {
+      organizationId: c.organizationId,
+      actorId: c.memberId,
+      action,
+      entityType: "TASK",
+      entityId: task.id,
+      metadata,
+    },
+  });
 }
-async function endSessions(tx: Prisma.TransactionClient, task: OperationalTask) {
-  const now = new Date();
-  await tx.taskPause.updateMany({ where: { session: { taskId: task.id }, endedAt: null }, data: { endedAt: now } });
-  await tx.taskExecutionSession.updateMany({ where: { taskId: task.id, endedAt: null }, data: { endedAt: now } });
+async function endSessions(
+  tx: Prisma.TransactionClient,
+  task: OperationalTask,
+  now = new Date(),
+) {
+  await tx.taskPause.updateMany({
+    where: { session: { taskId: task.id }, endedAt: null },
+    data: { endedAt: now },
+  });
+  await tx.taskExecutionSession.updateMany({
+    where: { taskId: task.id, endedAt: null },
+    data: { endedAt: now },
+  });
 }
 const reasonSchema = z.string().trim().min(3).max(1000);
-const terminal = (status: string) => ["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(status);
 
-export async function editTaskAction(taskId: string, input: unknown): Promise<ActionResult> {
+export async function setTaskManagementBlockAction(
+  taskId: string,
+  blocked: boolean,
+  reason?: string,
+): Promise<ActionResult> {
+  if (typeof blocked !== "boolean")
+    return { error: "Informe uma ação de bloqueio válida." };
+  return operate(taskId, true, async (tx, task, context) => {
+    if (terminal(task.status) || task.status === "SUBMITTED")
+      return { error: "Esta tarefa está encerrada ou aguardando revisão." };
+    const note = reasonSchema.safeParse(reason);
+    if (blocked && !note.success)
+      return { error: "Descreva o motivo do bloqueio (3 a 1000 caracteres)." };
+    const dependency = evaluateTaskDependencies(
+      task.dependencies.map((item) => ({
+        dependsOnTaskId: item.dependsOnId,
+        dependsOnStatus: item.dependsOnTask.status,
+        dependsOnApprovalStatus: item.dependsOnTask.approvalWorkflow?.status,
+        type: item.type,
+        logic: item.logic,
+      })),
+    );
+    await endSessions(tx, task);
+    await tx.task.update({
+      where: { id: taskId },
+      data: {
+        managementBlocked: blocked,
+        managementBlockReason: blocked ? note.data : null,
+        status: blocked || dependency.isBlocked ? "BLOCKED" : "AVAILABLE",
+      },
+    });
+    await audit(
+      tx,
+      task,
+      context,
+      blocked ? "TASK_MANAGEMENT_BLOCKED" : "TASK_MANAGEMENT_UNBLOCKED",
+      { reason: blocked ? note.data! : "" },
+    );
+    await notifyTaskAssignees(
+      tx,
+      task,
+      blocked ? "Tarefa bloqueada pela gestão" : "Bloqueio da gestão removido",
+      blocked
+        ? note.data!
+        : "Confira as dependências e o prazo antes de continuar.",
+      { type: "OPERATIONAL_ALERT", priority: "HIGH" },
+    );
+    return { success: true };
+  });
+}
+const terminal = (status: string) =>
+  ["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(status);
+
+export async function editTaskAction(
+  taskId: string,
+  input: unknown,
+): Promise<ActionResult> {
   const parsed = taskEditSchema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   return operate(taskId, true, async (tx, task, c) => {
-    if (!canEditTaskDefinition(task)) return { error: "A configuração só pode ser editada antes do primeiro início da tarefa." };
+    if (!canEditTaskDefinition(task))
+      return {
+        error:
+          "A configuração só pode ser editada antes do primeiro início da tarefa.",
+      };
     const data = parsed.data;
     if (task.executionId && task.required !== data.required) {
-      const execution = await tx.processExecution.findFirst({ where: { id: task.executionId, organizationId: c.organizationId } });
-      if (execution && ["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(execution.status)) return { error: "Não é possível alterar a obrigatoriedade em uma execução encerrada." };
+      const execution = await tx.processExecution.findFirst({
+        where: { id: task.executionId, organizationId: c.organizationId },
+      });
+      if (
+        execution &&
+        ["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(execution.status)
+      )
+        return {
+          error:
+            "Não é possível alterar a obrigatoriedade em uma execução encerrada.",
+        };
     }
-    await tx.task.update({ where: { id: taskId, organizationId: c.organizationId }, data: { ...data, description: data.description || null, instructions: data.instructions || null, deadlineAt: data.deadlineAt ? new Date(data.deadlineAt) : null } });
-    await audit(tx, task, c, "TASK_UPDATED", { previous: { title: task.title, description: task.description, instructions: task.instructions, priority: task.priority, criticality: task.criticality, required: task.required, deadlineAt: task.deadlineAt?.toISOString() ?? null }, updated: data });
+    await tx.task.update({
+      where: { id: taskId, organizationId: c.organizationId },
+      data: {
+        ...data,
+        description: data.description || null,
+        instructions: data.instructions || null,
+        deadlineAt: data.deadlineAt ? new Date(data.deadlineAt) : null,
+      },
+    });
+    await audit(tx, task, c, "TASK_UPDATED", {
+      previous: {
+        title: task.title,
+        description: task.description,
+        instructions: task.instructions,
+        priority: task.priority,
+        criticality: task.criticality,
+        required: task.required,
+        deadlineAt: task.deadlineAt?.toISOString() ?? null,
+      },
+      updated: data,
+    });
     return { success: true };
   });
 }
@@ -292,29 +516,50 @@ export async function editTaskAction(taskId: string, input: unknown): Promise<Ac
 const reassignTaskSchema = z.object({
   taskId: z.string().min(1, "Identificador da tarefa é obrigatório"),
   memberId: z.string().min(1, "Selecione um colaborador"),
-  deadlineMinutes: z.coerce.number().int().min(1).max(10080).optional().nullable(),
+  deadlineMinutes: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(10080)
+    .optional()
+    .nullable(),
   customDeadlineAt: z.string().optional().nullable(),
   reason: z.string().trim().max(1000).optional().nullable(),
 });
 
 export type ReassignTaskInput = z.infer<typeof reassignTaskSchema>;
 
-export async function reassignTaskAction(input: ReassignTaskInput): Promise<ActionResult> {
+export async function reassignTaskAction(
+  input: ReassignTaskInput,
+): Promise<ActionResult> {
   const parsed = reassignTaskSchema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
-  const { taskId, memberId, deadlineMinutes, customDeadlineAt, reason } = parsed.data;
+  const { taskId, memberId, deadlineMinutes, customDeadlineAt, reason } =
+    parsed.data;
 
   return operate(taskId, true, async (tx, task, c) => {
-    if (terminal(task.status)) return { error: "Tarefas encerradas não podem ser reatribuídas." };
-    const member = await eligibleMember(c.organizationId, memberId, task.locationId, task.teamId, tx);
-    if (!member) return { error: "Escolha uma pessoa ativa da equipe com acesso à unidade." };
+    if (terminal(task.status))
+      return { error: "Tarefas encerradas não podem ser reatribuídas." };
+    const member = await eligibleMember(
+      c.organizationId,
+      memberId,
+      task.locationId,
+      task.teamId,
+      tx,
+    );
+    if (!member)
+      return {
+        error: "Escolha uma pessoa ativa da equipe com acesso à unidade.",
+      };
 
     const now = new Date();
     let newDeadline: Date | null = null;
     if (customDeadlineAt) {
       const parsedDate = new Date(customDeadlineAt);
       if (isNaN(parsedDate.getTime()) || parsedDate <= now) {
-        return { error: "O novo prazo limite precisa ser uma data e hora futura." };
+        return {
+          error: "O novo prazo limite precisa ser uma data e hora futura.",
+        };
       }
       newDeadline = parsedDate;
     } else if (deadlineMinutes && deadlineMinutes > 0) {
@@ -367,13 +612,41 @@ export async function reassignTaskAction(input: ReassignTaskInput): Promise<Acti
       });
     }
 
-    const nextStatus = task.status === "BLOCKED" ? "IN_PROGRESS" : (task.status === "AVAILABLE" ? "IN_PROGRESS" : task.status);
+    const dependency = evaluateTaskDependencies(
+      task.dependencies.map((item) => ({
+        dependsOnTaskId: item.dependsOnId,
+        dependsOnStatus: item.dependsOnTask.status,
+        dependsOnApprovalStatus: item.dependsOnTask.approvalWorkflow?.status,
+        type: item.type,
+        logic: item.logic,
+      })),
+    );
+    const future = !!task.scheduledDate && task.scheduledDate > now;
+    const oldTiming = deadline(task, now.getTime());
+    const renewed = !!newDeadline && oldTiming.phase === "EXCEEDED";
+    if (renewed && isSameMember)
+      await endSessions(tx, task, new Date(oldTiming.limitAt ?? now.getTime()));
+    const nextStatus =
+      task.managementBlocked || dependency.isBlocked
+        ? "BLOCKED"
+        : future
+          ? "AVAILABLE"
+          : task.status === "BLOCKED" || task.status === "AVAILABLE"
+            ? "IN_PROGRESS"
+            : task.status;
 
     await tx.task.update({
       where: { id: task.id },
       data: {
         status: nextStatus,
-        startedAt: task.startedAt ?? now,
+        startedAt:
+          task.managementBlocked || dependency.isBlocked || future
+            ? future || renewed
+              ? null
+              : task.startedAt
+            : renewed
+              ? now
+              : (task.startedAt ?? now),
         ...(newDeadline
           ? {
               deadlineAt: newDeadline,
@@ -396,13 +669,22 @@ export async function reassignTaskAction(input: ReassignTaskInput): Promise<Acti
     }
 
     const formattedTime = newDeadline
-      ? newDeadline.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+      ? newDeadline.toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
       : null;
 
-    const notifTitle = isSameMember ? "Prazo da tarefa renovado" : "Você recebeu uma tarefa";
+    const notifTitle = isSameMember
+      ? "Prazo da tarefa renovado"
+      : "Você recebeu uma tarefa";
     const notifMessage = isSameMember
-      ? (formattedTime ? `O prazo da tarefa “${task.title}” foi renovado para às ${formattedTime}.` : `A tarefa “${task.title}” foi reatribuída e liberada.`)
-      : (formattedTime ? `A tarefa “${task.title}” foi atribuída a você com prazo até às ${formattedTime}.` : `A tarefa “${task.title}” foi atribuída a você.`);
+      ? formattedTime
+        ? `O prazo da tarefa “${task.title}” foi renovado para às ${formattedTime}.`
+        : `A tarefa “${task.title}” foi reatribuída e liberada.`
+      : formattedTime
+        ? `A tarefa “${task.title}” foi atribuída a você com prazo até às ${formattedTime}.`
+        : `A tarefa “${task.title}” foi atribuída a você.`;
 
     await tx.notification.create({
       data: {
@@ -445,127 +727,384 @@ export async function reassignTaskAction(input: ReassignTaskInput): Promise<Acti
   });
 }
 
-export async function transferTaskAction(taskId: string, newMemberId: string, reason?: string): Promise<ActionResult> {
+export async function transferTaskAction(
+  taskId: string,
+  newMemberId: string,
+  reason?: string,
+): Promise<ActionResult> {
   return reassignTaskAction({ taskId, memberId: newMemberId, reason });
 }
 
 export async function claimTaskAction(taskId: string): Promise<ActionResult> {
-  const employee=await getAuthenticatedContext();if(employee?.role==='EMPLOYEE'){try{const result=await employeeOperate(null,taskId,'claim',{});revalidatePath('/tasks');revalidatePath('/history');return result;}catch(e){return {error:e instanceof Error?e.message:'Não foi possível continuar.'};}}
-  const c = await getAuthenticatedContext(); if (!c) return { error: "Não autenticado." };
-  const result = await prisma.$transaction(async tx => {
+  const employee = await getAuthenticatedContext();
+  if (employee?.role === "EMPLOYEE") {
+    try {
+      const result = await employeeOperate(null, taskId, "claim", {});
+      revalidatePath("/tasks");
+      revalidatePath("/history");
+      return result;
+    } catch (e) {
+      return {
+        error: e instanceof Error ? e.message : "Não foi possível continuar.",
+      };
+    }
+  }
+  const c = await getAuthenticatedContext();
+  if (!c) return { error: "Não autenticado." };
+  const result = await prisma.$transaction(async (tx) => {
     await lockTask(tx, c.organizationId, taskId);
-    const task = await tx.task.findFirst({ where: { id: taskId, organizationId: c.organizationId, deletedAt: null }, include: taskInclude });
-    if (!task || terminal(task.status)) return { error: "Tarefa indisponível." };
-    if (task.status === "BLOCKED") return { error: "Aguardando conclusão de etapas anteriores para ser assumida." };
-    if (task.assignments.some(a => a.type === "PRIMARY")) return { error: "Outra pessoa já assumiu esta tarefa." };
-    if (!task.teamId || !(await eligibleMember(c.organizationId, c.memberId, task.locationId, task.teamId, tx))) return { error: "Apenas membros da equipe selecionada com acesso à unidade podem assumir esta tarefa." };
+    const task = await tx.task.findFirst({
+      where: { id: taskId, organizationId: c.organizationId, deletedAt: null },
+      include: taskInclude,
+    });
+    if (!task || terminal(task.status))
+      return { error: "Tarefa indisponível." };
+    if (task.status === "BLOCKED")
+      return {
+        error: "Aguardando conclusão de etapas anteriores para ser assumida.",
+      };
+    if (task.assignments.some((a) => a.type === "PRIMARY"))
+      return { error: "Outra pessoa já assumiu esta tarefa." };
+    if (
+      !task.teamId ||
+      !(await eligibleMember(
+        c.organizationId,
+        c.memberId,
+        task.locationId,
+        task.teamId,
+        tx,
+      ))
+    )
+      return {
+        error:
+          "Apenas membros da equipe selecionada com acesso à unidade podem assumir esta tarefa.",
+      };
     const now = new Date();
     if (task.scheduledDate && task.scheduledDate > now) {
-      const formattedTime = task.scheduledDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-      return { error: `Esta tarefa está agendada para às ${formattedTime} e só poderá ser assumida a partir do horário agendado.` };
+      const formattedTime = task.scheduledDate.toLocaleTimeString("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      return {
+        error: `Esta tarefa está agendada para às ${formattedTime} e só poderá ser assumida a partir do horário agendado.`,
+      };
     }
-    await tx.taskAssignment.create({ data: { taskId, memberId: c.memberId, type: "PRIMARY", assignedBy: c.memberId } });
+    await tx.taskAssignment.create({
+      data: {
+        taskId,
+        memberId: c.memberId,
+        type: "PRIMARY",
+        assignedBy: c.memberId,
+      },
+    });
     await tx.task.update({
       where: { id: taskId },
       data: {
         status: "IN_PROGRESS",
         startedAt: task.startedAt ?? now,
-        slaDueAt: task.slaDueAt ?? (task.slaDurationMinutes ? new Date(now.getTime() + task.slaDurationMinutes * 60000) : null),
+        slaDueAt:
+          task.slaDueAt ??
+          (task.slaDurationMinutes
+            ? new Date(now.getTime() + task.slaDurationMinutes * 60000)
+            : null),
       },
     });
-    await tx.taskExecutionSession.create({ data: { taskId, memberId: c.memberId, startedAt: now } });
+    await tx.taskExecutionSession.create({
+      data: { taskId, memberId: c.memberId, startedAt: now },
+    });
     await audit(tx, task, c, "TASK_CLAIMED");
     await notifyManagers(
       tx,
       task,
       "Tarefa assumida",
       `O colaborador ${c.userName || "da equipe"} assumiu a tarefa “${task.title}”.`,
-      { type: "TASK_CLAIMED", priority: "LOW", excludeUserId: c.userId }
+      { type: "TASK_CLAIMED", priority: "LOW", excludeUserId: c.userId },
     );
-    await synchronizeExecution(tx, c.organizationId, task.executionId);
+    await synchronizeExecution(
+      tx,
+      c.organizationId,
+      task.executionId,
+      undefined,
+      task.id,
+    );
     return { success: true };
   });
-  revalidatePath("/tasks"); revalidatePath("/management/tasks"); return result;
+  revalidatePath("/tasks");
+  revalidatePath("/management/tasks");
+  return result;
 }
 
-export async function pauseTaskAction(taskId: string, category = "OUTROS", note?: string): Promise<ActionResult> {
-  return { error: "O sistema não permite pausar tarefas. A tarefa permanece aberta até ser cancelada ou concluída." };
+export async function pauseTaskAction(
+  taskId: string,
+  category = "OUTROS",
+  note?: string,
+): Promise<ActionResult> {
+  return {
+    error:
+      "O sistema não permite pausar tarefas. A tarefa permanece aberta até ser cancelada ou concluída.",
+  };
 }
 export async function resumeTaskAction(taskId: string): Promise<ActionResult> {
-  return { error: "O sistema não permite pausar nem retomar tarefas. A tarefa permanece aberta até ser cancelada ou concluída." };
+  return {
+    error:
+      "O sistema não permite pausar nem retomar tarefas. A tarefa permanece aberta até ser cancelada ou concluída.",
+  };
 }
-export async function reportImpedimentAction(taskId: string, category: string, reason: string): Promise<ActionResult> {
-  const employee=await getAuthenticatedContext();if(employee?.role==='EMPLOYEE'){try{const result=await employeeOperate(null,taskId,'impediment',{category,reason});revalidatePath('/tasks');revalidatePath('/history');return result;}catch(e){return {error:e instanceof Error?e.message:'Não foi possível continuar.'};}}
+export async function reportImpedimentAction(
+  taskId: string,
+  category: string,
+  reason: string,
+): Promise<ActionResult> {
+  const employee = await getAuthenticatedContext();
+  if (employee?.role === "EMPLOYEE") {
+    try {
+      const result = await employeeOperate(null, taskId, "impediment", {
+        category,
+        reason,
+      });
+      revalidatePath("/tasks");
+      revalidatePath("/history");
+      return result;
+    } catch (e) {
+      return {
+        error: e instanceof Error ? e.message : "Não foi possível continuar.",
+      };
+    }
+  }
   return operate(taskId, false, async (tx, task, c) => {
-    const check = canReportImpediment(task.status); if (!check.allowed) return { error: check.reason };
-    if (!reasonSchema.safeParse(reason).success || !reasonSchema.safeParse(category).success) return { error: "Informe a categoria e descreva o impedimento." };
+    const check = canReportImpediment(task.status);
+    if (!check.allowed) return { error: check.reason };
+    if (
+      !reasonSchema.safeParse(reason).success ||
+      !reasonSchema.safeParse(category).success
+    )
+      return { error: "Informe a categoria e descreva o impedimento." };
     await endSessions(tx, task);
-    await tx.taskOccurrence.create({ data: { taskId, type: "IMPEDIMENT", category, reason: reason.trim(), severity: "HIGH", createdBy: c.memberId } });
-    await tx.task.update({ where: { id: taskId }, data: { status: "NOT_COMPLETED" } });
-    await notifyManagers(tx, task, "Impedimento operacional", task.title + ": " + reason);
-    await audit(tx, task, c, "TASK_IMPEDIMENT_REPORTED", { category, reason }); return { success: true };
+    await tx.taskOccurrence.create({
+      data: {
+        taskId,
+        type: "IMPEDIMENT",
+        category,
+        reason: reason.trim(),
+        severity: "HIGH",
+        createdBy: c.memberId,
+      },
+    });
+    await tx.task.update({
+      where: { id: taskId },
+      data: { status: "NOT_COMPLETED" },
+    });
+    await notifyManagers(
+      tx,
+      task,
+      "Impedimento operacional",
+      task.title + ": " + reason,
+    );
+    await audit(tx, task, c, "TASK_IMPEDIMENT_REPORTED", { category, reason });
+    return { success: true };
   });
 }
-export async function cancelTaskAction(taskId: string, reason: string, category = "OPERACIONAL"): Promise<ActionResult> {
+export async function cancelTaskAction(
+  taskId: string,
+  reason: string,
+  category = "OPERACIONAL",
+): Promise<ActionResult> {
   return operate(taskId, true, async (tx, task, c) => {
     if (terminal(task.status)) return { error: "A tarefa já está encerrada." };
-    if (!reasonSchema.safeParse(reason).success || !reasonSchema.safeParse(category).success) return { error: "Informe o motivo do cancelamento (3 a 1000 caracteres)." };
+    if (
+      !reasonSchema.safeParse(reason).success ||
+      !reasonSchema.safeParse(category).success
+    )
+      return {
+        error: "Informe o motivo do cancelamento (3 a 1000 caracteres).",
+      };
     await endSessions(tx, task);
-    await tx.task.update({ where: { id: taskId }, data: { status: "CANCELLED", cancelledAt: new Date(), cancellationReason: "[" + category + "] " + reason.trim() } });
+    await tx.task.update({
+      where: { id: taskId },
+      data: {
+        status: "CANCELLED",
+        cancelledAt: new Date(),
+        cancellationReason: "[" + category + "] " + reason.trim(),
+      },
+    });
     await audit(tx, task, c, "TASK_CANCELLED", { category, reason });
     await notifyTaskAssignees(
       tx,
       task,
       "Tarefa cancelada",
       `A tarefa “${task.title}” foi cancelada pela gestão. Motivo: ${reason}`,
-      { type: "TASK_CANCELLED", priority: "MEDIUM", excludeUserId: c.userId }
+      { type: "TASK_CANCELLED", priority: "MEDIUM", excludeUserId: c.userId },
     );
     return { success: true };
   });
 }
-export async function trashTaskAction(taskId: string, reason?: string): Promise<ActionResult> {
+export async function trashTaskAction(
+  taskId: string,
+  reason?: string,
+): Promise<ActionResult> {
   return operate(taskId, true, async (tx, task, c) => {
-    if (["IN_PROGRESS", "PAUSED", "SUBMITTED", "NEEDS_CORRECTION"].includes(task.status)) return { error: "Cancele ou finalize a tarefa antes de movê-la para a lixeira." };
-    await tx.task.update({ where: { id: taskId }, data: { deletedAt: new Date(), deletedBy: c.memberId, deleteReason: reason?.slice(0, 1000) || "Exclusão operacional" } });
-    await audit(tx, task, c, "TASK_TRASHED", { reason: reason ?? "" }); return { success: true };
+    if (
+      ["IN_PROGRESS", "PAUSED", "SUBMITTED", "NEEDS_CORRECTION"].includes(
+        task.status,
+      )
+    )
+      return {
+        error: "Cancele ou finalize a tarefa antes de movê-la para a lixeira.",
+      };
+    await tx.task.update({
+      where: { id: taskId },
+      data: {
+        deletedAt: new Date(),
+        deletedBy: c.memberId,
+        deleteReason: reason?.slice(0, 1000) || "Exclusão operacional",
+      },
+    });
+    await audit(tx, task, c, "TASK_TRASHED", { reason: reason ?? "" });
+    return { success: true };
   });
 }
 export async function restoreTaskAction(taskId: string): Promise<ActionResult> {
-  return operate(taskId, true, async (tx, task, c) => {
-    await tx.task.update({ where: { id: taskId }, data: { deletedAt: null, deletedBy: null, deleteReason: null } });
-    await audit(tx, task, c, "TASK_RESTORED"); return { success: true };
-  }, true);
+  return operate(
+    taskId,
+    true,
+    async (tx, task, c) => {
+      await tx.task.update({
+        where: { id: taskId },
+        data: { deletedAt: null, deletedBy: null, deleteReason: null },
+      });
+      await audit(tx, task, c, "TASK_RESTORED");
+      return { success: true };
+    },
+    true,
+  );
 }
 export async function purgeTaskAction(taskId: string): Promise<ActionResult> {
-  return operate(taskId, true, async (tx, task, c) => {
-    if (!["OWNER", "ADMIN"].includes(c.role)) return { error: "Apenas proprietários e administradores podem excluir definitivamente." };
-    await audit(tx, task, c, "TASK_PURGED");
-    await tx.task.delete({ where: { id: taskId, organizationId: c.organizationId, deletedAt: { not: null } } }); return { success: true };
-  }, true);
+  return operate(
+    taskId,
+    true,
+    async (tx, task, c) => {
+      if (!["OWNER", "ADMIN"].includes(c.role))
+        return {
+          error:
+            "Apenas proprietários e administradores podem excluir definitivamente.",
+        };
+      await audit(tx, task, c, "TASK_PURGED");
+      await tx.task.delete({
+        where: {
+          id: taskId,
+          organizationId: c.organizationId,
+          deletedAt: { not: null },
+        },
+      });
+      return { success: true };
+    },
+    true,
+  );
 }
 
-export async function submitApprovalDecisionAction(stepId: string, decision: "APPROVED" | "REJECTED", note?: string): Promise<ActionResult> {
-  const c = await getAuthenticatedContext(); if (!c || !isManagement(c)) return { error: "Acesso negado." };
-  if (!z.enum(["APPROVED", "REJECTED"]).safeParse(decision).success || note && note.length > 1000) return { error: "Decisão inválida." };
-  if (decision === "REJECTED" && !reasonSchema.safeParse(note).success) return { error: "Explique o que precisa ser corrigido." };
-  const found = await prisma.approvalStep.findFirst({ where: { id: stepId, workflow: { task: taskScope(c) } }, select: { workflow: { select: { taskId: true } } } });
+export async function submitApprovalDecisionAction(
+  stepId: string,
+  decision: "APPROVED" | "REJECTED",
+  note?: string,
+): Promise<ActionResult> {
+  const c = await getAuthenticatedContext();
+  if (!c || !isManagement(c)) return { error: "Acesso negado." };
+  if (
+    !z.enum(["APPROVED", "REJECTED"]).safeParse(decision).success ||
+    (note && note.length > 1000)
+  )
+    return { error: "Decisão inválida." };
+  if (decision === "REJECTED" && !reasonSchema.safeParse(note).success)
+    return { error: "Explique o que precisa ser corrigido." };
+  const found = await prisma.approvalStep.findFirst({
+    where: { id: stepId, workflow: { task: taskScope(c) } },
+    select: { workflow: { select: { taskId: true } } },
+  });
   if (!found) return { error: "Aprovação não encontrada no seu escopo." };
   return operate(found.workflow.taskId, true, async (tx, task, context) => {
-    const workflow = task.approvalWorkflow, step = workflow?.steps.find(s => s.id === stepId);
-    if (!workflow || !step || task.status !== "SUBMITTED" || workflow.status !== "PENDING" || step.status !== "PENDING") return { error: "Esta etapa não está aguardando decisão." };
-    const teamAccess = step.approverTeamId ? await tx.teamMember.findFirst({ where: { teamId: step.approverTeamId, organizationMemberId: context.memberId, team: { organizationId: context.organizationId } } }) : null;
-    const fallback = step.fallbackMemberId === context.memberId && step.deadlineAt && step.deadlineAt <= new Date();
-    if (step.approverMemberId !== context.memberId && !teamAccess && !fallback) return { error: "Somente o aprovador designado pode decidir nesta etapa." };
-    if (workflow.mode === "SEQUENTIAL" && workflow.steps.some(s => s.sequence < step.sequence && s.status !== "APPROVED")) return { error: "Aguarde a aprovação das etapas anteriores." };
-    await tx.approvalDecision.create({ data: { stepId, decidedBy: context.memberId, decision, note: note?.trim() || null } });
-    await tx.approvalStep.update({ where: { id: stepId }, data: { status: decision } });
-    const allApproved = decision === "APPROVED" && workflow.steps.every(s => s.id === stepId || s.status === "APPROVED");
-    await tx.approvalWorkflow.update({ where: { id: workflow.id }, data: { status: decision === "REJECTED" ? "NEEDS_CORRECTION" : allApproved ? "APPROVED" : "PENDING" } });
+    const workflow = task.approvalWorkflow,
+      step = workflow?.steps.find((s) => s.id === stepId);
+    if (
+      !workflow ||
+      !step ||
+      task.status !== "SUBMITTED" ||
+      workflow.status !== "PENDING" ||
+      step.status !== "PENDING"
+    )
+      return { error: "Esta etapa não está aguardando decisão." };
+    const teamAccess = step.approverTeamId
+      ? await tx.teamMember.findFirst({
+          where: {
+            teamId: step.approverTeamId,
+            organizationMemberId: context.memberId,
+            team: { organizationId: context.organizationId },
+          },
+        })
+      : null;
+    const fallback =
+      step.fallbackMemberId === context.memberId &&
+      step.deadlineAt &&
+      step.deadlineAt <= new Date();
+    if (step.approverMemberId !== context.memberId && !teamAccess && !fallback)
+      return {
+        error: "Somente o aprovador designado pode decidir nesta etapa.",
+      };
+    if (
+      workflow.mode === "SEQUENTIAL" &&
+      workflow.steps.some(
+        (s) => s.sequence < step.sequence && s.status !== "APPROVED",
+      )
+    )
+      return { error: "Aguarde a aprovação das etapas anteriores." };
+    await tx.approvalDecision.create({
+      data: {
+        stepId,
+        decidedBy: context.memberId,
+        decision,
+        note: note?.trim() || null,
+      },
+    });
+    await tx.approvalStep.update({
+      where: { id: stepId },
+      data: { status: decision },
+    });
+    const allApproved =
+      decision === "APPROVED" &&
+      workflow.steps.every((s) => s.id === stepId || s.status === "APPROVED");
+    await tx.approvalWorkflow.update({
+      where: { id: workflow.id },
+      data: {
+        status:
+          decision === "REJECTED"
+            ? "NEEDS_CORRECTION"
+            : allApproved
+              ? "APPROVED"
+              : "PENDING",
+      },
+    });
     if (decision === "REJECTED" || allApproved) {
-      await tx.task.update({ where: { id: task.id }, data: { status: allApproved ? "COMPLETED" : "NEEDS_CORRECTION", completedAt: allApproved ? new Date() : null } });
-      const owner = task.assignments.find(a => a.type === "PRIMARY");
+      await tx.task.update({
+        where: { id: task.id },
+        data: {
+          status: allApproved ? "COMPLETED" : "NEEDS_CORRECTION",
+          completedAt: allApproved ? new Date() : null,
+        },
+      });
+      const owner = task.assignments.find((a) => a.type === "PRIMARY");
       if (owner) {
-        await tx.notification.create({ data: { organizationId: context.organizationId, userId: owner.member.userId, type: allApproved ? "APPROVAL_UPDATED" : "TASK_CORRECTION_REQUESTED", priority: allApproved ? "LOW" : "HIGH", title: allApproved ? "Entrega aprovada" : "Correção solicitada", message: task.title + (note ? ": " + note : ""), data: { taskId: task.id } } });
+        await tx.notification.create({
+          data: {
+            organizationId: context.organizationId,
+            userId: owner.member.userId,
+            type: allApproved
+              ? "APPROVAL_UPDATED"
+              : "TASK_CORRECTION_REQUESTED",
+            priority: allApproved ? "LOW" : "HIGH",
+            title: allApproved ? "Entrega aprovada" : "Correção solicitada",
+            message: task.title + (note ? ": " + note : ""),
+            data: { taskId: task.id },
+          },
+        });
         void dispatchNotificationAsync({
           organizationId: context.organizationId,
           userIds: [owner.member.userId],
@@ -584,11 +1123,17 @@ export async function submitApprovalDecisionAction(stepId: string, decision: "AP
           task,
           "Entrega aprovada e concluída",
           `A tarefa “${task.title}” foi aprovada e concluída.`,
-          { type: "TASK_COMPLETED", priority: "LOW", excludeUserId: context.userId }
+          {
+            type: "TASK_COMPLETED",
+            priority: "LOW",
+            excludeUserId: context.userId,
+          },
         );
       }
     } else if (decision === "APPROVED" && workflow.mode === "SEQUENTIAL") {
-      const nextStep = workflow.steps.find(s => s.sequence > step.sequence && s.status === "PENDING");
+      const nextStep = workflow.steps.find(
+        (s) => s.sequence > step.sequence && s.status === "PENDING",
+      );
       if (nextStep) {
         await notifyApprovers(
           tx,
@@ -596,18 +1141,31 @@ export async function submitApprovalDecisionAction(stepId: string, decision: "AP
           nextStep,
           "Aprovação pendente",
           `A tarefa “${task.title}” aguarda sua aprovação (Etapa ${nextStep.sequence}).`,
-          { type: "APPROVAL_REQUESTED", priority: "HIGH", excludeUserId: context.userId }
+          {
+            type: "APPROVAL_REQUESTED",
+            priority: "HIGH",
+            excludeUserId: context.userId,
+          },
         );
       }
     }
-    await audit(tx, task, context, decision === "APPROVED" ? "APPROVAL_APPROVED" : "APPROVAL_REJECTED", { decision, note: note ?? "", stepSequence: step.sequence }); return { success: true };
+    await audit(
+      tx,
+      task,
+      context,
+      decision === "APPROVED" ? "APPROVAL_APPROVED" : "APPROVAL_REJECTED",
+      { decision, note: note ?? "", stepSequence: step.sequence },
+    );
+    return { success: true };
   });
 }
 
 /**
  * Busca membros elegíveis para uma tarefa com status de disponibilidade operacional calculado (Item 18, 35)
  */
-export async function getEligibleMembersForTaskAction(taskId: string): Promise<ActionResult> {
+export async function getEligibleMembersForTaskAction(
+  taskId: string,
+): Promise<ActionResult> {
   const context = await getAuthenticatedContext();
   if (!context) return { error: "Não autenticado." };
 
@@ -618,14 +1176,18 @@ export async function getEligibleMembersForTaskAction(taskId: string): Promise<A
   if (!task) return { error: "Tarefa não encontrada." };
 
   const now = new Date();
-  const isLocationOpen = task.location ? isLocationOpenAt(task.location, now) : true;
+  const isLocationOpen = task.location
+    ? isLocationOpenAt(task.location, now)
+    : true;
 
   const members = await prisma.organizationMember.findMany({
     where: {
       organizationId: context.organizationId,
       status: "ACTIVE",
       user: { status: "ACTIVE" },
-      ...(task.teamId ? { teamMemberships: { some: { teamId: task.teamId } } } : {}),
+      ...(task.teamId
+        ? { teamMemberships: { some: { teamId: task.teamId } } }
+        : {}),
       ...(task.locationId
         ? {
             locationAccesses: {
@@ -643,7 +1205,10 @@ export async function getEligibleMembersForTaskAction(taskId: string): Promise<A
     include: {
       user: { select: { name: true } },
       taskAssignments: {
-        where: { removedAt: null, task: { status: "IN_PROGRESS", deletedAt: null } },
+        where: {
+          removedAt: null,
+          task: { status: "IN_PROGRESS", deletedAt: null },
+        },
       },
     },
   });
@@ -671,7 +1236,7 @@ export async function getEligibleMembersForTaskAction(taskId: string): Promise<A
  * Alterações manuais pelo funcionário foram descontinuadas.
  */
 export async function updateMemberAvailabilityAction(
-  _manualSetting?: "AUTO" | "AVAILABLE" | "UNAVAILABLE"
+  _manualSetting?: "AUTO" | "AVAILABLE" | "UNAVAILABLE",
 ): Promise<ActionResult> {
   return {
     error:
@@ -763,13 +1328,16 @@ export type ManagementTaskDrawerResult = {
   canEdit: boolean;
 };
 
-export async function getManagementTaskDrawerAction(
-  taskId: string,
-): Promise<{ success?: boolean; error?: string; task?: ManagementTaskDrawerResult }> {
+export async function getManagementTaskDrawerAction(taskId: string): Promise<{
+  success?: boolean;
+  error?: string;
+  task?: ManagementTaskDrawerResult;
+}> {
   const context = await getAuthenticatedContext();
   if (!context) return { error: "Não autenticado." };
   if (!isManagement(context)) return { error: "Acesso não autorizado." };
-  if (!taskId || typeof taskId !== "string") return { error: "Identificador inválido." };
+  if (!taskId || typeof taskId !== "string")
+    return { error: "Identificador inválido." };
 
   try {
     const [task, rawDependencies, activityLogs] = await Promise.all([
@@ -803,28 +1371,38 @@ export async function getManagementTaskDrawerAction(
         },
       }),
       "taskDependency" in prisma &&
-        typeof (prisma as any).taskDependency?.findMany === "function"
+      typeof (prisma as any).taskDependency?.findMany === "function"
         ? (prisma as any).taskDependency
             .findMany({
               where: { taskId, task: taskScope(context) },
               include: {
-                dependsOnTask: { select: { id: true, title: true, status: true } },
+                dependsOnTask: {
+                  select: { id: true, title: true, status: true },
+                },
               },
             })
             .catch(() => [])
         : Promise.resolve([]),
       prisma.activityLog.findMany({
-        where: { organizationId: context.organizationId, entityType: "TASK", entityId: taskId },
+        where: {
+          organizationId: context.organizationId,
+          entityType: "TASK",
+          entityId: taskId,
+        },
         orderBy: { createdAt: "desc" },
         take: 8,
       }),
     ]);
 
-    if (!task) return { error: "Tarefa não encontrada ou sem permissão de acesso." };
+    if (!task)
+      return { error: "Tarefa não encontrada ou sem permissão de acesso." };
 
     // Scope check for MANAGER
     if (context.role === "MANAGER" && context.scope) {
-      if (task.locationId && !context.scope.locationIds.includes(task.locationId)) {
+      if (
+        task.locationId &&
+        !context.scope.locationIds.includes(task.locationId)
+      ) {
         return { error: "Sem acesso a esta tarefa." };
       }
       if (task.teamId && !context.scope.teamIds.includes(task.teamId)) {
@@ -833,7 +1411,9 @@ export async function getManagementTaskDrawerAction(
     }
 
     // Resolve actor names for activity logs
-    const actorIds = activityLogs.flatMap((l) => (l.actorId ? [l.actorId] : []));
+    const actorIds = activityLogs.flatMap((l) =>
+      l.actorId ? [l.actorId] : [],
+    );
     const [actors, ownTeams] = await Promise.all([
       actorIds.length > 0
         ? prisma.organizationMember.findMany({
@@ -848,10 +1428,13 @@ export async function getManagementTaskDrawerAction(
     ]);
     const actorMap = new Map(actors.map((a) => [a.id, a.user.name]));
 
-    const dependenciesList: any[] = Array.isArray(rawDependencies) ? rawDependencies : [];
+    const dependenciesList: any[] = Array.isArray(rawDependencies)
+      ? rawDependencies
+      : [];
     const now = new Date();
     const slaExceeded = Boolean(
-      task.slaExceededAt || (task.slaDueAt && task.slaDueAt < now && task.status !== "COMPLETED"),
+      task.slaExceededAt ||
+      (task.slaDueAt && task.slaDueAt < now && task.status !== "COMPLETED"),
     );
 
     return {
@@ -941,7 +1524,9 @@ export async function getManagementTaskDrawerAction(
                       step.deadlineAt <= new Date())) &&
                   (task.approvalWorkflow!.mode !== "SEQUENTIAL" ||
                     task.approvalWorkflow!.steps.every(
-                      (prior) => prior.sequence >= step.sequence || prior.status === "APPROVED",
+                      (prior) =>
+                        prior.sequence >= step.sequence ||
+                        prior.status === "APPROVED",
                     )),
                 decisions: step.decisions.map((d) => ({
                   id: d.id,

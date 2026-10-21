@@ -12,6 +12,8 @@ import {
   ShieldCheck,
   Trash2,
   Bell, Layers,
+  ClipboardCheck,
+  History,
 } from "lucide-react";
 import Link from "next/link";
 import { prisma } from "@/infrastructure/database/prisma";
@@ -31,6 +33,8 @@ export default async function ManagementMorePage() {
   const isSuperadmin = user?.platformRole === "SUPERADMIN";
 
   const menuSections = [
+    { label: "Aprovações pendentes", desc: "Revisar evidências e aprovar entregas", icon: ClipboardCheck, href: "/management/approvals" },
+    { label: "Execuções", desc: "Acompanhar ciclo de rotinas e processos", icon: History, href: "/management/executions" },
     { label: "Templates de processos", desc: "Fluxos prontos e templates da operação", icon: Layers, href: "/management/templates" },
     ...(isSuperadmin
       ? [
@@ -47,7 +51,7 @@ export default async function ManagementMorePage() {
       label: "Avisos e Notificações",
       desc: "Histórico de alertas e configuração de push",
       icon: Bell,
-      href: "/notifications",
+      href: "/management/notifications",
     },
     {
       label: "Pessoas e acessos",

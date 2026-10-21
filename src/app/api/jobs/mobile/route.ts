@@ -4,7 +4,7 @@ import {deadlineAlerts} from '@/application/mobile/deadline-alerts';
 export const runtime='nodejs';
 export const maxDuration=60;
 async function run(req:Request){
- if(process.env.MOBILE_OUTBOX_ENABLED!=='1')return Response.json({error:'Outbox disabled'},{status:503});
+ if(process.env.MOBILE_OUTBOX_ENABLED==='0')return Response.json({error:'Outbox disabled'},{status:503});
  // Header authentication only; do not accept cron secrets in URLs.
  if(!req.headers.get('authorization')?.startsWith('Bearer '))return Response.json({error:'Unauthorized'},{status:401});
  const auth=validateCronRequest(req);if(!auth.authorized)return Response.json({error:auth.error},{status:auth.status});

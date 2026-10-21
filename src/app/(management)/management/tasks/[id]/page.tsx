@@ -100,14 +100,26 @@ export default async function ManagementTaskDetailPage({ params }: PageProps) {
       organizationId: context.organizationId,
       status: "ACTIVE",
       user: { status: "ACTIVE" },
-      ...(task.teamId ? { teamMemberships: { some: { teamId: task.teamId } } } : {}),
+      ...(task.teamId
+        ? { teamMemberships: { some: { teamId: task.teamId } } }
+        : {}),
       ...(task.locationId
         ? {
             locationAccesses: {
-              some: { locationId: task.locationId, AND: [
-                { OR: [{ startsAt: null }, { startsAt: { lte: new Date() } }] },
-                { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
-              ] },
+              some: {
+                locationId: task.locationId,
+                AND: [
+                  {
+                    OR: [{ startsAt: null }, { startsAt: { lte: new Date() } }],
+                  },
+                  {
+                    OR: [
+                      { expiresAt: null },
+                      { expiresAt: { gt: new Date() } },
+                    ],
+                  },
+                ],
+              },
             },
           }
         : {}),
@@ -127,11 +139,21 @@ export default async function ManagementTaskDetailPage({ params }: PageProps) {
   });
 
   const actors = await prisma.organizationMember.findMany({
-    where: { organizationId: context.organizationId, id: { in: activityLogs.flatMap(log => log.actorId ? [log.actorId] : []) } },
+    where: {
+      organizationId: context.organizationId,
+      id: {
+        in: activityLogs.flatMap((log) => (log.actorId ? [log.actorId] : [])),
+      },
+    },
     select: { id: true, user: { select: { name: true } } },
   });
-  const actorNames = new Map(actors.map(actor => [actor.id, actor.user.name]));
-  const ownTeams = await prisma.teamMember.findMany({ where: { organizationMemberId: context.memberId }, select: { teamId: true } });
+  const actorNames = new Map(
+    actors.map((actor) => [actor.id, actor.user.name]),
+  );
+  const ownTeams = await prisma.teamMember.findMany({
+    where: { organizationMemberId: context.memberId },
+    select: { teamId: true },
+  });
 
   return (
     <ManagementShell
@@ -150,6 +172,7 @@ export default async function ManagementTaskDetailPage({ params }: PageProps) {
           formAnswers: task.formAnswers,
           origin: task.origin,
           status: task.status,
+          managementBlocked: task.managementBlocked,
           startedAt: task.startedAt,
           priority: task.priority,
           criticality: task.criticality,
@@ -204,7 +227,9 @@ export default async function ManagementTaskDetailPage({ params }: PageProps) {
           activityLogs: activityLogs.map((l) => ({
             id: l.id,
             action: l.action,
-            actorName: l.actorId ? actorNames.get(l.actorId) ?? "Pessoa não disponível" : null,
+            actorName: l.actorId
+              ? (actorNames.get(l.actorId) ?? "Pessoa não disponível")
+              : null,
             createdAt: l.createdAt,
             metadata: l.metadata,
           })),
@@ -217,9 +242,23 @@ export default async function ManagementTaskDetailPage({ params }: PageProps) {
                   id: s.id,
                   sequence: s.sequence,
                   status: s.status,
-                  canDecide: task.status === "SUBMITTED" && s.status === "PENDING" &&
-                    (s.approverMemberId === context.memberId || ownTeams.some(t => t.teamId === s.approverTeamId) || s.fallbackMemberId === context.memberId && !!s.deadlineAt && s.deadlineAt <= new Date()) &&
-                    (task.approvalWorkflow!.mode !== "SEQUENTIAL" || task.approvalWorkflow!.steps.every(prior => prior.sequence >= s.sequence || prior.status === "APPROVED")),
+                  canDecide:
+                    task.status === "SUBMITTED" &&
+                    s.status === "PENDING" &&
+                    (context.role === "OWNER" ||
+                      context.role === "ADMIN" ||
+                      (!s.approverMemberId && !s.approverTeamId) ||
+                      s.approverMemberId === context.memberId ||
+                      ownTeams.some((t) => t.teamId === s.approverTeamId) ||
+                      (s.fallbackMemberId === context.memberId &&
+                        !!s.deadlineAt &&
+                        s.deadlineAt <= new Date())) &&
+                    (task.approvalWorkflow!.mode !== "SEQUENTIAL" ||
+                      task.approvalWorkflow!.steps.every(
+                        (prior) =>
+                          prior.sequence >= s.sequence ||
+                          prior.status === "APPROVED",
+                      )),
                   decisions: s.decisions.map((dec: any) => ({
                     id: dec.id,
                     decision: dec.decision,

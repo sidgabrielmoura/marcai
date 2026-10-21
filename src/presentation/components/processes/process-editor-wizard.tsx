@@ -280,6 +280,7 @@ export function ProcessEditorWizard({
   members,
   initial,
   processId, templateMode = false, templateReference, onSaveDefinition, routineId, routinesCount = 0, metadataDirty = false,
+  title, subtitle, backHref, returnUrl, hideHeader = false,
 }: {
   locations: Option[];
   teams: Option[];
@@ -291,6 +292,11 @@ export function ProcessEditorWizard({
   templateMode?: boolean;
   metadataDirty?: boolean;
   templateReference?: string;
+  title?: string;
+  subtitle?: string;
+  backHref?: string;
+  returnUrl?: string;
+  hideHeader?: boolean;
   onSaveDefinition?: (definition: ProcessDefinition, publish: boolean) => Promise<{ error?: string; data?: { id: string } }>;
 }) {
   const router = useRouter();
@@ -645,7 +651,7 @@ export function ProcessEditorWizard({
             description: "Redirecionando para a biblioteca de templates…",
             type: "success",
           });
-          router.push("/management/templates");
+          router.push(returnUrl || "/management/templates");
           router.refresh();
         }
       } catch {
@@ -698,14 +704,16 @@ export function ProcessEditorWizard({
 
   return (
     <div>
-      <PageHeader
-        title={templateMode ? "Editar template" : processId ? "Editar processo" : "Criar processo"}
-        subtitle="Defina o checklist de tarefas da sua operação para a equipe seguir."
-        backHref={templateMode ? "/management/templates" : "/management/processes"}
-      />
+      {!hideHeader && (
+        <PageHeader
+          title={title || (templateMode ? "Editar template" : processId ? "Editar processo" : "Criar processo")}
+          subtitle={subtitle || "Defina o checklist de tarefas da sua operação para a equipe seguir."}
+          backHref={backHref || (templateMode ? "/management/templates" : "/management/processes")}
+        />
+      )}
 
       {templateMode && <div className="mb-4"><Button variant="outline" disabled={busy} onClick={() => save(false)}>Salvar rascunho</Button><p className="text-xs text-muted-foreground mt-2">Edite livremente e publique quando estiver pronto. Processos já criados preservam sua configuração.</p></div>}
-      {(!locations.length || !teams.length) && (
+      {!templateMode && (!locations.length || !teams.length) && (
         <Alert className="mb-4">
           <AlertDescription>
             Antes de criar um processo, certifique-se de ter cadastrado ao menos uma{" "}
@@ -743,7 +751,7 @@ export function ProcessEditorWizard({
           <p className="text-caption text-muted-foreground">Etapa {step + 1} de 6</p>
         </nav>
 
-        <Card className="min-w-0 flex-1">
+        <Card className="min-w-0 flex-1 p-8">
           <CardHeader>
             <CardTitle>
               <h2 ref={heading} tabIndex={-1}>
@@ -753,7 +761,7 @@ export function ProcessEditorWizard({
             <CardDescription>{descriptions[step]}</CardDescription>
           </CardHeader>
 
-          <CardContent className="flex flex-col gap-6">
+          <CardContent className="flex flex-col gap-6 p-0">
             {step === 0 && (
               <FieldGroup className="gap-4">
                 <Field>

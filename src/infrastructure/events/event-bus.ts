@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 export type DomainEventType =
   | "TASK_STARTED"
   | "TASK_COMPLETED"
+  | "TASK_SUBMITTED"
   | "TASK_PAUSED"
   | "TASK_RESUMED"
   | "TASK_CANCELLED"
@@ -38,7 +39,7 @@ class OperationalEventBus {
   public publish<T = Record<string, unknown>>(
     type: DomainEventType,
     organizationId: string,
-    payload: T
+    payload: T,
   ): void {
     const event: DomainEvent<T> = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
@@ -59,7 +60,7 @@ class OperationalEventBus {
    */
   public subscribe(
     organizationId: string,
-    listener: (event: DomainEvent) => void
+    listener: (event: DomainEvent) => void,
   ): () => void {
     const channel = `org:${organizationId}`;
     this.emitter.on(channel, listener);
@@ -70,9 +71,12 @@ class OperationalEventBus {
 }
 
 // Singleton isolado em memória (Item 36)
-const globalForEvents = globalThis as unknown as { operationalEventBus?: OperationalEventBus };
+const globalForEvents = globalThis as unknown as {
+  operationalEventBus?: OperationalEventBus;
+};
 
-export const eventBus = globalForEvents.operationalEventBus ?? new OperationalEventBus();
+export const eventBus =
+  globalForEvents.operationalEventBus ?? new OperationalEventBus();
 
 if (process.env.NODE_ENV !== "production") {
   globalForEvents.operationalEventBus = eventBus;

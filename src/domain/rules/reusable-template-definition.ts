@@ -134,3 +134,54 @@ export type TemplateItem = {
 export function processTemplateHref(reference: string) {
   return "/management/processes/new?template=" + encodeURIComponent(reference);
 }
+
+export function normalizeReusableTemplateDefinition(raw: unknown, fallbackName = "Template pronto"): ReusableTemplateDefinition {
+  const d = (raw && typeof raw === "object") ? (raw as Record<string, any>) : {};
+  const teamSlots = Array.isArray(d.teamSlots) && d.teamSlots.length > 0
+    ? d.teamSlots.map((s: any, i: number) => ({ id: String(s?.id || `team-${i + 1}`), label: String(s?.label || `Equipe ${i + 1}`) }))
+    : [{ id: "team-1", label: "Operação" }];
+
+  const memberSlots = Array.isArray(d.memberSlots) && d.memberSlots.length > 0
+    ? d.memberSlots.map((s: any, i: number) => ({
+        id: String(s?.id || `executor-${i + 1}`),
+        label: String(s?.label || `Executor ${i + 1}`),
+        kind: (s?.kind === "APPROVER" ? "APPROVER" : "EXECUTOR") as "EXECUTOR" | "APPROVER",
+      }))
+    : [{ id: "executor-1", label: "Executor", kind: "EXECUTOR" as const }];
+
+  const tasks = Array.isArray(d.tasks)
+    ? d.tasks.map((t: any, i: number) => ({
+        id: String(t?.id || `task-${i + 1}`),
+        title: String(t?.title || `Etapa ${i + 1}`),
+        objective: String(t?.objective || ""),
+        instructions: String(t?.instructions || ""),
+        taskType: (t?.taskType === "FORM" ? "FORM" : "STANDARD") as "STANDARD" | "FORM",
+        priority: (["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(t?.priority) ? t.priority : "MEDIUM") as any,
+        criticality: (["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(t?.criticality) ? t.criticality : "MEDIUM") as any,
+        slaMinutes: Number(t?.slaMinutes) || 60,
+        toleranceMinutes: Number(t?.toleranceMinutes) || 20,
+        required: t?.required !== false,
+        evidenceType: (["PHOTO", "SIGNATURE", "DOCUMENT", "NUMBER", "NOTE", ""].includes(t?.evidenceType) ? t.evidenceType : "") as any,
+        formFields: Array.isArray(t?.formFields) ? t.formFields : [],
+        teamSlotId: String(t?.teamSlotId || teamSlots[0]?.id || "team-1"),
+        assigneeSlotId: String(t?.assigneeSlotId || ""),
+        approverSlotIds: [] as string[],
+        dependsOn: Array.isArray(t?.dependsOn) ? t.dependsOn.map(String) : [],
+        dependencyType: (t?.dependencyType === "NON_BLOCKING" ? "NON_BLOCKING" : "BLOCKING") as any,
+        dependencyLogic: (t?.dependencyLogic === "OR" ? "OR" : "AND") as any,
+        approvalMode: (t?.approvalMode === "ANY" ? "ANY" : "SEQUENTIAL") as any,
+      }))
+    : [];
+
+  return {
+    schemaVersion: 1,
+    name: String(d.name || fallbackName),
+    description: String(d.description || ""),
+    jobKey: (["RETAIL", "FOOD", "FACILITIES", "LOGISTICS", "MAINTENANCE", "CUSTOM"].includes(d.jobKey) ? d.jobKey : "CUSTOM") as any,
+    criticality: (["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(d.criticality) ? d.criticality : "MEDIUM") as any,
+    teamSlots,
+    memberSlots,
+    tasks,
+    schedule: null,
+  };
+}

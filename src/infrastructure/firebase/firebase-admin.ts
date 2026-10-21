@@ -1,7 +1,6 @@
 import {
   initializeApp,
   getApps,
-  getApp,
   cert,
   type App,
   type ServiceAccount,
@@ -18,7 +17,18 @@ import path from "path";
 let adminApp: App | null = null;
 
 function getServiceAccount(): ServiceAccount | null {
-  // 1. Tenta carregar pelo caminho do arquivo JSON definido em variável ou padrão local
+  // 1. Tenta carregar por JSON string ou base64 na variável de ambiente (ideal para Vercel / CI / Produção)
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+    try {
+      const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY.trim();
+      const jsonStr = raw.startsWith("{") ? raw : Buffer.from(raw, "base64").toString("utf-8");
+      return JSON.parse(jsonStr);
+    } catch (e) {
+      console.error("[Firebase Admin] Erro ao ler FIREBASE_SERVICE_ACCOUNT_KEY:", e);
+    }
+  }
+
+  // 2. Tenta carregar pelo caminho do arquivo JSON definido em variável ou padrão local
   const serviceAccountPath =
     process.env.FIREBASE_SERVICE_ACCOUNT_PATH ||
     "marcai-a880a-firebase-adminsdk-fbsvc-23b013e242.json";
@@ -36,7 +46,7 @@ function getServiceAccount(): ServiceAccount | null {
     }
   }
 
-  // 2. Tenta carregar pelas variáveis de ambiente individuais (ideal para Vercel / Docker)
+  // 3. Tenta carregar pelas variáveis de ambiente individuais (ideal para Vercel / Docker)
   const projectId =
     process.env.FIREBASE_PROJECT_ID ||
     process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
@@ -103,7 +113,8 @@ export interface SendPushResult {
 }
 
 /**
- * Envia Web Push Notification via FCM para múltiplos tokens com sanitização e identificação de tokens inválidos.
+ * Envia Push Notification via FCM para múltiplos tokens (Web e Mobile nativo)
+ * com sanitização e identificação de tokens inválidos.
  */
 export async function sendWebPushNotification(
   payload: SendPushPayload
@@ -131,6 +142,28 @@ export async function sendWebPushNotification(
       body: payload.body,
     },
     data: stringData,
+    android: {
+      priority: "high",
+      notification: {
+        channelId: "marcai-operational",
+        icon: "ic_stat_marcai",
+        sound: "default",
+        priority: "high",
+        clickAction: payload.clickAction || undefined,
+      },
+    },
+    apns: {
+      headers: {
+        "apns-push-type": "alert",
+        "apns-priority": "10",
+      },
+      payload: {
+        aps: {
+          sound: "default",
+          badge: 1,
+        },
+      },
+    },
     webpush: {
       notification: {
         title: payload.title,
@@ -175,7 +208,7 @@ export async function sendWebPushNotification(
       errors,
     };
   } catch (error: any) {
-    console.error("[Firebase Admin] Erro ao disparar multicast Web Push:", error);
+    console.error("[Firebase Admin] Erro ao disparar multicast Push:", error);
     return {
       successCount: 0,
       failureCount: uniqueTokens.length,

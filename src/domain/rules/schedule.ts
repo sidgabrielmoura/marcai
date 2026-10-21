@@ -1,8 +1,55 @@
 import { RRule } from "rrule";
-import { scheduleSchema, type ScheduleDefinition } from "./process-definition";
+import { scheduleSchema, type ScheduleDefinition, describeSchedule } from "./process-definition";
 
 export function readSchedule(rule: string): ScheduleDefinition | null {
   try { const result = scheduleSchema.safeParse(JSON.parse(rule)); return result.success ? result.data : null; } catch { return null; }
+}
+
+export function formatRoutineRule(rule: string | null | undefined): string | null {
+  if (!rule || typeof rule !== "string") return null;
+  const trimmed = rule.trim();
+  if (!trimmed) return null;
+
+  const schedule = readSchedule(trimmed);
+  if (schedule) {
+    return describeSchedule(schedule);
+  }
+
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === "object" && parsed.frequency) {
+        const freq =
+          parsed.frequency === "DAILY"
+            ? "Todos os dias"
+            : parsed.frequency === "WEEKLY"
+              ? "Semanal"
+              : "Mensal";
+        const times =
+          Array.isArray(parsed.times) && parsed.times.length
+            ? ` às ${parsed.times.join(" e ")}`
+            : "";
+        return `${freq}${times}`;
+      }
+    } catch {
+      // Ignore
+    }
+    return "Rotina programada";
+  }
+
+  if (trimmed.startsWith("FREQ=")) {
+    const hourMatch = trimmed.match(/BYHOUR=(\d+)/);
+    const minMatch = trimmed.match(/BYMINUTE=(\d+)/);
+    const time = hourMatch
+      ? ` às ${hourMatch[1].padStart(2, "0")}:${(minMatch ? minMatch[1] : "00").padStart(2, "0")}`
+      : "";
+    if (trimmed.includes("FREQ=DAILY")) return `Todos os dias${time}`;
+    if (trimmed.includes("FREQ=WEEKLY")) return `Semanal${time}`;
+    if (trimmed.includes("FREQ=MONTHLY")) return `Mensal${time}`;
+    return `Repetição programada${time}`;
+  }
+
+  return trimmed;
 }
 
 export function nextOccurrence(rule: string, startsAt: Date, endsAt: Date | null, timezone: string, after: Date): Date | null {

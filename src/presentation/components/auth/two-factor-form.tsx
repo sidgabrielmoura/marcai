@@ -8,6 +8,7 @@ import {
   regenerateTwoFactorSecretAction,
 } from "@/presentation/actions/two-factor-actions";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
   InputOTP,
   InputOTPGroup,
@@ -160,7 +161,7 @@ export function TwoFactorForm({ secret, qrCodeDataUrl, userEmail }: TwoFactorFor
               className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-[var(--surface-muted)] hover:bg-[var(--surface-hover)] border border-[var(--border-subtle)] transition-colors cursor-pointer"
               title="Gerar novo QR Code"
             >
-              <RefreshCw className={`size-3 ${isRegenerating ? "animate-spin" : ""}`} />
+              {isRegenerating ? <Spinner className="size-3" aria-hidden="true" /> : <RefreshCw className="size-3" />}
               <span>Novo QR</span>
             </button>
           </div>
@@ -220,7 +221,7 @@ export function TwoFactorForm({ secret, qrCodeDataUrl, userEmail }: TwoFactorFor
         >
           {pending ? (
             <span className="inline-flex items-center gap-2">
-              <RefreshCw className="size-4 animate-spin" /> Verificando...
+              <Spinner aria-hidden="true" /> Verificando...
             </span>
           ) : (
             "Confirmar e acessar"

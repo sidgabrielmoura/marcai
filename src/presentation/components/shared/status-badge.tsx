@@ -46,7 +46,7 @@ export function StatusBadge({
       icon: CheckCircle2,
     },
     IN_PROGRESS: {
-      label: "Aberta",
+      label: "Em andamento",
       bg: "bg-[var(--brand-900)]",
       text: "text-white",
       icon: Clock,

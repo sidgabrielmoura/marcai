@@ -5,13 +5,13 @@ import { Toast as ToastPrimitive } from "@base-ui/react/toast";
 import { cn } from "cn";
 
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
   XIcon,
   CircleCheckIcon,
   InfoIcon,
   TriangleAlertIcon,
   OctagonXIcon,
-  Loader2Icon,
 } from "lucide-react";
 
 const toast = ToastPrimitive.createToastManager();
@@ -157,7 +157,7 @@ function ToastIcon({ type }: { type: string | undefined }) {
   }
 
   if (type === "loading") {
-    icon = <Loader2Icon className="animate-spin text-muted-foreground" aria-hidden="true" />;
+    icon = <Spinner aria-hidden="true" />;
   }
 
   if (!icon) {

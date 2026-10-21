@@ -55,7 +55,10 @@ model Organization {
   scheduledReports   ScheduledReport[]
   tasks              Task[]
   teams              Team[]
+  businessSegmentId  String?
+  businessSegment    PlatformBusinessSegment? @relation(fields: [businessSegmentId], references: [id], onDelete: SetNull)
 
+  @@index([businessSegmentId])
   @@map("organizations")
 }
 
@@ -375,6 +378,8 @@ model Task {
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
   toleranceMinutes     Int?                      @default(20)
+  managementBlocked    Boolean                   @default(false)
+  managementBlockReason String?
   approvalWorkflow     ApprovalWorkflow?
   assignments          TaskAssignment[]
   dependentTasks       TaskDependency[]          @relation("DependentTasks")
@@ -462,6 +467,8 @@ model EvidenceSubmission {
   requirementId    String
   submittedBy      String
   storageKey       String?
+  fileUrl          String?
+  publicId         String?
   value            String?
   metadata         Json?
   attemptNumber    Int                     @default(1)
@@ -726,6 +733,38 @@ model PlatformPlan {
   @@map("platform_plans")
 }
 
+model PlatformBusinessSegment {
+  id            String             @id @default(cuid())
+  name          String             @unique
+  slug          String             @unique
+  description   String?
+  icon          String?
+  status        String             @default("ACTIVE")
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  templates     PlatformTemplate[]
+  organizations Organization[]
+
+  @@index([status])
+  @@map("platform_business_segments")
+}
+
+model PlatformTemplate {
+  id          String                  @id @default(cuid())
+  segmentId   String
+  name        String
+  description String?
+  definition  Json
+  version     Int                     @default(1)
+  status      String                  @default("ACTIVE")
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  segment     PlatformBusinessSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+
+  @@index([segmentId, status])
+  @@map("platform_templates")
+}
+
 enum Role {
   SUPERADMIN
   OWNER
@@ -950,6 +989,8 @@ model NativeUpload {
  name String
  mime String
  size Int
+ fileUrl String?
+ publicId String?
  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
  attachment Json?
  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)

@@ -41,7 +41,7 @@ export async function processPushBatch(deadlineAt=Date.now()+35000) {
  if(!n||n.deliveries.length>0&&!n.deliveries.some(d=>d.channel==='PUSH')||!isPushEligible(n.type,n.priority)||n.type==='PAUSE_ALERT'||Date.now()-n.createdAt.getTime()>ttl*1000||!await eligibleRecipient(n)){
  await finish(job.id,lease,'SKIPPED',null);skipped++;continue;
  }
- const native=await prisma.$queryRaw<Installation[]>`SELECT id::text,session_id::text,address_type,token,platform,environment,permission FROM mobile_installations WHERE user_id=${n.userId} AND organization_id=${n.organizationId} AND revoked_at IS NULL AND permission IN ('authorized','provisional') AND environment=${process.env.MOBILE_PUSH_ENVIRONMENT??'production'} AND last_sync_at>now()-interval '45 days'`;
+ const native=await prisma.$queryRaw<Installation[]>`SELECT id::text,session_id::text,address_type,token,platform,environment,permission FROM mobile_installations WHERE user_id=${n.userId} AND organization_id=${n.organizationId} AND revoked_at IS NULL AND permission IN ('authorized','provisional') AND (environment=${process.env.MOBILE_PUSH_ENVIRONMENT??'production'} OR environment IN ('preview','production','development')) AND last_sync_at>now()-interval '45 days'`;
  const web=await prisma.userDeviceToken.findMany({where:{userId:n.userId,lastUsedAt:{gte:new Date(Date.now()-45*86400000)}},select:{id:true,token:true}});
  const test=(n.data as {testInstallationId?:string}|null)?.testInstallationId;
  const devices=[...native.filter(d=>!test||d.id===test),...(!test?web:[]).map(d=>({id:'web:'+d.id,token:d.token,platform:'web',environment:'production',permission:'authorized'}))];
@@ -54,11 +54,11 @@ export async function processPushBatch(deadlineAt=Date.now()+35000) {
  if(prior.some(p=>['PROVIDER_ACCEPTED','PERMANENT_FAILURE'].includes(p.state)))continue;
  await prisma.$executeRaw`INSERT INTO mobile_push_deliveries(notification_id,installation_id,token_hash,attempts) VALUES(${n.id},${device.id},${hash(device.token)},1) ON CONFLICT(notification_id,installation_id) DO UPDATE SET attempts=mobile_push_deliveries.attempts+1,state='QUEUED',token_hash=excluded.token_hash`;
  const d=parseDestination({...n.data as Record<string,unknown>,organizationId:n.organizationId,notificationId:n.id})??{organizationId:n.organizationId,notificationId:n.id};
- const data=Object.fromEntries(Object.entries({...d,type:n.type}).map(([k,v])=>[k,String(v)]));
+ const data=Object.fromEntries(Object.entries({...d,type:n.type,title:n.title,message:n.message}).map(([k,v])=>[k,String(v)]));
  const remaining=Math.max(1,ttl-Math.floor((Date.now()-n.createdAt.getTime())/1000));
  try{
  const providerId=await getFirebaseAdminMessaging().send({
- ...('address_type' in device&&device.address_type==='fid'?{fid:device.token}:{token:device.token}),notification:{title:'Tarefaí',body:'Há uma atualização para você. Toque para conferir.'},data,
+ ...('address_type' in device&&device.address_type==='fid'?{fid:device.token}:{token:device.token}),notification:{title:n.title||'Tarefaí',body:n.message||'Há uma atualização para você. Toque para conferir.'},data,
  android:{priority:['HIGH','CRITICAL'].includes(n.priority)?'high':'normal',ttl:remaining*1000,notification:{channelId:'marcai-operational',icon:'ic_stat_marcai',tag:n.id}},
  apns:{headers:{'apns-push-type':'alert','apns-priority':'10','apns-expiration':String(Math.floor(Date.now()/1000)+remaining)},payload:{aps:{sound:'default'}}},
  webpush:{headers:{TTL:String(remaining)},notification:{tag:n.id},fcmOptions:{link:(process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://tarefai.com.br')+(d.taskId?'/tasks/'+d.taskId:'/notifications')}}

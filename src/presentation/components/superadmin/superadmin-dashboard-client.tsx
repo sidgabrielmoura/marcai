@@ -23,7 +23,9 @@ import {
   Building2, Users, Activity, ShieldCheck, Search, MessageSquare,
   CalendarClock, FileBarChart, X,
   AlertTriangle, Plus, Layers, Sparkles, ShieldAlert, Trash2, Edit3, UserPlus,
+  MapPin, ArrowLeft,
 } from "lucide-react";
+import { SuperadminMap, type MapOrganization } from "./superadmin-map";
 import { AppShell } from "../shared/app-shell";
 import { EmptyState, PageHeader } from "../shared";
 import { uiLabel } from "../shared/ui-labels";
@@ -76,6 +78,10 @@ import {
   updatePlatformPlanAction,
   deletePlatformPlanAction,
   seedDefaultPlatformPlansAction,
+  createBusinessSegmentAction,
+  updateBusinessSegmentAction,
+  deleteBusinessSegmentAction,
+  deletePlatformTemplateAction,
   type ActionResult,
 } from "@/presentation/actions/superadmin-actions";
 import {
@@ -85,6 +91,10 @@ import {
   type ManualSubscription,
   type PlatformPlanModel,
 } from "@/application/superadmin/manual-subscription";
+import type {
+  BusinessSegmentWithCounts,
+  PlatformTemplateModel,
+} from "@/application/superadmin/business-segment-service";
 import { cn } from "@/lib/utils";
 
 export type PlatformView =
@@ -92,9 +102,11 @@ export type PlatformView =
   | "organizations"
   | "users"
   | "subscriptions"
+  | "templates"
   | "usage"
   | "audit"
-  | "support";
+  | "support"
+  | "map";
 
 export interface GlobalOrg {
   id: string;
@@ -102,6 +114,8 @@ export interface GlobalOrg {
   slug: string;
   status: string;
   createdAt: string;
+  businessSegmentId?: string | null;
+  businessSegmentName?: string | null;
   membersCount: number;
   locationsCount: number;
   processesCount: number;
@@ -168,6 +182,11 @@ type Props = {
   allOrganizations?: CompactOrg[];
   platformPlans?: PlatformPlanModel[];
   overviewData?: PlatformOverviewData;
+  mapOrganizations?: MapOrganization[];
+  businessSegments?: BusinessSegmentWithCounts[];
+  platformTemplates?: PlatformTemplateModel[];
+  selectedSegmentId?: string;
+  selectedSegment?: BusinessSegmentWithCounts | null;
   pagination: { page: number; pages: number; total: number; pageSize: number };
 };
 
@@ -198,6 +217,18 @@ const viewMeta: Record<
     title: "Planos e assinaturas",
     subtitle: "Gerencie os contratos e os modelos de planos.",
     icon: CalendarClock,
+  },
+  templates: {
+    label: "Templates",
+    title: "Templates da plataforma",
+    subtitle: "Modelos de processos prontos organizados por tipo de negócio.",
+    icon: Layers,
+  },
+  map: {
+    label: "Mapa",
+    title: "Mapa de empresas",
+    subtitle: "Empresas e unidades cadastradas, com a precisão de localização indicada no mapa.",
+    icon: MapPin,
   },
   usage: {
     label: "Uso & Limites",
@@ -446,9 +477,8 @@ export function SuperadminDashboardClient(props: Props) {
       }
       toast.add({
         title: "Modelo aplicado",
-        description: `Os dados do plano "${plan.name}" foram preenchidos no formulário.${
-          isPilot ? " Vigência definida para 30 dias e status 'Em avaliação'." : ""
-        }`,
+        description: `Os dados do plano "${plan.name}" foram preenchidos no formulário.${isPilot ? " Vigência definida para 30 dias e status 'Em avaliação'." : ""
+          }`,
         type: "success",
       });
     }
@@ -460,13 +490,36 @@ export function SuperadminDashboardClient(props: Props) {
   const [deleteOrgTarget, setDeleteOrgTarget] = useState<GlobalOrg | null>(null);
   const [newOrgName, setNewOrgName] = useState("");
   const [newOrgSlug, setNewOrgSlug] = useState("");
+  const [newOrgOwnerEmail, setNewOrgOwnerEmail] = useState("");
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+
+  // Estados de Segmentos e Templates da Plataforma
+  const [createSegmentOpen, setCreateSegmentOpen] = useState(false);
+  const [editSegmentTarget, setEditSegmentTarget] = useState<BusinessSegmentWithCounts | null>(null);
+  const [deleteSegmentTarget, setDeleteSegmentTarget] = useState<BusinessSegmentWithCounts | null>(null);
+
+  const [deletePlatformTemplateTarget, setDeletePlatformTemplateTarget] = useState<PlatformTemplateModel | null>(null);
+
+  const [newOrgSegmentId, setNewOrgSegmentId] = useState<string>("");
+  const [inlineSegmentAddOpen, setInlineSegmentAddOpen] = useState(false);
+  const [inlineSegmentName, setInlineSegmentName] = useState("");
+  const [inlineSegmentLoading, setInlineSegmentLoading] = useState(false);
+  const [businessSegmentsList, setBusinessSegmentsList] = useState<BusinessSegmentWithCounts[]>(props.businessSegments ?? []);
 
   // Modais de Usuários e Vínculos
   const [createUserOpen, setCreateUserOpen] = useState(false);
   const [editUserTarget, setEditUserTarget] = useState<GlobalUser | null>(null);
   const [deleteUserTarget, setDeleteUserTarget] = useState<GlobalUser | null>(null);
   const [manageMembershipsTarget, setManageMembershipsTarget] = useState<GlobalUser | null>(null);
+  const [roleChangeTarget, setRoleChangeTarget] = useState<{
+    membership: GlobalUser["memberships"][number];
+    user: GlobalUser;
+    newRole: "OWNER" | "ADMIN" | "MANAGER" | "EMPLOYEE";
+  } | null>(null);
+  const [unlinkTarget, setUnlinkTarget] = useState<{
+    membership: GlobalUser["memberships"][number];
+    user: GlobalUser;
+  } | null>(null);
 
   const pending = activity.busy;
 
@@ -483,12 +536,22 @@ export function SuperadminDashboardClient(props: Props) {
       setEditUserTarget(null);
       setDeleteUserTarget(null);
       setManageMembershipsTarget(null);
+      setRoleChangeTarget(null);
+      setUnlinkTarget(null);
       setCreatePlanOpen(false);
       setEditPlanTarget(null);
       setDeletePlanTarget(null);
       setApplyPlanTarget(null);
+      setCreateSegmentOpen(false);
+      setEditSegmentTarget(null);
+      setDeleteSegmentTarget(null);
+      setDeletePlatformTemplateTarget(null);
+      setNewOrgSegmentId("");
+      setInlineSegmentAddOpen(false);
+      setInlineSegmentName("");
       setNewOrgName("");
       setNewOrgSlug("");
+      setNewOrgOwnerEmail("");
       setSlugManuallyEdited(false);
     }
   }
@@ -540,1645 +603,1621 @@ export function SuperadminDashboardClient(props: Props) {
 
   return (
     <PlatformActivityBoundary activity={activity}>
-    <AppShell
-      userName={props.userName}
-      orgName="Plataforma Tarefaí"
-      role="SUPERADMIN"
-      mode="platform"
-      activeView={view}
-    >
-      <PlatformPage
-        subscriptions={view === "subscriptions"}
-        tab={subscriptionSubView}
-        onTabChange={(value) =>
-          setSubscriptionSubView(value as "assignments" | "plans")
-        }
+      <AppShell
+        userName={props.userName}
+        orgName="Plataforma Tarefaí"
+        role="SUPERADMIN"
+        mode="platform"
+        activeView={view}
       >
-        <PageHeader
-          title={viewMeta[view].title}
-          subtitle={viewMeta[view].subtitle}
-          actions={
-            <>
-              {(view === "overview" || view === "organizations") && (
-                <Button onClick={() => setCreateOrgOpen(true)}>
-                  <Plus data-icon="inline-start" />
-                  Nova organização
-                </Button>
-              )}
-              {view === "users" && (
-                <Button onClick={() => setCreateUserOpen(true)}>
-                  <UserPlus data-icon="inline-start" />
-                  Novo usuário
-                </Button>
-              )}
-              {view === "subscriptions" && subscriptionSubView === "plans" && (
-                <Button onClick={() => setCreatePlanOpen(true)}>
-                  <Plus data-icon="inline-start" />
-                  Novo plano
-                </Button>
-              )}
-              {view === "support" && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <Button disabled={!props.allOrganizations?.length}>
-                        <Plus data-icon="inline-start" />
-                        Registrar atendimento
-                      </Button>
-                    }
-                  />
-                  <DropdownMenuContent
-                    align="end"
-                    className="min-w-64 max-h-80"
-                  >
-                    <DropdownMenuGroup>
-                      {props.allOrganizations?.map((org) => (
-                        <DropdownMenuItem
-                          key={org.id}
-                          onClick={() => setSupportOrgTarget(org)}
-                        >
-                          {org.name}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuGroup>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-            </>
+        <PlatformPage
+          subscriptions={view === "subscriptions"}
+          tab={subscriptionSubView}
+          onTabChange={(value) =>
+            setSubscriptionSubView(value as "assignments" | "plans")
           }
-        />
-
-        {view === "overview" && props.overviewData && (
-          <PlatformOverview
-            metrics={metrics}
-            data={props.overviewData}
-            organizations={organizations}
-          />
-        )}
-
-        {view !== "overview" && (
-          <>
-            {props.selectedOrganization && (
-              <div className="sa-context">
-                <Building2 size={17} />
-                <span>
-                  Organização:{" "}
-                  <strong>{props.selectedOrganization.name}</strong>
-                </span>
-                <Link
-                  href={href(view, undefined, undefined, false)}
-                  className="sa-text-link"
-                >
-                  <X size={14} />
-                  Remover filtro
-                </Link>
-              </div>
-            )}
-
-            {view === "subscriptions" && (
-              <div className="sa-tabs">
-                <TabsList variant="line" aria-label="Planos e assinaturas">
-                    <TabsTrigger value="assignments" disabled={pending}>Assinaturas</TabsTrigger>
-                    <TabsTrigger value="plans" disabled={pending}>
-                    Catálogo de planos{" "}
-                    <Badge variant="secondary">
-                      {props.platformPlans?.length ?? 0}
-                    </Badge>
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-            )}
-
-            {!(view === "subscriptions" && subscriptionSubView === "plans") && (
-              <div className="sa-toolbar">
-                <PlatformForm
-                  method="get"
-                  action="/superadmin"
-                  aria-label="Filtrar registros"
-                >
-                  <input type="hidden" name="view" value={view} />
-                  <FieldGroup className="sa-filter-fields">
-                    <Field>
-                      <FieldLabel htmlFor="platform-search" className="sr-only">
-                        Buscar registros
-                      </FieldLabel>
-                      <InputGroup>
-                        <InputGroupAddon>
-                          <Search />
-                        </InputGroupAddon>
-                        <InputGroupInput
-                          key={`${view}-${props.query}`}
-                          id="platform-search"
-                          name="q"
-                          defaultValue={props.query}
-                          placeholder={
-                            isLogView
-                            ? "Buscar registros"
-                              : view === "users"
-                                ? "Buscar nome ou e-mail"
-                              : "Buscar organização"
-                          }
-                        />
-                      </InputGroup>
-                    </Field>
-                    {isLogView ? (
-                      <Field>
-                        <FieldLabel
-                          htmlFor="platform-organization"
-                          className="sr-only"
-                        >
-                          Organização
-                        </FieldLabel>
-                        <NativeSelect
-                          id="platform-organization"
-                          name="organization"
-                          key={props.organizationFilter}
-                          defaultValue={props.organizationFilter}
-                        >
-                          <NativeSelectOption value="">
-                            Todas as organizações
-                          </NativeSelectOption>
-                          {props.allOrganizations?.map((org) => (
-                            <NativeSelectOption key={org.id} value={org.id}>
-                              {org.name}
-                            </NativeSelectOption>
-                          ))}
-                        </NativeSelect>
-                      </Field>
-                    ) : (
-                      <Field>
-                        {props.organizationFilter && (
-                          <input
-                            type="hidden"
-                            name="organization"
-                            value={props.organizationFilter}
-                          />
-                        )}
-                        <FieldLabel
-                          htmlFor="platform-status"
-                          className="sr-only"
-                        >
-                          Status
-                        </FieldLabel>
-                        <NativeSelect
-                          id="platform-status"
-                          name="status"
-                          key={props.status}
-                          defaultValue={props.status}
-                        >
-                          <NativeSelectOption value="ALL">
-                            Todos os status
-                          </NativeSelectOption>
-                          <NativeSelectOption value="ACTIVE">
-                            Ativos
-                          </NativeSelectOption>
-                          <NativeSelectOption value="SUSPENDED">
-                            Suspensos
-                          </NativeSelectOption>
-                        </NativeSelect>
-                      </Field>
-                    )}
-                  </FieldGroup>
-                  <Button type="submit" variant="outline">
-                    Filtrar
+        >
+          <PageHeader
+            title={viewMeta[view].title}
+            subtitle={viewMeta[view].subtitle}
+            actions={
+              <>
+                {(view === "overview" || view === "organizations") && (
+                  <Button onClick={() => setCreateOrgOpen(true)}>
+                    <Plus data-icon="inline-start" />
+                    Nova organização
                   </Button>
-                </PlatformForm>
-                <div className="sa-toolbar-result">
-                  <span>
-                    {pagination.total}{" "}
-                    {isLogView
-                      ? "registros"
-                      : view === "users"
-                        ? "usuários"
-                        : "organizações"}
-                  </span>
-                  {hasActiveFilters && (
-                    <Link
-                      className="sa-text-link"
-                      href={href(view, undefined, undefined, false)}
-                    >
-                      Limpar filtros
-                    </Link>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {!pagination.total &&
-              !(
-                view === "subscriptions" && subscriptionSubView === "plans"
-              ) && (
-                <EmptyState
-                  icon={
-                    isLogView ? Activity : view === "users" ? Users : Building2
-                  }
-                  title="Nenhum resultado encontrado"
-                  description={
-                    hasActiveFilters
-                      ? "Ajuste os filtros para encontrar o que procura."
-                      : view === "support"
-                        ? "Registre o primeiro atendimento pelo botão no topo da página."
-                        : "Os registros desta área aparecerão aqui."
-                  }
-                  action={
-                    hasActiveFilters ? (
+                )}
+                {view === "users" && (
+                  <Button onClick={() => setCreateUserOpen(true)}>
+                    <UserPlus data-icon="inline-start" />
+                    Novo usuário
+                  </Button>
+                )}
+                {view === "subscriptions" && subscriptionSubView === "plans" && (
+                  <Button onClick={() => setCreatePlanOpen(true)}>
+                    <Plus data-icon="inline-start" />
+                    Novo plano
+                  </Button>
+                )}
+                {view === "templates" && (
+                  !props.selectedSegment ? (
+                    <Button onClick={() => setCreateSegmentOpen(true)}>
+                      <Plus data-icon="inline-start" />
+                      Novo segmento
+                    </Button>
+                  ) : (
+                    <div className="flex items-center gap-2">
                       <Button
                         variant="outline"
                         nativeButton={false}
-                        render={
-                          <Link
-                            href={href(view, undefined, undefined, false)}
-                          />
-                        }
+                        render={<Link href="/superadmin?view=templates" />}
+                        className="gap-1.5"
                       >
-                        Limpar filtros
+                        <ArrowLeft className="size-4" />
+                        Todos os segmentos
                       </Button>
-                    ) : undefined
-                  }
-                />
-              )}
-
-            {view === "organizations" && !!organizations.length && (
-              <PlatformPanel
-                title="Base de clientes"
-                description="Acessos, pessoas e condições de cada organização."
-                className="sa-list-panel"
-              >
-                <PlatformTable
-                  label="Organizações"
-                  columns={[
-                    "Organização",
-                    "Status",
-                    "Pessoas / unidades",
-                    "Assinatura",
-                    "Ações",
-                  ]}
-                >
-                  {organizations.map((org) => (
-                    <TableRow key={org.id}>
-                      <TableCell>
-                        <PlatformIdentity
-                          name={org.name}
-                          description={`/${org.slug}`}
-                        />
-                        <details className="sa-details">
-                          <summary>Dados operacionais</summary>
-                          <dl className="sa-facts">
-                            <div>
-                              <dt>Cadastro</dt>
-                              <dd>{formatDate(org.createdAt)}</dd>
-                            </div>
-                            <div>
-                              <dt>Processos</dt>
-                              <dd>{org.processesCount}</dd>
-                            </div>
-                            <div>
-                              <dt>Tarefas</dt>
-                              <dd>{org.tasksCount}</dd>
-                            </div>
-                            <div>
-                              <dt>Execuções</dt>
-                              <dd>{org.executionsCount}</dd>
-                            </div>
-                          </dl>
-                        </details>
-                      </TableCell>
-                      <TableCell data-label="Status">
-                        <PlatformStatus
-                          tone={org.status === "ACTIVE" ? "success" : "danger"}
-                        >
-                          {org.status === "ACTIVE" ? "Ativa" : "Suspensa"}
-                        </PlatformStatus>
-                      </TableCell>
-                      <TableCell data-label="Pessoas / unidades">
-                        <span className="sa-numeric">
-                          {org.membersCount}{" "}
-                          {org.membersCount === 1 ? "pessoa" : "pessoas"}
-                        </span>
-                        <span className="sa-secondary">
-                          {org.locationsCount}{" "}
-                          {org.locationsCount === 1 ? "unidade" : "unidades"}
-                        </span>
-                      </TableCell>
-                      <TableCell data-label="Assinatura">
-                        <strong>
-                          {org.subscription?.planName ?? "Sem plano"}
-                        </strong>
-                        {org.subscription && (
-                          <span className="sa-secondary">
-                            {subscriptionStatusLabels[
-                              org.subscription.status
-                            ] ?? org.subscription.status}
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="sa-row-actions">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          nativeButton={false}
-                          render={<Link href={href("users", org.id)} />}
-                        >
-                          Pessoas
+                      <Button
+                        nativeButton={false}
+                        render={<Link href={`/superadmin/templates/new?segmentId=${props.selectedSegment.id}`} />}
+                      >
+                        <Plus data-icon="inline-start" />
+                        Novo template pronto
+                      </Button>
+                    </div>
+                  )
+                )}
+                {view === "support" && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button disabled={!props.allOrganizations?.length}>
+                          <Plus data-icon="inline-start" />
+                          Registrar atendimento
                         </Button>
-                        <PlatformActions label={org.name}>
+                      }
+                    />
+                    <DropdownMenuContent
+                      align="end"
+                      className="min-w-64 max-h-80"
+                    >
+                      <DropdownMenuGroup>
+                        {props.allOrganizations?.map((org) => (
                           <DropdownMenuItem
-                            onClick={() => setEditOrgTarget(org)}
-                          >
-                            <Edit3 />
-                            Editar organização
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => openSubscriptionModal(org)}
-                          >
-                            <CalendarClock />
-                            {org.subscription
-                              ? "Editar assinatura"
-                              : "Registrar assinatura"}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            render={<Link href={href("usage", org.id)} />}
-                          >
-                            <Layers />
-                            Ver uso e limites
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            render={<Link href={href("support", org.id)} />}
-                          >
-                            <MessageSquare />
-                            Histórico de suporte
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
+                            key={org.id}
                             onClick={() => setSupportOrgTarget(org)}
                           >
-                            <Plus />
-                            Registrar atendimento
+                            {org.name}
                           </DropdownMenuItem>
-                          <DropdownMenuItem
-                            render={<Link href={href("audit", org.id)} />}
-                          >
-                            <Activity />
-                            Ver auditoria
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() =>
-                              setStatusTarget({ kind: "organization", ...org })
-                            }
-                          >
-                            <ShieldAlert />
-                            {org.status === "ACTIVE"
-                              ? "Suspender organização"
-                              : "Reativar organização"}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={() => setDeleteOrgTarget(org)}
-                          >
-                            <Trash2 />
-                            Excluir organização
-                          </DropdownMenuItem>
-                        </PlatformActions>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </PlatformTable>
-              </PlatformPanel>
-            )}
+                        ))}
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </>
+            }
+          />
 
-            {view === "users" && !!users.length && (
-              <PlatformPanel
-                title="Pessoas e acessos"
-                description="Contas, segurança e vínculos com organizações."
-                className="sa-list-panel"
-              >
-                <PlatformTable
-                  label="Usuários da plataforma"
-                  columns={[
-                    "Usuário",
-                    "Status",
-                    "Segurança",
-                    "Organizações",
-                    "Ações",
-                  ]}
-                >
-                  {users.map((user) => {
-                    const isProtected =
-                      user.platformRole === "SUPERADMIN" ||
-                      user.id === props.currentUserId;
-                    return (
-                      <TableRow key={user.id}>
-                        <TableCell>
-                          <PlatformIdentity
-                            name={user.name}
-                            initials={getInitials(user.name)}
-                            description={
-                              user.email ?? "Acesso por matrícula / PIN"
-                            }
-                          />
-                          <span className="sa-registration">
-                            Desde {formatDate(user.createdAt)}
-                            {user.platformRole === "SUPERADMIN" &&
-                              " · Superadministrador"}
-                          </span>
-                        </TableCell>
-                        <TableCell data-label="Status">
-                          <PlatformStatus
-                            tone={
-                              user.status === "ACTIVE" ? "success" : "danger"
-                            }
-                          >
-                            {user.status === "ACTIVE" ? "Ativo" : "Suspenso"}
-                          </PlatformStatus>
-                        </TableCell>
-                        <TableCell data-label="Segurança">
-                          <span className="sa-inline">
-                            <ShieldCheck size={15} />
-                            {user.twoFactorEnabled ? "2FA ativo" : "Sem 2FA"}
-                          </span>
-                        </TableCell>
-                        <TableCell data-label="Organizações">
-                          {user.memberships.length ? (
-                            <details className="sa-details sa-memberships">
-                              <summary>
-                                {user.memberships.length}{" "}
-                                {user.memberships.length === 1
-                                  ? "vínculo"
-                                  : "vínculos"}
-                              </summary>
-                              <ul>
-                                {user.memberships.map((member) => (
-                                  <li key={member.organizationId}>
-                                    <Link
-                                      href={href(
-                                        "organizations",
-                                        member.organizationId,
-                                      )}
-                                    >
-                                      {member.organizationName}
-                                    </Link>
-                                    <small>
-                                      {uiLabel(member.role)} ·{" "}
-                                      {member.status === "ACTIVE"
-                                        ? "Ativo"
-                                        : "Inativo"}
-                                    </small>
-                                  </li>
-                                ))}
-                              </ul>
-                            </details>
-                          ) : (
-                            <span className="sa-secondary">Sem vínculos</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="sa-row-actions">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setManageMembershipsTarget(user)}
-                          >
-                            Vínculos
-                          </Button>
-                          <PlatformActions label={user.name}>
-                            <DropdownMenuItem
-                              onClick={() => setEditUserTarget(user)}
-                            >
-                              <Edit3 />
-                              Editar usuário
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => setManageMembershipsTarget(user)}
-                            >
-                              <Building2 />
-                              Gerenciar vínculos
-                            </DropdownMenuItem>
-                            {!isProtected && (
-                              <>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    setStatusTarget({ kind: "user", ...user })
-                                  }
-                                >
-                                  <ShieldAlert />
-                                  {user.status === "ACTIVE"
-                                    ? "Suspender acesso"
-                                    : "Reativar acesso"}
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  variant="destructive"
-                                  onClick={() => setDeleteUserTarget(user)}
-                                >
-                                  <Trash2 />
-                                  Excluir usuário
-                                </DropdownMenuItem>
-                              </>
-                            )}
-                          </PlatformActions>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </PlatformTable>
-              </PlatformPanel>
-            )}
+          {view === "overview" && props.overviewData && (
+            <PlatformOverview
+              metrics={metrics}
+              data={props.overviewData}
+              organizations={organizations}
+            />
+          )}
 
-            {view === "subscriptions" &&
-              subscriptionSubView === "assignments" &&
-              !!organizations.length && (
-                <TabsContent value="assignments">
-                  <PlatformPanel
-                    title="Assinaturas por organização"
-                    description="Condições registradas manualmente. Sem cobrança automática."
-                    className="sa-list-panel"
-                  >
-                    <PlatformTable
-                      label="Assinaturas"
-                      columns={[
-                        "Organização",
-                        "Plano / valor",
-                        "Situação",
-                        "Vigência",
-                        "Ações",
-                      ]}
-                    >
-                      {organizations.map((org) => {
-                        const sub = org.subscription;
-                        const notice = getSubscriptionNotice(sub);
-                        return (
-                          <TableRow key={org.id}>
-                            <TableCell>
-                              <PlatformIdentity
-                                name={org.name}
-                                description={`/${org.slug}`}
-                              />
-                              {sub && (
-                                <details className="sa-details">
-                                  <summary>Condições do contrato</summary>
-                                  <dl className="sa-facts">
-                                    <div>
-                                      <dt>Pessoas</dt>
-                                      <dd>{sub.memberLimit ?? "Sem limite"}</dd>
-                                    </div>
-                                    <div>
-                                      <dt>Unidades</dt>
-                                      <dd>
-                                        {sub.locationLimit ?? "Sem limite"}
-                                      </dd>
-                                    </div>
-                                    <div>
-                                      <dt>Início</dt>
-                                      <dd>
-                                        {formatDate(
-                                          `${sub.startsOn}T12:00:00Z`,
-                                        )}
-                                      </dd>
-                                    </div>
-                                  </dl>
-                                  {sub.notes && (
-                                    <p className="sa-note">{sub.notes}</p>
-                                  )}
-                                </details>
-                              )}
-                            </TableCell>
-                            <TableCell data-label="Plano / valor">
-                              <strong>
-                                {sub?.planName ?? "Sem assinatura"}
-                              </strong>
-                              {sub && (
-                                <span className="sa-secondary">
-                                  {sub.amountCents === null
-                                    ? "Valor não informado"
-                                    : formatCurrency(sub.amountCents)}{" "}
-                                  · {cycleLabels[sub.cycle]}
-                                </span>
-                              )}
-                            </TableCell>
-                            <TableCell data-label="Situação">
-                              <PlatformStatus
-                                tone={
-                                  sub?.status === "ACTIVE"
-                                    ? "success"
-                                    : sub?.status === "PAST_DUE"
-                                      ? "danger"
-                                      : sub?.status === "TRIAL"
-                                        ? "warning"
-                                        : "neutral"
-                                }
-                              >
-                                {sub
-                                  ? subscriptionStatusLabels[sub.status]
-                                  : "Sem plano"}
-                              </PlatformStatus>
-                            </TableCell>
-                            <TableCell data-label="Vigência">
-                              {sub?.endsOn ? (
-                                <>
-                                  <span>
-                                    {formatDate(`${sub.endsOn}T12:00:00Z`)}
-                                  </span>
-                                  {notice && (
-                                    <span
-                                      className="sa-secondary"
-                                      data-tone={
-                                        notice.isExpired
-                                          ? "danger"
-                                          : notice.daysRemaining <= 7
-                                            ? "warning"
-                                            : undefined
-                                      }
-                                    >
-                                      {notice.isExpired
-                                        ? "Expirada"
-                                        : notice.daysRemaining === 0
-                                          ? "Vence hoje"
-                                          : `${notice.daysRemaining} dias restantes`}
-                                    </span>
-                                  )}
-                                </>
-                              ) : (
-                                <span className="sa-secondary">
-                                  {sub ? "Indeterminada" : "Não definida"}
-                                </span>
-                              )}
-                            </TableCell>
-                            <TableCell className="sa-row-actions">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => openSubscriptionModal(org)}
-                              >
-                                {sub ? "Editar condições" : "Registrar plano"}
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </PlatformTable>
-                  </PlatformPanel>
-                </TabsContent>
+          {view !== "overview" && props.selectedOrganization && (
+            <div className="sa-context">
+              <Building2 size={17} />
+              <span>Organização: <strong>{props.selectedOrganization.name}</strong></span>
+              <Link href={href(view, undefined, undefined, false)} className="sa-text-link">
+                <X size={14} />Remover filtro
+              </Link>
+            </div>
+          )}
+
+          {view === "map" && (
+            <SuperadminMap
+              key={`${props.organizationFilter}:${props.status}:${props.query}`}
+              organizations={props.mapOrganizations || []}
+              initialSearch={props.query}
+              initialStatus={props.status}
+              hasOrganizationFilter={!!props.organizationFilter}
+              onClearFilters={props.query || props.status !== "ALL" || props.organizationFilter
+                ? () => activity.navigate("/superadmin?view=map") : undefined}
+            />
+          )}
+
+          {view !== "overview" && view !== "map" && (
+            <>
+              {view === "subscriptions" && (
+                <div className="sa-tabs">
+                  <TabsList variant="line" aria-label="Planos e assinaturas">
+                    <TabsTrigger value="assignments" disabled={pending}>Assinaturas</TabsTrigger>
+                    <TabsTrigger value="plans" disabled={pending}>
+                      Catálogo de planos{" "}
+                      <Badge variant="secondary">
+                        {props.platformPlans?.length ?? 0}
+                      </Badge>
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
               )}
 
-            {view === "subscriptions" && subscriptionSubView === "plans" && (
-              <TabsContent value="plans">
-                {props.platformPlans?.length ? (
-                  <div className="sa-plan-grid">
-                    {props.platformPlans.map((plan) => (
-                      <Card key={plan.id} className="sa-plan">
-                        <CardHeader>
-                          <CardTitle>
-                            <h2>{plan.name}</h2>
-                          </CardTitle>
-                          <CardDescription>
-                            {plan.description || "Modelo de assinatura"}
-                          </CardDescription>
-                          <CardAction>
-                            <PlatformActions label={plan.name}>
-                              <DropdownMenuItem
-                                onClick={() => setEditPlanTarget(plan)}
-                              >
-                                <Edit3 />
-                                Editar plano
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                variant="destructive"
-                                onClick={() => setDeletePlanTarget(plan)}
-                              >
-                                <Trash2 />
-                                Excluir plano
-                              </DropdownMenuItem>
-                            </PlatformActions>
-                          </CardAction>
-                        </CardHeader>
-                        <CardContent>
-                          <PlatformStatus
-                            tone={
-                              plan.status === "ARCHIVED" ? "neutral" : "success"
+              {!(view === "subscriptions" && subscriptionSubView === "plans" || view === "templates") && (
+                <div className="sa-toolbar">
+                  <PlatformForm
+                    method="get"
+                    action="/superadmin"
+                    aria-label="Filtrar registros"
+                  >
+                    <input type="hidden" name="view" value={view} />
+                    <FieldGroup className="sa-filter-fields">
+                      <Field>
+                        <FieldLabel htmlFor="platform-search" className="sr-only">
+                          Buscar registros
+                        </FieldLabel>
+                        <InputGroup>
+                          <InputGroupAddon>
+                            <Search />
+                          </InputGroupAddon>
+                          <InputGroupInput
+                            key={`${view}-${props.query}`}
+                            id="platform-search"
+                            name="q"
+                            defaultValue={props.query}
+                            placeholder={
+                              isLogView
+                                ? "Buscar registros"
+                                : view === "users"
+                                  ? "Buscar nome ou e-mail"
+                                  : "Buscar organização"
                             }
+                          />
+                        </InputGroup>
+                      </Field>
+                      {isLogView ? (
+                        <Field>
+                          <FieldLabel
+                            htmlFor="platform-organization"
+                            className="sr-only"
                           >
-                            {plan.status === "ARCHIVED" ? "Arquivado" : "Ativo"}
-                          </PlatformStatus>
-                          <div className="sa-price">
-                            <strong>
-                              {plan.amountCents === null
-                                ? "Sob consulta"
-                                : formatCurrency(plan.amountCents)}
-                            </strong>
-                            <span>
-                              {
-                                cycleLabels[
-                                  plan.cycle as keyof typeof cycleLabels
-                                ]
-                              }
-                            </span>
-                          </div>
-                          <dl className="sa-facts">
-                            <div>
-                              <dt>Pessoas</dt>
-                              <dd>{plan.memberLimit ?? "Sem limite"}</dd>
-                            </div>
-                            <div>
-                              <dt>Unidades</dt>
-                              <dd>{plan.locationLimit ?? "Sem limite"}</dd>
-                            </div>
-                          </dl>
-                          {plan.features && (
-                            <details className="sa-details">
-                              <summary>Recursos incluídos</summary>
-                              <p className="sa-note">{plan.features}</p>
-                            </details>
+                            Organização
+                          </FieldLabel>
+                          <NativeSelect
+                            id="platform-organization"
+                            name="organization"
+                            key={props.organizationFilter}
+                            defaultValue={props.organizationFilter}
+                          >
+                            <NativeSelectOption value="">
+                              Todas as organizações
+                            </NativeSelectOption>
+                            {props.allOrganizations?.map((org) => (
+                              <NativeSelectOption key={org.id} value={org.id}>
+                                {org.name}
+                              </NativeSelectOption>
+                            ))}
+                          </NativeSelect>
+                        </Field>
+                      ) : (
+                        <Field>
+                          {props.organizationFilter && (
+                            <input
+                              type="hidden"
+                              name="organization"
+                              value={props.organizationFilter}
+                            />
                           )}
-                        </CardContent>
-                        <CardFooter>
-                          <Button
-                            variant="outline"
-                            disabled={plan.status === "ARCHIVED"}
-                            onClick={() => setApplyPlanTarget(plan)}
+                          <FieldLabel
+                            htmlFor="platform-status"
+                            className="sr-only"
                           >
-                            <Plus data-icon="inline-start" />
-                            Aplicar a uma organização
-                          </Button>
-                        </CardFooter>
-                      </Card>
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyState
-                    icon={CalendarClock}
-                    title="Nenhum plano cadastrado"
-                    description="Crie modelos para agilizar o registro das assinaturas."
-                    action={
-                      <Button
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() =>
-                          handleRunAction(
-                            () => seedDefaultPlatformPlansAction(),
-                            "Modelos padrão carregados.",
-                          )
-                        }
+                            Status
+                          </FieldLabel>
+                          <NativeSelect
+                            id="platform-status"
+                            name="status"
+                            key={props.status}
+                            defaultValue={props.status}
+                          >
+                            <NativeSelectOption value="ALL">
+                              Todos os status
+                            </NativeSelectOption>
+                            <NativeSelectOption value="ACTIVE">
+                              Ativos
+                            </NativeSelectOption>
+                            <NativeSelectOption value="SUSPENDED">
+                              Suspensos
+                            </NativeSelectOption>
+                          </NativeSelect>
+                        </Field>
+                      )}
+                    </FieldGroup>
+                    <Button type="submit" variant="outline">
+                      Filtrar
+                    </Button>
+                  </PlatformForm>
+                  <div className="sa-toolbar-result">
+                    <span>
+                      {pagination.total}{" "}
+                      {isLogView
+                        ? "registros"
+                        : view === "users"
+                          ? "usuários"
+                          : "organizações"}
+                    </span>
+                    {hasActiveFilters && (
+                      <Link
+                        className="sa-text-link"
+                        href={href(view, undefined, undefined, false)}
                       >
-                        Carregar modelos padrão
-                      </Button>
+                        Limpar filtros
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {!pagination.total &&
+                !(
+                  view === "subscriptions" && subscriptionSubView === "plans"
+                ) && (
+                  <EmptyState
+                    icon={
+                      isLogView ? Activity : view === "users" ? Users : Building2
+                    }
+                    title="Nenhum resultado encontrado"
+                    description={
+                      hasActiveFilters
+                        ? "Ajuste os filtros para encontrar o que procura."
+                        : view === "support"
+                          ? "Registre o primeiro atendimento pelo botão no topo da página."
+                          : "Os registros desta área aparecerão aqui."
+                    }
+                    action={
+                      hasActiveFilters ? (
+                        <Button
+                          variant="outline"
+                          nativeButton={false}
+                          render={
+                            <Link
+                              href={href(view, undefined, undefined, false)}
+                            />
+                          }
+                        >
+                          Limpar filtros
+                        </Button>
+                      ) : undefined
                     }
                   />
                 )}
-              </TabsContent>
-            )}
 
-            {view === "usage" && !!organizations.length && (
-              <PlatformPanel
-                title="Consumo por organização"
-                description="Pessoas e unidades ativas em relação aos limites contratados."
-                className="sa-list-panel"
-              >
-                <PlatformTable
-                  label="Uso e limites"
-                  columns={[
-                    "Organização",
-                    "Pessoas",
-                    "Unidades",
-                    "Operação",
-                    "Ações",
-                  ]}
+              {view === "organizations" && !!organizations.length && (
+                <PlatformPanel
+                  title="Base de clientes"
+                  description="Acessos, pessoas e condições de cada organização."
+                  className="sa-list-panel"
                 >
-                  {organizations.map((org) => {
-                    const over =
-                      (org.subscription?.memberLimit != null &&
-                        org.membersCount > org.subscription.memberLimit) ||
-                      (org.subscription?.locationLimit != null &&
-                        org.locationsCount > org.subscription.locationLimit);
-                    return (
+                  <PlatformTable
+                    label="Organizações"
+                    columns={[
+                      "Organização",
+                      "Status",
+                      "Pessoas / unidades",
+                      "Assinatura",
+                      "Ações",
+                    ]}
+                  >
+                    {organizations.map((org) => (
                       <TableRow key={org.id}>
                         <TableCell>
                           <PlatformIdentity
                             name={org.name}
-                            description={
-                              org.subscription?.planName ??
-                              "Sem plano registrado"
-                            }
+                            description={`/${org.slug}`}
                           />
-                          {over && (
-                            <PlatformStatus tone="danger">
-                              Acima do limite
-                            </PlatformStatus>
-                          )}
+                          <details className="sa-details">
+                            <summary>Dados operacionais</summary>
+                            <dl className="sa-facts">
+                              <div>
+                                <dt>Cadastro</dt>
+                                <dd>{formatDate(org.createdAt)}</dd>
+                              </div>
+                              <div>
+                                <dt>Processos</dt>
+                                <dd>{org.processesCount}</dd>
+                              </div>
+                              <div>
+                                <dt>Tarefas</dt>
+                                <dd>{org.tasksCount}</dd>
+                              </div>
+                              <div>
+                                <dt>Execuções</dt>
+                                <dd>{org.executionsCount}</dd>
+                              </div>
+                            </dl>
+                          </details>
                         </TableCell>
-                        <TableCell data-label="Pessoas">
-                          <PlatformQuota
-                            label="Pessoas"
-                            count={org.membersCount}
-                            limit={org.subscription?.memberLimit ?? null}
-                          />
+                        <TableCell data-label="Status">
+                          <PlatformStatus
+                            tone={org.status === "ACTIVE" ? "success" : "danger"}
+                          >
+                            {org.status === "ACTIVE" ? "Ativa" : "Suspensa"}
+                          </PlatformStatus>
                         </TableCell>
-                        <TableCell data-label="Unidades">
-                          <PlatformQuota
-                            label="Unidades"
-                            count={org.locationsCount}
-                            limit={org.subscription?.locationLimit ?? null}
-                          />
-                        </TableCell>
-                        <TableCell data-label="Operação">
-                          <span>
-                            {org.processesCount} processos · {org.tasksCount}{" "}
-                            tarefas
+                        <TableCell data-label="Pessoas / unidades">
+                          <span className="sa-numeric">
+                            {org.membersCount}{" "}
+                            {org.membersCount === 1 ? "pessoa" : "pessoas"}
                           </span>
                           <span className="sa-secondary">
-                            {org.executionsCount} execuções
+                            {org.locationsCount}{" "}
+                            {org.locationsCount === 1 ? "unidade" : "unidades"}
                           </span>
+                        </TableCell>
+                        <TableCell data-label="Assinatura">
+                          <strong>
+                            {org.subscription?.planName ?? "Sem plano"}
+                          </strong>
+                          {org.subscription && (
+                            <span className="sa-secondary">
+                              {subscriptionStatusLabels[
+                                org.subscription.status
+                              ] ?? org.subscription.status}
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell className="sa-row-actions">
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => openSubscriptionModal(org)}
+                            nativeButton={false}
+                            render={<Link href={href("users", org.id)} />}
                           >
-                            Ajustar limites
+                            Pessoas
                           </Button>
+                          <PlatformActions label={org.name}>
+                            <DropdownMenuItem
+                              onClick={() => setEditOrgTarget(org)}
+                            >
+                              <Edit3 />
+                              Editar organização
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => openSubscriptionModal(org)}
+                            >
+                              <CalendarClock />
+                              {org.subscription
+                                ? "Editar assinatura"
+                                : "Registrar assinatura"}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              render={<Link href={href("usage", org.id)} />}
+                            >
+                              <Layers />
+                              Ver uso e limites
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              render={<Link href={href("support", org.id)} />}
+                            >
+                              <MessageSquare />
+                              Histórico de suporte
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setSupportOrgTarget(org)}
+                            >
+                              <Plus />
+                              Registrar atendimento
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              render={<Link href={href("audit", org.id)} />}
+                            >
+                              <Activity />
+                              Ver auditoria
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setStatusTarget({ kind: "organization", ...org })
+                              }
+                            >
+                              <ShieldAlert />
+                              {org.status === "ACTIVE"
+                                ? "Suspender organização"
+                                : "Reativar organização"}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => setDeleteOrgTarget(org)}
+                            >
+                              <Trash2 />
+                              Excluir organização
+                            </DropdownMenuItem>
+                          </PlatformActions>
                         </TableCell>
                       </TableRow>
-                    );
-                  })}
-                </PlatformTable>
-              </PlatformPanel>
-            )}
+                    ))}
+                  </PlatformTable>
+                </PlatformPanel>
+              )}
 
-            {isLogView && !!logs.length && (
-              <PlatformPanel
-                title={
-                  view === "support"
-                    ? "Histórico de atendimentos"
-                    : "Atividade administrativa"
-                }
-                description={
-                  view === "support"
-                    ? "Registros internos de atendimento por organização."
-                    : "Ações, responsáveis e justificativas da plataforma."
-                }
-                className="sa-list-panel"
-              >
-                <PlatformTable
-                  label={view === "support" ? "Atendimentos" : "Auditoria"}
-                  columns={[
-                    view === "support"
-                      ? "Organização / atendimento"
-                      : "Ação / organização",
-                    "Responsável",
-                    "Data e hora",
-                  ]}
+              {view === "users" && !!users.length && (
+                <PlatformPanel
+                  title="Pessoas e acessos"
+                  description="Contas, segurança e vínculos com organizações."
+                  className="sa-list-panel"
                 >
-                  {logs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell>
-                        <div className="sa-log-title">
-                          {view === "support"
-                            ? log.orgName
-                            : (actionLabels[log.action] ?? uiLabel(log.action))}
-                        </div>
-                        {view === "support" ? (
-                          <PlatformStatus
-                            tone={
-                              log.supportStatus === "RESOLVED"
-                                ? "success"
-                                : log.supportStatus === "FOLLOW_UP"
-                                  ? "warning"
-                                  : "neutral"
-                            }
-                          >
-                            {supportLabels[log.supportStatus ?? ""]?.label ??
-                              "Atendimento"}
-                          </PlatformStatus>
-                        ) : (
-                          <Link
-                            className="sa-secondary sa-text-link"
-                            href={href("audit", log.organizationId)}
-                          >
-                            {log.orgName}
-                          </Link>
-                        )}
-                        <details className="sa-details">
-                          <summary>
-                            {view === "support"
-                              ? "Ler atendimento"
-                              : "Ver detalhes"}
-                          </summary>
-                          {log.note ? (
-                            <p className="sa-note">{log.note}</p>
-                          ) : (
-                            <p className="sa-secondary">
-                              Sem observações registradas.
-                            </p>
-                          )}
-                          {view === "audit" && (
-                            <dl className="sa-facts sa-technical">
+                  <PlatformTable
+                    label="Usuários da plataforma"
+                    columns={[
+                      "Usuário",
+                      "Status",
+                      "Segurança",
+                      "Organizações",
+                      "Ações",
+                    ]}
+                  >
+                    {users.map((user) => {
+                      const isProtected =
+                        user.platformRole === "SUPERADMIN" ||
+                        user.id === props.currentUserId;
+                      return (
+                        <TableRow key={user.id}>
+                          <TableCell>
+                            <PlatformIdentity
+                              name={user.name}
+                              initials={getInitials(user.name)}
+                              description={
+                                user.email ?? "Acesso por matrícula / PIN"
+                              }
+                            />
+                            <span className="sa-registration">
+                              Desde {formatDate(user.createdAt)}
+                              {user.platformRole === "SUPERADMIN" &&
+                                " · Superadministrador"}
+                            </span>
+                          </TableCell>
+                          <TableCell data-label="Status">
+                            <PlatformStatus
+                              tone={
+                                user.status === "ACTIVE" ? "success" : "danger"
+                              }
+                            >
+                              {user.status === "ACTIVE" ? "Ativo" : "Suspenso"}
+                            </PlatformStatus>
+                          </TableCell>
+                          <TableCell data-label="Segurança">
+                            <span className="sa-inline">
+                              <ShieldCheck size={15} />
+                              {user.twoFactorEnabled ? "2FA ativo" : "Sem 2FA"}
+                            </span>
+                          </TableCell>
+                          <TableCell data-label="Organizações">
+                            {user.memberships.length ? (
+                              <details className="sa-details sa-memberships">
+                                <summary>
+                                  {user.memberships.length}{" "}
+                                  {user.memberships.length === 1
+                                    ? "vínculo"
+                                    : "vínculos"}
+                                </summary>
+                                <ul>
+                                  {user.memberships.map((member) => (
+                                    <li key={member.organizationId}>
+                                      <Link
+                                        href={href(
+                                          "organizations",
+                                          member.organizationId,
+                                        )}
+                                      >
+                                        {member.organizationName}
+                                      </Link>
+                                      <small>
+                                        {uiLabel(member.role)} ·{" "}
+                                        {member.status === "ACTIVE"
+                                          ? "Ativo"
+                                          : "Inativo"}
+                                      </small>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </details>
+                            ) : (
+                              <span className="sa-secondary">Sem vínculos</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="sa-row-actions">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setManageMembershipsTarget(user)}
+                            >
+                              Vínculos
+                            </Button>
+                            <PlatformActions label={user.name}>
+                              <DropdownMenuItem
+                                onClick={() => setEditUserTarget(user)}
+                              >
+                                <Edit3 />
+                                Editar usuário
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => setManageMembershipsTarget(user)}
+                              >
+                                <Building2 />
+                                Gerenciar vínculos
+                              </DropdownMenuItem>
+                              {!isProtected && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      setStatusTarget({ kind: "user", ...user })
+                                    }
+                                  >
+                                    <ShieldAlert />
+                                    {user.status === "ACTIVE"
+                                      ? "Suspender acesso"
+                                      : "Reativar acesso"}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    variant="destructive"
+                                    onClick={() => setDeleteUserTarget(user)}
+                                  >
+                                    <Trash2 />
+                                    Excluir usuário
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                            </PlatformActions>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </PlatformTable>
+                </PlatformPanel>
+              )}
+
+              {view === "subscriptions" &&
+                subscriptionSubView === "assignments" &&
+                !!organizations.length && (
+                  <TabsContent value="assignments">
+                    <PlatformPanel
+                      title="Assinaturas por organização"
+                      description="Condições registradas manualmente. Sem cobrança automática."
+                      className="sa-list-panel"
+                    >
+                      <PlatformTable
+                        label="Assinaturas"
+                        columns={[
+                          "Organização",
+                          "Plano / valor",
+                          "Situação",
+                          "Vigência",
+                          "Ações",
+                        ]}
+                      >
+                        {organizations.map((org) => {
+                          const sub = org.subscription;
+                          const notice = getSubscriptionNotice(sub);
+                          return (
+                            <TableRow key={org.id}>
+                              <TableCell>
+                                <PlatformIdentity
+                                  name={org.name}
+                                  description={`/${org.slug}`}
+                                />
+                                {sub && (
+                                  <details className="sa-details">
+                                    <summary>Condições do contrato</summary>
+                                    <dl className="sa-facts">
+                                      <div>
+                                        <dt>Pessoas</dt>
+                                        <dd>{sub.memberLimit ?? "Sem limite"}</dd>
+                                      </div>
+                                      <div>
+                                        <dt>Unidades</dt>
+                                        <dd>
+                                          {sub.locationLimit ?? "Sem limite"}
+                                        </dd>
+                                      </div>
+                                      <div>
+                                        <dt>Início</dt>
+                                        <dd>
+                                          {formatDate(
+                                            `${sub.startsOn}T12:00:00Z`,
+                                          )}
+                                        </dd>
+                                      </div>
+                                    </dl>
+                                    {sub.notes && (
+                                      <p className="sa-note">{sub.notes}</p>
+                                    )}
+                                  </details>
+                                )}
+                              </TableCell>
+                              <TableCell data-label="Plano / valor">
+                                <strong>
+                                  {sub?.planName ?? "Sem assinatura"}
+                                </strong>
+                                {sub && (
+                                  <span className="sa-secondary">
+                                    {sub.amountCents === null
+                                      ? "Valor não informado"
+                                      : formatCurrency(sub.amountCents)}{" "}
+                                    · {cycleLabels[sub.cycle]}
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell data-label="Situação">
+                                <PlatformStatus
+                                  tone={
+                                    sub?.status === "ACTIVE"
+                                      ? "success"
+                                      : sub?.status === "PAST_DUE"
+                                        ? "danger"
+                                        : sub?.status === "TRIAL"
+                                          ? "warning"
+                                          : "neutral"
+                                  }
+                                >
+                                  {sub
+                                    ? subscriptionStatusLabels[sub.status]
+                                    : "Sem plano"}
+                                </PlatformStatus>
+                              </TableCell>
+                              <TableCell data-label="Vigência">
+                                {sub?.endsOn ? (
+                                  <>
+                                    <span>
+                                      {formatDate(`${sub.endsOn}T12:00:00Z`)}
+                                    </span>
+                                    {notice && (
+                                      <span
+                                        className="sa-secondary"
+                                        data-tone={
+                                          notice.isExpired
+                                            ? "danger"
+                                            : notice.daysRemaining <= 7
+                                              ? "warning"
+                                              : undefined
+                                        }
+                                      >
+                                        {notice.isExpired
+                                          ? "Expirada"
+                                          : notice.daysRemaining === 0
+                                            ? "Vence hoje"
+                                            : `${notice.daysRemaining} dias restantes`}
+                                      </span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span className="sa-secondary">
+                                    {sub ? "Indeterminada" : "Não definida"}
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell className="sa-row-actions">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openSubscriptionModal(org)}
+                                >
+                                  {sub ? "Editar condições" : "Registrar plano"}
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </PlatformTable>
+                    </PlatformPanel>
+                  </TabsContent>
+                )}
+
+              {view === "subscriptions" && subscriptionSubView === "plans" && (
+                <TabsContent value="plans">
+                  {props.platformPlans?.length ? (
+                    <div className="sa-plan-grid">
+                      {props.platformPlans.map((plan) => (
+                        <Card key={plan.id} className="sa-plan">
+                          <CardHeader>
+                            <CardTitle>
+                              <h2>{plan.name}</h2>
+                            </CardTitle>
+                            <CardDescription>
+                              {plan.description || "Modelo de assinatura"}
+                            </CardDescription>
+                            <CardAction>
+                              <PlatformActions label={plan.name}>
+                                <DropdownMenuItem
+                                  onClick={() => setEditPlanTarget(plan)}
+                                >
+                                  <Edit3 />
+                                  Editar plano
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() => setDeletePlanTarget(plan)}
+                                >
+                                  <Trash2 />
+                                  Excluir plano
+                                </DropdownMenuItem>
+                              </PlatformActions>
+                            </CardAction>
+                          </CardHeader>
+                          <CardContent>
+                            <PlatformStatus
+                              tone={
+                                plan.status === "ARCHIVED" ? "neutral" : "success"
+                              }
+                            >
+                              {plan.status === "ARCHIVED" ? "Arquivado" : "Ativo"}
+                            </PlatformStatus>
+                            <div className="sa-price">
+                              <strong>
+                                {plan.amountCents === null
+                                  ? "Sob consulta"
+                                  : formatCurrency(plan.amountCents)}
+                              </strong>
+                              <span>
+                                {
+                                  cycleLabels[
+                                  plan.cycle as keyof typeof cycleLabels
+                                  ]
+                                }
+                              </span>
+                            </div>
+                            <dl className="sa-facts">
                               <div>
-                                <dt>Ação</dt>
-                                <dd>{log.action}</dd>
+                                <dt>Pessoas</dt>
+                                <dd>{plan.memberLimit ?? "Sem limite"}</dd>
                               </div>
                               <div>
-                                <dt>Recurso</dt>
-                                <dd>
-                                  {log.entityType} ({log.entityId})
-                                </dd>
-                              </div>
-                              <div>
-                                <dt>Organização</dt>
-                                <dd>{log.organizationId}</dd>
+                                <dt>Unidades</dt>
+                                <dd>{plan.locationLimit ?? "Sem limite"}</dd>
                               </div>
                             </dl>
-                          )}
-                        </details>
-                      </TableCell>
-                      <TableCell data-label="Responsável">
-                        {log.actorName}
-                      </TableCell>
-                      <TableCell data-label="Data e hora">
-                        <time dateTime={log.createdAt}>
-                          {formatDateTime(log.createdAt)}
-                        </time>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </PlatformTable>
-              </PlatformPanel>
-            )}
-
-            {
-              !(
-                view === "subscriptions" && subscriptionSubView === "plans"
-              ) && (
-                <PlatformPagination {...pagination} href={(page) => href(view, props.organizationFilter, page)} />
+                            {plan.features && (
+                              <details className="sa-details">
+                                <summary>Recursos incluídos</summary>
+                                <p className="sa-note">{plan.features}</p>
+                              </details>
+                            )}
+                          </CardContent>
+                          <CardFooter>
+                            <Button
+                              variant="outline"
+                              disabled={plan.status === "ARCHIVED"}
+                              onClick={() => setApplyPlanTarget(plan)}
+                            >
+                              <Plus data-icon="inline-start" />
+                              Aplicar a uma organização
+                            </Button>
+                          </CardFooter>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState
+                      icon={CalendarClock}
+                      title="Nenhum plano cadastrado"
+                      description="Crie modelos para agilizar o registro das assinaturas."
+                      action={
+                        <Button
+                          variant="outline"
+                          disabled={pending}
+                          onClick={() =>
+                            handleRunAction(
+                              () => seedDefaultPlatformPlansAction(),
+                              "Modelos padrão carregados.",
+                            )
+                          }
+                        >
+                          Carregar modelos padrão
+                        </Button>
+                      }
+                    />
+                  )}
+                </TabsContent>
               )}
-          </>
-        )}
-      </PlatformPage>
 
-      {/* MODAL 1: Suspender ou Reativar Acesso */}
-      <Modal
-        open={Boolean(statusTarget)}
-        onClose={closeModals}
-        title={`${statusTarget?.status === "ACTIVE" ? "Suspender" : "Reativar"} acesso`}
-      >
-        {statusTarget && (
-          <PlatformForm
-            action={async (form) => {
-              const nextStatus =
-                statusTarget.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
-              const reason = String(form.get("reason") ?? "");
-              await handleRunAction(
-                () =>
-                  statusTarget.kind === "organization"
-                    ? toggleOrganizationStatusAction(
+              {view === "templates" && props.selectedSegment && (
+                <div className="space-y-4">
+                  {props.platformTemplates && props.platformTemplates.length > 0 ? (
+                    <PlatformPanel
+                      title={`Templates Prontos · ${props.selectedSegment.name}`}
+                      description="Fluxos padronizados disponíveis para as empresas deste segmento."
+                      className="sa-list-panel"
+                    >
+                      <PlatformTable
+                        label={`Templates de ${props.selectedSegment.name}`}
+                        columns={[
+                          "Nome do Template",
+                          "Status",
+                          "Etapas",
+                          "Versão",
+                          "Ações",
+                        ]}
+                      >
+                        {props.platformTemplates.map((t) => (
+                          <TableRow key={t.id}>
+                            <TableCell>
+                              <PlatformIdentity
+                                name={t.name}
+                                description={t.description || "Sem descrição"}
+                              />
+                            </TableCell>
+                            <TableCell data-label="Status">
+                              <PlatformStatus tone={t.status === "ACTIVE" ? "success" : "neutral"}>
+                                {t.status === "ACTIVE" ? "Ativo" : "Inativo"}
+                              </PlatformStatus>
+                            </TableCell>
+                            <TableCell data-label="Etapas">
+                              <span className="text-xs font-medium">
+                                {t.definition?.tasks?.length || 0} etapa(s)
+                              </span>
+                            </TableCell>
+                            <TableCell data-label="Versão">
+                              <span className="text-xs text-muted-foreground font-mono">v{t.version}</span>
+                            </TableCell>
+                            <TableCell data-label="Ações" className="text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <PlatformActions label={t.name}>
+                                  <DropdownMenuItem
+                                    render={<Link href={`/superadmin/templates/${t.id}/edit`} />}
+                                  >
+                                    <Edit3 className="size-4" />
+                                    Editar template
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    variant="destructive"
+                                    onClick={() => setDeletePlatformTemplateTarget(t)}
+                                  >
+                                    <Trash2 className="size-4" />
+                                    Excluir template
+                                  </DropdownMenuItem>
+                                </PlatformActions>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </PlatformTable>
+                    </PlatformPanel>
+                  ) : (
+                    <EmptyState
+                      icon={Layers}
+                      title="Nenhum template cadastrado neste segmento"
+                      description={`Cadastre os modelos de processos recomendados para empresas de ${props.selectedSegment.name}.`}
+                      action={
+                        <Button
+                          nativeButton={false}
+                          render={<Link href={`/superadmin/templates/new?segmentId=${props.selectedSegment.id}`} />}
+                          className="bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
+                        >
+                          <Plus data-icon="inline-start" />
+                          Criar template pronto
+                        </Button>
+                      }
+                    />
+                  )}
+                </div>
+              )}
+
+              {view === "templates" && !props.selectedSegment && (
+                <div className="space-y-4">
+                  {businessSegmentsList.length > 0 ? (
+                    <PlatformPanel
+                      title="Segmentos cadastrados"
+                      description="Entre em um segmento para visualizar seus modelos de processos prontos ou criar novos."
+                      className="sa-list-panel"
+                    >
+                      <PlatformTable
+                        label="Segmentos de Negócio"
+                        columns={[
+                          "Segmento de Negócio",
+                          "Status",
+                          "Templates prontos",
+                          "Empresas vinculadas",
+                          "Ações",
+                        ]}
+                      >
+                        {businessSegmentsList.map((segment) => (
+                          <TableRow key={segment.id}>
+                            <TableCell>
+                              <PlatformIdentity
+                                name={segment.name}
+                                description={segment.description || `/${segment.slug}`}
+                              />
+                            </TableCell>
+                            <TableCell data-label="Status">
+                              <PlatformStatus tone={segment.status === "ACTIVE" ? "success" : "neutral"}>
+                                {segment.status === "ACTIVE" ? "Ativo" : "Inativo"}
+                              </PlatformStatus>
+                            </TableCell>
+                            <TableCell data-label="Templates prontos">
+                              <span className="text-xs font-semibold text-[var(--brand-900)]">
+                                {segment._count.templates} template(s)
+                              </span>
+                            </TableCell>
+                            <TableCell data-label="Empresas vinculadas">
+                              <span className="text-xs text-muted-foreground">
+                                {segment._count.organizations} empresa(s)
+                              </span>
+                            </TableCell>
+                            <TableCell data-label="Ações" className="text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  nativeButton={false}
+                                  render={<Link href={`/superadmin?view=templates&segment=${segment.id}`} />}
+                                  className="h-8 text-xs font-medium"
+                                >
+                                  Ver templates
+                                </Button>
+                                <PlatformActions label={segment.name}>
+                                  <DropdownMenuItem onClick={() => setEditSegmentTarget(segment)}>
+                                    <Edit3 className="size-4" />
+                                    Editar segmento
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    variant="destructive"
+                                    onClick={() => setDeleteSegmentTarget(segment)}
+                                  >
+                                    <Trash2 className="size-4" />
+                                    Remover segmento
+                                  </DropdownMenuItem>
+                                </PlatformActions>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </PlatformTable>
+                    </PlatformPanel>
+                  ) : (
+                    <EmptyState
+                      icon={Layers}
+                      title="Nenhum segmento cadastrado"
+                      description="Cadastre os segmentos de negócio para definir pacotes de templates para cada tipo de cliente."
+                      action={
+                        <Button
+                          onClick={() => setCreateSegmentOpen(true)}
+                          className="bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
+                        >
+                          <Plus data-icon="inline-start" />
+                          Cadastrar primeiro segmento
+                        </Button>
+                      }
+                    />
+                  )}
+                </div>
+              )}
+
+              {view === "usage" && !!organizations.length && (
+                <PlatformPanel
+                  title="Consumo por organização"
+                  description="Pessoas e unidades ativas em relação aos limites contratados."
+                  className="sa-list-panel"
+                >
+                  <PlatformTable
+                    label="Uso e limites"
+                    columns={[
+                      "Organização",
+                      "Pessoas",
+                      "Unidades",
+                      "Operação",
+                      "Ações",
+                    ]}
+                  >
+                    {organizations.map((org) => {
+                      const over =
+                        (org.subscription?.memberLimit != null &&
+                          org.membersCount > org.subscription.memberLimit) ||
+                        (org.subscription?.locationLimit != null &&
+                          org.locationsCount > org.subscription.locationLimit);
+                      return (
+                        <TableRow key={org.id}>
+                          <TableCell>
+                            <PlatformIdentity
+                              name={org.name}
+                              description={
+                                org.subscription?.planName ??
+                                "Sem plano registrado"
+                              }
+                            />
+                            {over && (
+                              <PlatformStatus tone="danger">
+                                Acima do limite
+                              </PlatformStatus>
+                            )}
+                          </TableCell>
+                          <TableCell data-label="Pessoas">
+                            <PlatformQuota
+                              label="Pessoas"
+                              count={org.membersCount}
+                              limit={org.subscription?.memberLimit ?? null}
+                            />
+                          </TableCell>
+                          <TableCell data-label="Unidades">
+                            <PlatformQuota
+                              label="Unidades"
+                              count={org.locationsCount}
+                              limit={org.subscription?.locationLimit ?? null}
+                            />
+                          </TableCell>
+                          <TableCell data-label="Operação">
+                            <span>
+                              {org.processesCount} processos · {org.tasksCount}{" "}
+                              tarefas
+                            </span>
+                            <span className="sa-secondary">
+                              {org.executionsCount} execuções
+                            </span>
+                          </TableCell>
+                          <TableCell className="sa-row-actions">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openSubscriptionModal(org)}
+                            >
+                              Ajustar limites
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </PlatformTable>
+                </PlatformPanel>
+              )}
+
+              {isLogView && !!logs.length && (
+                <PlatformPanel
+                  title={
+                    view === "support"
+                      ? "Histórico de atendimentos"
+                      : "Atividade administrativa"
+                  }
+                  description={
+                    view === "support"
+                      ? "Registros internos de atendimento por organização."
+                      : "Ações, responsáveis e justificativas da plataforma."
+                  }
+                  className="sa-list-panel"
+                >
+                  <PlatformTable
+                    label={view === "support" ? "Atendimentos" : "Auditoria"}
+                    columns={[
+                      view === "support"
+                        ? "Organização / atendimento"
+                        : "Ação / organização",
+                      "Responsável",
+                      "Data e hora",
+                    ]}
+                  >
+                    {logs.map((log) => (
+                      <TableRow key={log.id}>
+                        <TableCell>
+                          <div className="sa-log-title">
+                            {view === "support"
+                              ? log.orgName
+                              : (actionLabels[log.action] ?? uiLabel(log.action))}
+                          </div>
+                          {view === "support" ? (
+                            <PlatformStatus
+                              tone={
+                                log.supportStatus === "RESOLVED"
+                                  ? "success"
+                                  : log.supportStatus === "FOLLOW_UP"
+                                    ? "warning"
+                                    : "neutral"
+                              }
+                            >
+                              {supportLabels[log.supportStatus ?? ""]?.label ??
+                                "Atendimento"}
+                            </PlatformStatus>
+                          ) : (
+                            <Link
+                              className="sa-secondary sa-text-link"
+                              href={href("audit", log.organizationId)}
+                            >
+                              {log.orgName}
+                            </Link>
+                          )}
+                          <details className="sa-details">
+                            <summary>
+                              {view === "support"
+                                ? "Ler atendimento"
+                                : "Ver detalhes"}
+                            </summary>
+                            {log.note ? (
+                              <p className="sa-note">{log.note}</p>
+                            ) : (
+                              <p className="sa-secondary">
+                                Sem observações registradas.
+                              </p>
+                            )}
+                            {view === "audit" && (
+                              <dl className="sa-facts sa-technical">
+                                <div>
+                                  <dt>Ação</dt>
+                                  <dd>{log.action}</dd>
+                                </div>
+                                <div>
+                                  <dt>Recurso</dt>
+                                  <dd>
+                                    {log.entityType} ({log.entityId})
+                                  </dd>
+                                </div>
+                                <div>
+                                  <dt>Organização</dt>
+                                  <dd>{log.organizationId}</dd>
+                                </div>
+                              </dl>
+                            )}
+                          </details>
+                        </TableCell>
+                        <TableCell data-label="Responsável">
+                          {log.actorName}
+                        </TableCell>
+                        <TableCell data-label="Data e hora">
+                          <time dateTime={log.createdAt}>
+                            {formatDateTime(log.createdAt)}
+                          </time>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </PlatformTable>
+                </PlatformPanel>
+              )}
+
+              {
+                !(
+                  view === "subscriptions" && subscriptionSubView === "plans"
+                ) && (
+                  <PlatformPagination {...pagination} href={(page) => href(view, props.organizationFilter, page)} />
+                )}
+            </>
+          )}
+        </PlatformPage>
+
+        {/* MODAL 1: Suspender ou Reativar Acesso */}
+        <Modal
+          open={Boolean(statusTarget)}
+          onClose={closeModals}
+          title={`${statusTarget?.status === "ACTIVE" ? "Suspender" : "Reativar"} acesso`}
+        >
+          {statusTarget && (
+            <PlatformForm
+              action={async (form) => {
+                const nextStatus =
+                  statusTarget.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
+                const reason = String(form.get("reason") ?? "");
+                await handleRunAction(
+                  () =>
+                    statusTarget.kind === "organization"
+                      ? toggleOrganizationStatusAction(
                         statusTarget.id,
                         nextStatus,
                         reason,
                       )
-                    : updatePlatformUserStatusAction(
+                      : updatePlatformUserStatusAction(
                         statusTarget.id,
                         nextStatus,
                         reason,
                       ),
-                "Status de acesso atualizado com sucesso.",
-              );
-            }}
-            className="flex flex-col gap-4"
-          >
-            <div
-              className={cn(
-                "p-3 rounded-xl border text-xs",
-                statusTarget.status === "ACTIVE"
-                  ? "bg-rose-50 border-rose-200 text-rose-800"
-                  : "bg-emerald-50 border-emerald-200 text-emerald-800",
-              )}
+                  "Status de acesso atualizado com sucesso.",
+                );
+              }}
+              className="flex flex-col gap-4"
             >
-              <p>
-                {statusTarget.status === "ACTIVE"
-                  ? `Atenção: A suspensão impedirá imediatamente o acesso ${
-                      statusTarget.kind === "organization"
-                        ? "de todas as pessoas e operações vinculadas à organização"
-                        : "deste usuário na plataforma em todas as organizações"
-                    }.`
-                  : `A reativação restabelecerá o acesso ${
-                      statusTarget.kind === "organization"
-                        ? "dos colaboradores à organização"
-                        : "deste usuário na plataforma"
-                    }.`}
-              </p>
-            </div>
-
-            <div className="text-xs">
-              Alvo da operação: <strong>{statusTarget.name}</strong>
-            </div>
-
-            <Field>
-              <FieldLabel
-                htmlFor="status-reason"
-                className="text-xs font-semibold"
-              >
-                Motivo da alteração (obrigatório para auditoria)
-              </FieldLabel>
-              <Textarea
-                id="status-reason"
-                name="reason"
-                required
-                minLength={5}
-                maxLength={2000}
-                placeholder="Descreva o motivo desta alteração..."
-                disabled={pending}
-                className="text-xs min-h-[90px]"
-              />
-            </Field>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
-              <Button
-                variant="outline"
-                type="button"
-                disabled={pending}
-                onClick={closeModals}
-                className="h-9 text-xs"
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                disabled={pending}
+              <div
                 className={cn(
-                  "h-9 text-xs font-semibold text-white",
+                  "p-3 rounded-xl border text-xs",
                   statusTarget.status === "ACTIVE"
-                    ? "bg-destructive hover:bg-destructive/90"
-                    : "bg-[var(--brand-900)] hover:bg-[var(--brand-700)]",
+                    ? "bg-rose-50 border-rose-200 text-rose-800"
+                    : "bg-emerald-50 border-emerald-200 text-emerald-800",
                 )}
               >
-
-                {statusTarget.status === "ACTIVE"
-                  ? "Confirmar suspensão"
-                  : "Confirmar reativação"}
-              </Button>
-            </div>
-          </PlatformForm>
-        )}
-      </Modal>
-
-      {/* MODAL 2: Registrar / Editar Assinatura Manual */}
-      <Modal
-        open={Boolean(subscriptionTarget)}
-        onClose={closeModals}
-        title={`${subscriptionTarget?.subscription ? "Editar" : "Registrar"} assinatura comercial`}
-        className="max-h-[90dvh] overflow-y-auto sm:max-w-xl"
-      >
-        {subscriptionTarget && (
-          <PlatformForm
-            key={subscriptionTarget.id}
-            action={async (form) => {
-              const amountNum =
-                subAmount.trim() === ""
-                  ? null
-                  : Number(subAmount.replace(",", "."));
-              await handleRunAction(
-                () =>
-                  saveManualSubscriptionAction(
-                    subscriptionTarget.id,
-                    {
-                      planName: subPlanName.trim(),
-                      status: subStatus,
-                      cycle: subCycle,
-                      amountCents:
-                        amountNum === null || Number.isNaN(amountNum)
-                          ? null
-                          : Math.round(amountNum * 100),
-                      startsOn: subStartsOn,
-                      endsOn: subEndsOn.trim() || null,
-                      memberLimit:
-                        subMemberLimit.trim() === ""
-                          ? null
-                          : Number(subMemberLimit),
-                      locationLimit:
-                        subLocationLimit.trim() === ""
-                          ? null
-                          : Number(subLocationLimit),
-                      notes: subNotes.trim(),
-                    },
-                    String(form.get("reason") ?? ""),
-                  ),
-                "Assinatura salva no histórico do cliente.",
-              );
-            }}
-            className="flex flex-col gap-4 text-xs"
-          >
-            <p className="text-muted-foreground">
-              Condições contratuais de{" "}
-              <strong>{subscriptionTarget.name}</strong>. O controle financeiro
-              e cobrança são manuais.
-            </p>
-
-            {/* SELETOR DE PLANO PRONTO (MODELO) */}
-            <div className="p-3.5 rounded-xl border border-[var(--brand-700)]/25 bg-[var(--brand-soft)]/40 flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-xs text-[var(--brand-900)] flex items-center gap-1.5">
-                  <Sparkles className="size-3.5 text-[var(--brand-700)]" />
-                  Carregar modelo de plano pronto
-                </span>
-                {selectedPresetPlanId && (
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] bg-white border-[var(--brand-700)]/30 text-[var(--brand-900)] shadow-none"
-                  >
-                    Modelo aplicado
-                  </Badge>
-                )}
+                <p>
+                  {statusTarget.status === "ACTIVE"
+                    ? `Atenção: A suspensão impedirá imediatamente o acesso ${statusTarget.kind === "organization"
+                      ? "de todas as pessoas e operações vinculadas à organização"
+                      : "deste usuário na plataforma em todas as organizações"
+                    }.`
+                    : `A reativação restabelecerá o acesso ${statusTarget.kind === "organization"
+                      ? "dos colaboradores à organização"
+                      : "deste usuário na plataforma"
+                    }.`}
+                </p>
               </div>
-              <p className="text-[11px] text-muted-foreground">
-                Selecione um plano pronto para preencher os valores, ciclo e
-                limites abaixo automaticamente. Você pode customizá-los
-                livremente antes de salvar.
-              </p>
-              <NativeSelect
-                id="preset-plan-selector"
-                value={selectedPresetPlanId}
-                onChange={(e) => handlePresetPlanChange(e.target.value)}
-                disabled={pending}
-                className="w-full text-xs h-10 bg-white"
-              >
-                <NativeSelectOption value="">
-                  -- Selecione um plano pronto para autopreencher --
-                </NativeSelectOption>
-                {props.platformPlans?.map((plan) => (
-                  <NativeSelectOption key={plan.id} value={plan.id}>
-                    {plan.name} —{" "}
-                    {plan.amountCents != null
-                      ? formatCurrency(plan.amountCents)
-                      : "R$ 0,00"}{" "}
-                    (
-                    {cycleLabels[plan.cycle as keyof typeof cycleLabels] ??
-                      plan.cycle}
-                    )
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="text-xs">
+                Alvo da operação: <strong>{statusTarget.name}</strong>
+              </div>
+
               <Field>
                 <FieldLabel
-                  htmlFor="plan-name"
+                  htmlFor="status-reason"
                   className="text-xs font-semibold"
                 >
-                  Nome do plano *
+                  Motivo da alteração (obrigatório para auditoria)
                 </FieldLabel>
-                <Input
-                  id="plan-name"
-                  name="planName"
-                  value={subPlanName}
-                  onChange={(e) => setSubPlanName(e.target.value)}
+                <Textarea
+                  id="status-reason"
+                  name="reason"
                   required
-                  minLength={2}
-                  maxLength={80}
-                  placeholder="Ex.: Professional, Enterprise"
+                  minLength={5}
+                  maxLength={2000}
+                  placeholder="Descreva o motivo desta alteração..."
                   disabled={pending}
-                  className="text-xs h-11"
+                  className="text-xs min-h-[90px]"
                 />
               </Field>
 
-              <Field>
-                <FieldLabel
-                  htmlFor="subscription-status"
-                  className="text-xs font-semibold"
-                >
-                  Situação contratual *
-                </FieldLabel>
-                <NativeSelect
-                  id="subscription-status"
-                  name="status"
-                  value={subStatus}
-                  onChange={(e) => setSubStatus(e.target.value)}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+                <Button
+                  variant="outline"
+                  type="button"
                   disabled={pending}
-                  className="w-full text-xs h-11"
+                  onClick={closeModals}
+                  className="h-9 text-xs"
                 >
-                  {Object.entries(subscriptionStatusLabels).map(
-                    ([value, label]) => (
-                      <NativeSelectOption key={value} value={value}>
-                        {label}
-                      </NativeSelectOption>
-                    ),
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={pending}
+                  className={cn(
+                    "h-9 text-xs font-semibold text-white",
+                    statusTarget.status === "ACTIVE"
+                      ? "bg-destructive hover:bg-destructive/90"
+                      : "bg-[var(--brand-900)] hover:bg-[var(--brand-700)]",
                   )}
-                </NativeSelect>
-              </Field>
-
-              <Field>
-                <FieldLabel htmlFor="cycle" className="text-xs font-semibold">
-                  Periodicidade contratada *
-                </FieldLabel>
-                <NativeSelect
-                  id="cycle"
-                  name="cycle"
-                  value={subCycle}
-                  onChange={(e) => setSubCycle(e.target.value)}
-                  disabled={pending}
-                  className="w-full text-xs h-11"
                 >
-                  <NativeSelectOption value="MONTHLY">
-                    Mensal
-                  </NativeSelectOption>
-                  <NativeSelectOption value="YEARLY">Anual</NativeSelectOption>
-                  <NativeSelectOption value="CUSTOM">
-                    Personalizada
-                  </NativeSelectOption>
-                </NativeSelect>
-              </Field>
 
-              <Field>
-                <FieldLabel htmlFor="amount" className="text-xs font-semibold">
-                  Valor por período (R$)
-                </FieldLabel>
-                <Input
-                  id="amount"
-                  name="amount"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="10000000"
-                  value={subAmount}
-                  onChange={(e) => setSubAmount(e.target.value)}
-                  placeholder="0,00"
-                  disabled={pending}
-                  className="text-xs h-11"
-                />
-              </Field>
+                  {statusTarget.status === "ACTIVE"
+                    ? "Confirmar suspensão"
+                    : "Confirmar reativação"}
+                </Button>
+              </div>
+            </PlatformForm>
+          )}
+        </Modal>
 
-              <Field>
-                <FieldLabel
-                  htmlFor="starts-on"
-                  className="text-xs font-semibold"
-                >
-                  Início da vigência *
-                </FieldLabel>
-                <Input
-                  id="starts-on"
-                  name="startsOn"
-                  type="date"
-                  required
-                  value={subStartsOn}
-                  onChange={(e) => setSubStartsOn(e.target.value)}
-                  disabled={pending}
-                  className="text-xs h-11"
-                />
-              </Field>
-
-              <Field>
-                <FieldLabel htmlFor="ends-on" className="text-xs font-semibold">
-                  Fim da vigência (opcional)
-                </FieldLabel>
-                <Input
-                  id="ends-on"
-                  name="endsOn"
-                  type="date"
-                  value={subEndsOn}
-                  onChange={(e) => setSubEndsOn(e.target.value)}
-                  disabled={pending}
-                  className="text-xs h-11"
-                />
-              </Field>
-
-              <Field>
-                <FieldLabel
-                  htmlFor="member-limit"
-                  className="text-xs font-semibold"
-                >
-                  Limite de pessoas ativas
-                </FieldLabel>
-                <Input
-                  id="member-limit"
-                  name="memberLimit"
-                  type="number"
-                  min="1"
-                  max="10000000"
-                  step="1"
-                  placeholder="Em branco para ilimitado"
-                  value={subMemberLimit}
-                  onChange={(e) => setSubMemberLimit(e.target.value)}
-                  disabled={pending}
-                  className="text-xs h-11"
-                />
-              </Field>
-
-              <Field>
-                <FieldLabel
-                  htmlFor="location-limit"
-                  className="text-xs font-semibold"
-                >
-                  Limite de unidades ativas
-                </FieldLabel>
-                <Input
-                  id="location-limit"
-                  name="locationLimit"
-                  type="number"
-                  min="1"
-                  max="10000000"
-                  step="1"
-                  placeholder="Em branco para ilimitado"
-                  value={subLocationLimit}
-                  onChange={(e) => setSubLocationLimit(e.target.value)}
-                  disabled={pending}
-                  className="text-xs h-11"
-                />
-              </Field>
-            </div>
-
-            <Field>
-              <FieldLabel
-                htmlFor="subscription-notes"
-                className="text-xs font-semibold"
-              >
-                Observações comerciais
-              </FieldLabel>
-              <Textarea
-                id="subscription-notes"
-                name="notes"
-                maxLength={2000}
-                placeholder="Ex.: Condição acordada na renovação, desconto temporário..."
-                value={subNotes}
-                onChange={(e) => setSubNotes(e.target.value)}
-                disabled={pending}
-                className="text-xs min-h-[60px]"
-              />
-            </Field>
-
-            <Field>
-              <FieldLabel
-                htmlFor="subscription-reason"
-                className="text-xs font-semibold"
-              >
-                Motivo ou justificativa da alteração (opcional para histórico)
-              </FieldLabel>
-              <Textarea
-                id="subscription-reason"
-                name="reason"
-                maxLength={2000}
-                placeholder="Descreva o motivo desta alteração comercial (opcional)..."
-                disabled={pending}
-                className="text-xs min-h-[60px]"
-              />
-            </Field>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
-              <Button
-                variant="outline"
-                type="button"
-                onClick={closeModals}
-                disabled={pending}
-                className="h-9 text-xs"
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                disabled={pending}
-                className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
-              >
-
-                Salvar assinatura
-              </Button>
-            </div>
-          </PlatformForm>
-        )}
-      </Modal>
-
-      <Modal
-        open={createPlanOpen}
-        onClose={closeModals}
-        title="Criar novo modelo de plano pronto"
-        className="max-h-[90dvh] overflow-y-auto sm:max-w-xl"
-      >
-        <PlatformForm
-          action={async (form) => {
-            const amountVal = String(form.get("amount") ?? "").trim();
-            const amountNum =
-              amountVal === "" ? null : Number(amountVal.replace(",", "."));
-            const memberLim = nullableNumber(form, "memberLimit");
-            const locationLim = nullableNumber(form, "locationLimit");
-
-            await handleRunAction(
-              () =>
-                createPlatformPlanAction({
-                  name: String(form.get("name") ?? "").trim(),
-                  description:
-                    String(form.get("description") ?? "").trim() || null,
-                  cycle: (form.get("cycle") ?? "MONTHLY") as
-                    "MONTHLY" | "YEARLY" | "CUSTOM",
-                  amountCents:
-                    amountNum === null || Number.isNaN(amountNum)
-                      ? null
-                      : Math.round(amountNum * 100),
-                  memberLimit: memberLim,
-                  locationLimit: locationLim,
-                  features: String(form.get("features") ?? "").trim() || null,
-                  status: (form.get("status") ?? "ACTIVE") as
-                    "ACTIVE" | "ARCHIVED",
-                }),
-              "Plano pronto criado com sucesso!",
-            );
-          }}
-          className="flex flex-col gap-4 text-xs"
+        {/* MODAL 2: Registrar / Editar Assinatura Manual */}
+        <Modal
+          open={Boolean(subscriptionTarget)}
+          onClose={closeModals}
+          title={`${subscriptionTarget?.subscription ? "Editar" : "Registrar"} assinatura comercial`}
+          className="max-h-[90dvh] overflow-y-auto sm:max-w-xl"
         >
-          <p className="text-muted-foreground">
-            Defina os parâmetros do plano modelo. Ao registrar ou alterar a
-            assinatura de qualquer empresa, você poderá carregar este plano
-            pré-configurado.
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field className="sm:col-span-2">
-              <FieldLabel
-                htmlFor="plan-create-name"
-                className="text-xs font-semibold"
-              >
-                Nome do plano *
-              </FieldLabel>
-              <Input
-                id="plan-create-name"
-                name="name"
-                required
-                minLength={2}
-                maxLength={80}
-                placeholder="Ex.: Start, Profissional, Corporativo, Enterprise"
-                disabled={pending}
-                className="text-xs h-11"
-              />
-            </Field>
-
-            <Field>
-              <FieldLabel
-                htmlFor="plan-create-cycle"
-                className="text-xs font-semibold"
-              >
-                Periodicidade padrão *
-              </FieldLabel>
-              <NativeSelect
-                id="plan-create-cycle"
-                name="cycle"
-                defaultValue="MONTHLY"
-                disabled={pending}
-                className="w-full text-xs h-11"
-              >
-                <NativeSelectOption value="MONTHLY">Mensal</NativeSelectOption>
-                <NativeSelectOption value="YEARLY">Anual</NativeSelectOption>
-                <NativeSelectOption value="CUSTOM">
-                  Personalizada
-                </NativeSelectOption>
-              </NativeSelect>
-            </Field>
-
-            <Field>
-              <FieldLabel
-                htmlFor="plan-create-amount"
-                className="text-xs font-semibold"
-              >
-                Valor contratual (R$)
-              </FieldLabel>
-              <Input
-                id="plan-create-amount"
-                name="amount"
-                type="number"
-                step="0.01"
-                min="0"
-                max="10000000"
-                placeholder="0,00"
-                disabled={pending}
-                className="text-xs h-11"
-              />
-            </Field>
-
-            <Field>
-              <FieldLabel
-                htmlFor="plan-create-member-limit"
-                className="text-xs font-semibold"
-              >
-                Limite de pessoas ativas
-              </FieldLabel>
-              <Input
-                id="plan-create-member-limit"
-                name="memberLimit"
-                type="number"
-                min="1"
-                max="10000000"
-                step="1"
-                placeholder="Em branco para ilimitado"
-                disabled={pending}
-                className="text-xs h-11"
-              />
-            </Field>
-
-            <Field>
-              <FieldLabel
-                htmlFor="plan-create-location-limit"
-                className="text-xs font-semibold"
-              >
-                Limite de unidades ativas
-              </FieldLabel>
-              <Input
-                id="plan-create-location-limit"
-                name="locationLimit"
-                type="number"
-                min="1"
-                max="10000000"
-                step="1"
-                placeholder="Em branco para ilimitado"
-                disabled={pending}
-                className="text-xs h-11"
-              />
-            </Field>
-
-            <Field className="sm:col-span-2">
-              <FieldLabel
-                htmlFor="plan-create-status"
-                className="text-xs font-semibold"
-              >
-                Situação no catálogo
-              </FieldLabel>
-              <NativeSelect
-                id="plan-create-status"
-                name="status"
-                defaultValue="ACTIVE"
-                disabled={pending}
-                className="w-full text-xs h-11"
-              >
-                <NativeSelectOption value="ACTIVE">
-                  Ativo (sugerido para novas assinaturas)
-                </NativeSelectOption>
-                <NativeSelectOption value="ARCHIVED">
-                  Arquivado (não sugerido para novos clientes)
-                </NativeSelectOption>
-              </NativeSelect>
-            </Field>
-          </div>
-
-          <Field>
-            <FieldLabel
-              htmlFor="plan-create-desc"
-              className="text-xs font-semibold"
+          {subscriptionTarget && (
+            <PlatformForm
+              key={subscriptionTarget.id}
+              action={async (form) => {
+                const amountNum =
+                  subAmount.trim() === ""
+                    ? null
+                    : Number(subAmount.replace(",", "."));
+                await handleRunAction(
+                  () =>
+                    saveManualSubscriptionAction(
+                      subscriptionTarget.id,
+                      {
+                        planName: subPlanName.trim(),
+                        status: subStatus,
+                        cycle: subCycle,
+                        amountCents:
+                          amountNum === null || Number.isNaN(amountNum)
+                            ? null
+                            : Math.round(amountNum * 100),
+                        startsOn: subStartsOn,
+                        endsOn: subEndsOn.trim() || null,
+                        memberLimit:
+                          subMemberLimit.trim() === ""
+                            ? null
+                            : Number(subMemberLimit),
+                        locationLimit:
+                          subLocationLimit.trim() === ""
+                            ? null
+                            : Number(subLocationLimit),
+                        notes: subNotes.trim(),
+                      },
+                      String(form.get("reason") ?? ""),
+                    ),
+                  "Assinatura salva no histórico do cliente.",
+                );
+              }}
+              className="flex flex-col gap-4 text-xs"
             >
-              Descrição comercial do plano
-            </FieldLabel>
-            <Textarea
-              id="plan-create-desc"
-              name="description"
-              maxLength={500}
-              placeholder="Ex.: Ideal para pequenas operações que precisam padronizar rotinas com rapidez..."
-              disabled={pending}
-              className="text-sm! min-h-15 resize-none"
-            />
-          </Field>
+              <p className="text-muted-foreground">
+                Condições contratuais de{" "}
+                <strong>{subscriptionTarget.name}</strong>. O controle financeiro
+                e cobrança são manuais.
+              </p>
 
-          <Field>
-            <FieldLabel
-              htmlFor="plan-create-features"
-              className="text-xs font-semibold"
-            >
-              Recursos inclusos e destaques (uma linha por item)
-            </FieldLabel>
-            <Textarea
-              id="plan-create-features"
-              name="features"
-              maxLength={2000}
-              placeholder="Ex.:&#10;Até 10 colaboradores ativos&#10;1 unidade operacional&#10;Checklists e rotinas ilimitadas&#10;Suporte via ticket"
-              disabled={pending}
-              className="text-sm! min-h-22.5 resize-none"
-            />
-          </Field>
+              {/* SELETOR DE PLANO PRONTO (MODELO) */}
+              <div className="p-3.5 rounded-xl border border-[var(--brand-700)]/25 bg-[var(--brand-soft)]/40 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-xs text-[var(--brand-900)] flex items-center gap-1.5">
+                    <Sparkles className="size-3.5 text-[var(--brand-700)]" />
+                    Carregar modelo de plano pronto
+                  </span>
+                  {selectedPresetPlanId && (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] bg-white border-[var(--brand-700)]/30 text-[var(--brand-900)] shadow-none"
+                    >
+                      Modelo aplicado
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Selecione um plano pronto para preencher os valores, ciclo e
+                  limites abaixo automaticamente. Você pode customizá-los
+                  livremente antes de salvar.
+                </p>
+                <NativeSelect
+                  id="preset-plan-selector"
+                  value={selectedPresetPlanId}
+                  onChange={(e) => handlePresetPlanChange(e.target.value)}
+                  disabled={pending}
+                  className="w-full text-xs h-10 bg-white"
+                >
+                  <NativeSelectOption value="">
+                    -- Selecione um plano pronto para autopreencher --
+                  </NativeSelectOption>
+                  {props.platformPlans?.map((plan) => (
+                    <NativeSelectOption key={plan.id} value={plan.id}>
+                      {plan.name} —{" "}
+                      {plan.amountCents != null
+                        ? formatCurrency(plan.amountCents)
+                        : "R$ 0,00"}{" "}
+                      (
+                      {cycleLabels[plan.cycle as keyof typeof cycleLabels] ??
+                        plan.cycle}
+                      )
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </div>
 
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
-            <Button
-              variant="outline"
-              type="button"
-              onClick={closeModals}
-              disabled={pending}
-              className="h-9 text-xs"
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="submit"
-              disabled={pending}
-              className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
-            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field>
+                  <FieldLabel
+                    htmlFor="plan-name"
+                    className="text-xs font-semibold"
+                  >
+                    Nome do plano *
+                  </FieldLabel>
+                  <Input
+                    id="plan-name"
+                    name="planName"
+                    value={subPlanName}
+                    onChange={(e) => setSubPlanName(e.target.value)}
+                    required
+                    minLength={2}
+                    maxLength={80}
+                    placeholder="Ex.: Professional, Enterprise"
+                    disabled={pending}
+                    className="text-xs h-11"
+                  />
+                </Field>
 
-              Criar modelo de plano
-            </Button>
-          </div>
-        </PlatformForm>
-      </Modal>
+                <Field>
+                  <FieldLabel
+                    htmlFor="subscription-status"
+                    className="text-xs font-semibold"
+                  >
+                    Situação contratual *
+                  </FieldLabel>
+                  <NativeSelect
+                    id="subscription-status"
+                    name="status"
+                    value={subStatus}
+                    onChange={(e) => setSubStatus(e.target.value)}
+                    disabled={pending}
+                    className="w-full text-xs h-11"
+                  >
+                    {Object.entries(subscriptionStatusLabels).map(
+                      ([value, label]) => (
+                        <NativeSelectOption key={value} value={value}>
+                          {label}
+                        </NativeSelectOption>
+                      ),
+                    )}
+                  </NativeSelect>
+                </Field>
 
-      {/* MODAL: Editar Plano Pronto */}
-      <Modal
-        open={Boolean(editPlanTarget)}
-        onClose={closeModals}
-        title={`Editar plano pronto: ${editPlanTarget?.name}`}
-        className="max-h-[90dvh] overflow-y-auto sm:max-w-xl"
-      >
-        {editPlanTarget && (
+                <Field>
+                  <FieldLabel htmlFor="cycle" className="text-xs font-semibold">
+                    Periodicidade contratada *
+                  </FieldLabel>
+                  <NativeSelect
+                    id="cycle"
+                    name="cycle"
+                    value={subCycle}
+                    onChange={(e) => setSubCycle(e.target.value)}
+                    disabled={pending}
+                    className="w-full text-xs h-11"
+                  >
+                    <NativeSelectOption value="MONTHLY">
+                      Mensal
+                    </NativeSelectOption>
+                    <NativeSelectOption value="YEARLY">Anual</NativeSelectOption>
+                    <NativeSelectOption value="CUSTOM">
+                      Personalizada
+                    </NativeSelectOption>
+                  </NativeSelect>
+                </Field>
+
+                <Field>
+                  <FieldLabel htmlFor="amount" className="text-xs font-semibold">
+                    Valor por período (R$)
+                  </FieldLabel>
+                  <Input
+                    id="amount"
+                    name="amount"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="10000000"
+                    value={subAmount}
+                    onChange={(e) => setSubAmount(e.target.value)}
+                    placeholder="0,00"
+                    disabled={pending}
+                    className="text-xs h-11"
+                  />
+                </Field>
+
+                <Field>
+                  <FieldLabel
+                    htmlFor="starts-on"
+                    className="text-xs font-semibold"
+                  >
+                    Início da vigência *
+                  </FieldLabel>
+                  <Input
+                    id="starts-on"
+                    name="startsOn"
+                    type="date"
+                    required
+                    value={subStartsOn}
+                    onChange={(e) => setSubStartsOn(e.target.value)}
+                    disabled={pending}
+                    className="text-xs h-11"
+                  />
+                </Field>
+
+                <Field>
+                  <FieldLabel htmlFor="ends-on" className="text-xs font-semibold">
+                    Fim da vigência (opcional)
+                  </FieldLabel>
+                  <Input
+                    id="ends-on"
+                    name="endsOn"
+                    type="date"
+                    value={subEndsOn}
+                    onChange={(e) => setSubEndsOn(e.target.value)}
+                    disabled={pending}
+                    className="text-xs h-11"
+                  />
+                </Field>
+
+                <Field>
+                  <FieldLabel
+                    htmlFor="member-limit"
+                    className="text-xs font-semibold"
+                  >
+                    Limite de pessoas ativas
+                  </FieldLabel>
+                  <Input
+                    id="member-limit"
+                    name="memberLimit"
+                    type="number"
+                    min="1"
+                    max="10000000"
+                    step="1"
+                    placeholder="Em branco para ilimitado"
+                    value={subMemberLimit}
+                    onChange={(e) => setSubMemberLimit(e.target.value)}
+                    disabled={pending}
+                    className="text-xs h-11"
+                  />
+                </Field>
+
+                <Field>
+                  <FieldLabel
+                    htmlFor="location-limit"
+                    className="text-xs font-semibold"
+                  >
+                    Limite de unidades ativas
+                  </FieldLabel>
+                  <Input
+                    id="location-limit"
+                    name="locationLimit"
+                    type="number"
+                    min="1"
+                    max="10000000"
+                    step="1"
+                    placeholder="Em branco para ilimitado"
+                    value={subLocationLimit}
+                    onChange={(e) => setSubLocationLimit(e.target.value)}
+                    disabled={pending}
+                    className="text-xs h-11"
+                  />
+                </Field>
+              </div>
+
+              <Field>
+                <FieldLabel
+                  htmlFor="subscription-notes"
+                  className="text-xs font-semibold"
+                >
+                  Observações comerciais
+                </FieldLabel>
+                <Textarea
+                  id="subscription-notes"
+                  name="notes"
+                  maxLength={2000}
+                  placeholder="Ex.: Condição acordada na renovação, desconto temporário..."
+                  value={subNotes}
+                  onChange={(e) => setSubNotes(e.target.value)}
+                  disabled={pending}
+                  className="text-xs min-h-[60px]"
+                />
+              </Field>
+
+              <Field>
+                <FieldLabel
+                  htmlFor="subscription-reason"
+                  className="text-xs font-semibold"
+                >
+                  Motivo ou justificativa da alteração (opcional para histórico)
+                </FieldLabel>
+                <Textarea
+                  id="subscription-reason"
+                  name="reason"
+                  maxLength={2000}
+                  placeholder="Descreva o motivo desta alteração comercial (opcional)..."
+                  disabled={pending}
+                  className="text-xs min-h-[60px]"
+                />
+              </Field>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={closeModals}
+                  disabled={pending}
+                  className="h-9 text-xs"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={pending}
+                  className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
+                >
+
+                  Salvar assinatura
+                </Button>
+              </div>
+            </PlatformForm>
+          )}
+        </Modal>
+
+        <Modal
+          open={createPlanOpen}
+          onClose={closeModals}
+          title="Criar novo modelo de plano pronto"
+          className="max-h-[90dvh] overflow-y-auto sm:max-w-xl"
+        >
           <PlatformForm
-            key={editPlanTarget.id}
             action={async (form) => {
               const amountVal = String(form.get("amount") ?? "").trim();
               const amountNum =
@@ -2188,7 +2227,7 @@ export function SuperadminDashboardClient(props: Props) {
 
               await handleRunAction(
                 () =>
-                  updatePlatformPlanAction(editPlanTarget.id, {
+                  createPlatformPlanAction({
                     name: String(form.get("name") ?? "").trim(),
                     description:
                       String(form.get("description") ?? "").trim() || null,
@@ -2204,26 +2243,32 @@ export function SuperadminDashboardClient(props: Props) {
                     status: (form.get("status") ?? "ACTIVE") as
                       "ACTIVE" | "ARCHIVED",
                   }),
-                "Plano pronto atualizado com sucesso!",
+                "Plano pronto criado com sucesso!",
               );
             }}
             className="flex flex-col gap-4 text-xs"
           >
+            <p className="text-muted-foreground">
+              Defina os parâmetros do plano modelo. Ao registrar ou alterar a
+              assinatura de qualquer empresa, você poderá carregar este plano
+              pré-configurado.
+            </p>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field className="sm:col-span-2">
                 <FieldLabel
-                  htmlFor="plan-edit-name"
+                  htmlFor="plan-create-name"
                   className="text-xs font-semibold"
                 >
                   Nome do plano *
                 </FieldLabel>
                 <Input
-                  id="plan-edit-name"
+                  id="plan-create-name"
                   name="name"
-                  defaultValue={editPlanTarget.name}
                   required
                   minLength={2}
                   maxLength={80}
+                  placeholder="Ex.: Start, Profissional, Corporativo, Enterprise"
                   disabled={pending}
                   className="text-xs h-11"
                 />
@@ -2231,21 +2276,19 @@ export function SuperadminDashboardClient(props: Props) {
 
               <Field>
                 <FieldLabel
-                  htmlFor="plan-edit-cycle"
+                  htmlFor="plan-create-cycle"
                   className="text-xs font-semibold"
                 >
                   Periodicidade padrão *
                 </FieldLabel>
                 <NativeSelect
-                  id="plan-edit-cycle"
+                  id="plan-create-cycle"
                   name="cycle"
-                  defaultValue={editPlanTarget.cycle}
+                  defaultValue="MONTHLY"
                   disabled={pending}
                   className="w-full text-xs h-11"
                 >
-                  <NativeSelectOption value="MONTHLY">
-                    Mensal
-                  </NativeSelectOption>
+                  <NativeSelectOption value="MONTHLY">Mensal</NativeSelectOption>
                   <NativeSelectOption value="YEARLY">Anual</NativeSelectOption>
                   <NativeSelectOption value="CUSTOM">
                     Personalizada
@@ -2255,23 +2298,18 @@ export function SuperadminDashboardClient(props: Props) {
 
               <Field>
                 <FieldLabel
-                  htmlFor="plan-edit-amount"
+                  htmlFor="plan-create-amount"
                   className="text-xs font-semibold"
                 >
                   Valor contratual (R$)
                 </FieldLabel>
                 <Input
-                  id="plan-edit-amount"
+                  id="plan-create-amount"
                   name="amount"
                   type="number"
                   step="0.01"
                   min="0"
                   max="10000000"
-                  defaultValue={
-                    editPlanTarget.amountCents != null
-                      ? (editPlanTarget.amountCents / 100).toFixed(2)
-                      : ""
-                  }
                   placeholder="0,00"
                   disabled={pending}
                   className="text-xs h-11"
@@ -2280,19 +2318,18 @@ export function SuperadminDashboardClient(props: Props) {
 
               <Field>
                 <FieldLabel
-                  htmlFor="plan-edit-member-limit"
+                  htmlFor="plan-create-member-limit"
                   className="text-xs font-semibold"
                 >
                   Limite de pessoas ativas
                 </FieldLabel>
                 <Input
-                  id="plan-edit-member-limit"
+                  id="plan-create-member-limit"
                   name="memberLimit"
                   type="number"
                   min="1"
                   max="10000000"
                   step="1"
-                  defaultValue={editPlanTarget.memberLimit ?? ""}
                   placeholder="Em branco para ilimitado"
                   disabled={pending}
                   className="text-xs h-11"
@@ -2301,19 +2338,18 @@ export function SuperadminDashboardClient(props: Props) {
 
               <Field>
                 <FieldLabel
-                  htmlFor="plan-edit-location-limit"
+                  htmlFor="plan-create-location-limit"
                   className="text-xs font-semibold"
                 >
                   Limite de unidades ativas
                 </FieldLabel>
                 <Input
-                  id="plan-edit-location-limit"
+                  id="plan-create-location-limit"
                   name="locationLimit"
                   type="number"
                   min="1"
                   max="10000000"
                   step="1"
-                  defaultValue={editPlanTarget.locationLimit ?? ""}
                   placeholder="Em branco para ilimitado"
                   disabled={pending}
                   className="text-xs h-11"
@@ -2322,15 +2358,15 @@ export function SuperadminDashboardClient(props: Props) {
 
               <Field className="sm:col-span-2">
                 <FieldLabel
-                  htmlFor="plan-edit-status"
+                  htmlFor="plan-create-status"
                   className="text-xs font-semibold"
                 >
                   Situação no catálogo
                 </FieldLabel>
                 <NativeSelect
-                  id="plan-edit-status"
+                  id="plan-create-status"
                   name="status"
-                  defaultValue={editPlanTarget.status}
+                  defaultValue="ACTIVE"
                   disabled={pending}
                   className="w-full text-xs h-11"
                 >
@@ -2338,7 +2374,7 @@ export function SuperadminDashboardClient(props: Props) {
                     Ativo (sugerido para novas assinaturas)
                   </NativeSelectOption>
                   <NativeSelectOption value="ARCHIVED">
-                    Arquivado (não sugerido)
+                    Arquivado (não sugerido para novos clientes)
                   </NativeSelectOption>
                 </NativeSelect>
               </Field>
@@ -2346,37 +2382,35 @@ export function SuperadminDashboardClient(props: Props) {
 
             <Field>
               <FieldLabel
-                htmlFor="plan-edit-desc"
+                htmlFor="plan-create-desc"
                 className="text-xs font-semibold"
               >
                 Descrição comercial do plano
               </FieldLabel>
               <Textarea
-                id="plan-edit-desc"
+                id="plan-create-desc"
                 name="description"
                 maxLength={500}
-                defaultValue={editPlanTarget.description ?? ""}
-                placeholder="Ex.: Ideal para pequenas operações que precisam padronizar rotinas..."
+                placeholder="Ex.: Ideal para pequenas operações que precisam padronizar rotinas com rapidez..."
                 disabled={pending}
-                className="text-xs min-h-[60px]"
+                className="text-sm! min-h-15 resize-none"
               />
             </Field>
 
             <Field>
               <FieldLabel
-                htmlFor="plan-edit-features"
+                htmlFor="plan-create-features"
                 className="text-xs font-semibold"
               >
                 Recursos inclusos e destaques (uma linha por item)
               </FieldLabel>
               <Textarea
-                id="plan-edit-features"
+                id="plan-create-features"
                 name="features"
                 maxLength={2000}
-                defaultValue={editPlanTarget.features ?? ""}
-                placeholder="Ex.:&#10;Até 10 colaboradores ativos&#10;1 unidade operacional&#10;Checklists e rotinas ilimitadas"
+                placeholder="Ex.:&#10;Até 10 colaboradores ativos&#10;1 unidade operacional&#10;Checklists e rotinas ilimitadas&#10;Suporte via ticket"
                 disabled={pending}
-                className="text-xs min-h-[90px]"
+                className="text-sm! min-h-22.5 resize-none"
               />
             </Field>
 
@@ -2396,789 +2430,392 @@ export function SuperadminDashboardClient(props: Props) {
                 className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
               >
 
-                Salvar alterações
+                Criar modelo de plano
               </Button>
             </div>
           </PlatformForm>
-        )}
-      </Modal>
+        </Modal>
 
-      {/* MODAL: Excluir Plano Pronto */}
-      <Modal
-        open={Boolean(deletePlanTarget)}
-        onClose={closeModals}
-        title="Excluir modelo de plano pronto"
-        className="sm:max-w-md"
-      >
-        {deletePlanTarget && (
-          <PlatformForm
-            action={async () => {
-              await handleRunAction(
-                () => deletePlatformPlanAction(deletePlanTarget.id),
-                `Plano "${deletePlanTarget.name}" excluído do catálogo.`,
-              );
-            }}
-            className="flex flex-col gap-4 text-xs"
-          >
-            <div className="p-3.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:border-rose-900/40 dark:text-rose-300">
-              <div className="flex items-center gap-2 font-semibold">
-                <AlertTriangle className="size-4 shrink-0 text-rose-600" />
-                Atenção ao remover modelo
-              </div>
-              <p className="mt-1 text-[11px] leading-relaxed">
-                Você está prestes a excluir o modelo{" "}
-                <strong>{deletePlanTarget.name}</strong>. Empresas que já
-                contratualizaram este plano continuarão com suas condições
-                preservadas, mas o modelo não estará mais disponível para novas
-                assinaturas.
-              </p>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
-              <Button
-                variant="outline"
-                type="button"
-                onClick={closeModals}
-                disabled={pending}
-                className="h-9 text-xs"
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                disabled={pending}
-                className="h-9 text-xs font-semibold bg-destructive text-white hover:bg-destructive/90"
-              >
-
-                Confirmar exclusão
-              </Button>
-            </div>
-          </PlatformForm>
-        )}
-      </Modal>
-
-      {/* MODAL: Aplicar Plano em Empresa */}
-      <Modal
-        open={Boolean(applyPlanTarget)}
-        onClose={closeModals}
-        title={`Aplicar "${applyPlanTarget?.name}" a uma empresa`}
-        className="sm:max-w-md"
-      >
-        {applyPlanTarget && (
-          <PlatformForm
-            onSubmit={(e) => {
-              e.preventDefault();
-              const form = new FormData(e.currentTarget);
-              const orgId = String(form.get("organizationId") ?? "");
-              if (!orgId) {
-                toast.add({
-                  title: "Selecione uma empresa",
-                  description: "Escolha qual empresa receberá este plano.",
-                  type: "error",
-                });
-                return;
-              }
-              const org =
-                organizations.find((o) => o.id === orgId) ||
-                props.allOrganizations?.find((o) => o.id === orgId);
-              if (org) {
-                const fullOrg: GlobalOrg = {
-                  id: org.id,
-                  name: org.name,
-                  slug: org.slug,
-                  status: org.status,
-                  createdAt:
-                    "createdAt" in org
-                      ? (org as GlobalOrg).createdAt
-                      : new Date().toISOString(),
-                  membersCount:
-                    "membersCount" in org ? (org as GlobalOrg).membersCount : 0,
-                  locationsCount:
-                    "locationsCount" in org
-                      ? (org as GlobalOrg).locationsCount
-                      : 0,
-                  processesCount:
-                    "processesCount" in org
-                      ? (org as GlobalOrg).processesCount
-                      : 0,
-                  tasksCount:
-                    "tasksCount" in org ? (org as GlobalOrg).tasksCount : 0,
-                  executionsCount:
-                    "executionsCount" in org
-                      ? (org as GlobalOrg).executionsCount
-                      : 0,
-                  subscription:
-                    "subscription" in org
-                      ? (org as GlobalOrg).subscription
-                      : null,
-                };
-                setApplyPlanTarget(null);
-                openSubscriptionModal(fullOrg, applyPlanTarget);
-              }
-            }}
-            className="flex flex-col gap-4 text-xs"
-          >
-            <p className="text-muted-foreground">
-              Selecione a empresa que receberá o plano{" "}
-              <strong>{applyPlanTarget.name}</strong> (
-              {applyPlanTarget.amountCents != null
-                ? formatCurrency(applyPlanTarget.amountCents)
-                : "R$ 0,00"}
-              /
-              {cycleLabels[
-                applyPlanTarget.cycle as keyof typeof cycleLabels
-              ]?.toLowerCase() ?? applyPlanTarget.cycle.toLowerCase()}
-              ).
-            </p>
-
-            <Field>
-              <FieldLabel
-                htmlFor="apply-plan-org"
-                className="text-xs font-semibold"
-              >
-                Empresa destino *
-              </FieldLabel>
-              <NativeSelect
-                id="apply-plan-org"
-                name="organizationId"
-                required
-                disabled={pending}
-                className="w-full text-xs h-11"
-              >
-                <NativeSelectOption value="">
-                  -- Selecione a empresa --
-                </NativeSelectOption>
-                {(props.allOrganizations || organizations).map((o) => (
-                  <NativeSelectOption key={o.id} value={o.id}>
-                    {o.name} ({o.slug})
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </Field>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
-              <Button
-                variant="outline"
-                type="button"
-                onClick={closeModals}
-                disabled={pending}
-                className="h-9 text-xs"
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                disabled={pending}
-                className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
-              >
-                Prosseguir para assinatura
-              </Button>
-            </div>
-          </PlatformForm>
-        )}
-      </Modal>
-
-      {/* MODAL 3: Registrar Atendimento de Suporte */}
-      <Modal
-        open={Boolean(supportOrgTarget)}
-        onClose={closeModals}
-        title="Registrar atendimento de suporte"
-      >
-        {supportOrgTarget && (
-          <PlatformForm
-            action={async (form) => {
-              const status = String(form.get("status") ?? "OPEN");
-              const note = String(form.get("note") ?? "");
-              await handleRunAction(
-                () => addSupportNoteAction(supportOrgTarget.id, status, note),
-                "Atendimento registrado com sucesso no histórico do cliente.",
-              );
-            }}
-            className="flex flex-col gap-4 text-xs"
-          >
-            <p className="text-muted-foreground">
-              Cliente: <strong>{supportOrgTarget.name}</strong>. O registro
-              ficará disponível para a equipe da plataforma.
-            </p>
-
-            <Field>
-              <FieldLabel
-                htmlFor="support-status"
-                className="text-xs font-semibold"
-              >
-                Etapa do atendimento
-              </FieldLabel>
-              <NativeSelect
-                id="support-status"
-                name="status"
-                className="w-full text-xs h-9"
-                disabled={pending}
-              >
-                {Object.entries(supportLabels).map(([value, item]) => (
-                  <NativeSelectOption key={value} value={value}>
-                    {item.label}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </Field>
-
-            <Field>
-              <FieldLabel
-                htmlFor="support-note"
-                className="text-xs font-semibold"
-              >
-                Descrição do atendimento ou solução
-              </FieldLabel>
-              <Textarea
-                id="support-note"
-                name="note"
-                required
-                minLength={5}
-                maxLength={2000}
-                rows={5}
-                placeholder="Descreva o que foi solicitado, o diagnóstico e a ação tomada..."
-                disabled={pending}
-                className="text-xs min-h-[100px]"
-              />
-              <FieldDescription className="text-[11px] text-muted-foreground mt-1">
-                Mínimo de 5 caracteres. Este registro é auditável.
-              </FieldDescription>
-            </Field>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
-              <Button
-                variant="outline"
-                type="button"
-                onClick={closeModals}
-                disabled={pending}
-                className="h-9 text-xs"
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                disabled={pending}
-                className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
-              >
-
-                Registrar atendimento
-              </Button>
-            </div>
-          </PlatformForm>
-        )}
-      </Modal>
-
-      {/* MODAL 4: Criar Nova Organização */}
-      <Modal
-        open={createOrgOpen}
-        onClose={closeModals}
-        title="Nova organização"
-        className="max-h-[90dvh] overflow-y-auto sm:max-w-lg"
-      >
-        <PlatformForm
-          action={async (form) => {
-            const name = String(form.get("name") ?? "").trim();
-            const slug = String(form.get("slug") ?? "").trim();
-            const createDefaultLocation =
-              form.get("createDefaultLocation") === "on";
-
-            await handleRunAction(
-              () =>
-                createOrganizationAction({
-                  name,
-                  slug,
-                  createDefaultLocation,
-                }),
-              "Organização criada com sucesso.",
-            );
-          }}
-          className="flex flex-col gap-4 text-xs"
+        {/* MODAL: Editar Plano Pronto */}
+        <Modal
+          open={Boolean(editPlanTarget)}
+          onClose={closeModals}
+          title={`Editar plano pronto: ${editPlanTarget?.name}`}
+          className="max-h-[90dvh] overflow-y-auto sm:max-w-xl"
         >
-          <p className="text-muted-foreground">
-            Cadastre uma nova organização parceira ou cliente na plataforma.
-          </p>
+          {editPlanTarget && (
+            <PlatformForm
+              key={editPlanTarget.id}
+              action={async (form) => {
+                const amountVal = String(form.get("amount") ?? "").trim();
+                const amountNum =
+                  amountVal === "" ? null : Number(amountVal.replace(",", "."));
+                const memberLim = nullableNumber(form, "memberLimit");
+                const locationLim = nullableNumber(form, "locationLimit");
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field>
-              <FieldLabel htmlFor="org-name" className="text-xs font-semibold">
-                Nome da organização *
-              </FieldLabel>
-              <Input
-                id="org-name"
-                name="name"
-                value={newOrgName}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setNewOrgName(val);
-                  if (!slugManuallyEdited) {
-                    setNewOrgSlug(slugify(val));
-                  }
-                }}
-                required
-                minLength={2}
-                maxLength={100}
-                placeholder="Ex.: Barbearia Vintage"
-                disabled={pending}
-                className="text-xs h-9"
-              />
-            </Field>
-
-            <Field>
-              <FieldLabel htmlFor="org-slug" className="text-xs font-semibold">
-                Identificador URL (slug) *
-              </FieldLabel>
-              <Input
-                id="org-slug"
-                name="slug"
-                value={newOrgSlug}
-                onChange={(e) => {
-                  setSlugManuallyEdited(true);
-                  setNewOrgSlug(slugify(e.target.value));
-                }}
-                required
-                minLength={2}
-                maxLength={60}
-                placeholder="ex: barbearia-vintage"
-                disabled={pending}
-                className="text-xs h-9 font-mono"
-              />
-              <FieldDescription className="text-[10px] text-muted-foreground">
-                Apenas letras minúsculas, números e hifens.
-              </FieldDescription>
-            </Field>
-          </div>
-
-          <label className="flex items-center gap-2 cursor-pointer p-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)]/50 hover:bg-[var(--surface-muted)] transition-colors">
-            <input
-              type="checkbox"
-              name="createDefaultLocation"
-              defaultChecked
-              disabled={pending}
-              className="size-4 rounded accent-[var(--brand-900)] cursor-pointer"
-            />
-            <div>
-              <span className="font-semibold block text-[var(--text-primary)]">
-                Criar unidade padrão ("Matriz / Principal")
-              </span>
-              <span className="text-[11px] text-muted-foreground block">
-                Gera imediatamente uma unidade operacional ativa no fuso de São
-                Paulo.
-              </span>
-            </div>
-          </label>
-
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
-            <Button
-              variant="outline"
-              type="button"
-              onClick={closeModals}
-              disabled={pending}
-              className="h-9 text-xs"
+                await handleRunAction(
+                  () =>
+                    updatePlatformPlanAction(editPlanTarget.id, {
+                      name: String(form.get("name") ?? "").trim(),
+                      description:
+                        String(form.get("description") ?? "").trim() || null,
+                      cycle: (form.get("cycle") ?? "MONTHLY") as
+                        "MONTHLY" | "YEARLY" | "CUSTOM",
+                      amountCents:
+                        amountNum === null || Number.isNaN(amountNum)
+                          ? null
+                          : Math.round(amountNum * 100),
+                      memberLimit: memberLim,
+                      locationLimit: locationLim,
+                      features: String(form.get("features") ?? "").trim() || null,
+                      status: (form.get("status") ?? "ACTIVE") as
+                        "ACTIVE" | "ARCHIVED",
+                    }),
+                  "Plano pronto atualizado com sucesso!",
+                );
+              }}
+              className="flex flex-col gap-4 text-xs"
             >
-              Cancelar
-            </Button>
-            <Button
-              type="submit"
-              disabled={pending}
-              className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
-            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field className="sm:col-span-2">
+                  <FieldLabel
+                    htmlFor="plan-edit-name"
+                    className="text-xs font-semibold"
+                  >
+                    Nome do plano *
+                  </FieldLabel>
+                  <Input
+                    id="plan-edit-name"
+                    name="name"
+                    defaultValue={editPlanTarget.name}
+                    required
+                    minLength={2}
+                    maxLength={80}
+                    disabled={pending}
+                    className="text-xs h-11"
+                  />
+                </Field>
 
-              Criar organização
-            </Button>
-          </div>
-        </PlatformForm>
-      </Modal>
+                <Field>
+                  <FieldLabel
+                    htmlFor="plan-edit-cycle"
+                    className="text-xs font-semibold"
+                  >
+                    Periodicidade padrão *
+                  </FieldLabel>
+                  <NativeSelect
+                    id="plan-edit-cycle"
+                    name="cycle"
+                    defaultValue={editPlanTarget.cycle}
+                    disabled={pending}
+                    className="w-full text-xs h-11"
+                  >
+                    <NativeSelectOption value="MONTHLY">
+                      Mensal
+                    </NativeSelectOption>
+                    <NativeSelectOption value="YEARLY">Anual</NativeSelectOption>
+                    <NativeSelectOption value="CUSTOM">
+                      Personalizada
+                    </NativeSelectOption>
+                  </NativeSelect>
+                </Field>
 
-      {/* MODAL 5: Editar Organização */}
-      <Modal
-        open={Boolean(editOrgTarget)}
-        onClose={closeModals}
-        title={`Editar organização: ${editOrgTarget?.name}`}
-        className="sm:max-w-lg"
-      >
-        {editOrgTarget && (
-          <PlatformForm
-            key={editOrgTarget.id}
-            action={async (form) => {
-              const name = String(form.get("name") ?? "").trim();
-              const slug = String(form.get("slug") ?? "").trim();
-              const status = form.get("status") as "ACTIVE" | "SUSPENDED";
-              const reason = String(form.get("reason") ?? "").trim();
+                <Field>
+                  <FieldLabel
+                    htmlFor="plan-edit-amount"
+                    className="text-xs font-semibold"
+                  >
+                    Valor contratual (R$)
+                  </FieldLabel>
+                  <Input
+                    id="plan-edit-amount"
+                    name="amount"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="10000000"
+                    defaultValue={
+                      editPlanTarget.amountCents != null
+                        ? (editPlanTarget.amountCents / 100).toFixed(2)
+                        : ""
+                    }
+                    placeholder="0,00"
+                    disabled={pending}
+                    className="text-xs h-11"
+                  />
+                </Field>
 
-              await handleRunAction(
-                () =>
-                  updateOrganizationAction({
-                    organizationId: editOrgTarget.id,
-                    name,
-                    slug,
-                    status,
-                    reason,
-                  }),
-                "Organização atualizada com sucesso.",
-              );
-            }}
-            className="flex flex-col gap-4 text-xs"
-          >
-            <Field>
-              <FieldLabel
-                htmlFor="edit-org-name"
-                className="text-xs font-semibold"
-              >
-                Nome da organização *
-              </FieldLabel>
-              <Input
-                id="edit-org-name"
-                name="name"
-                defaultValue={editOrgTarget.name}
-                required
-                minLength={2}
-                maxLength={100}
-                disabled={pending}
-                className="text-xs h-9"
-              />
-            </Field>
+                <Field>
+                  <FieldLabel
+                    htmlFor="plan-edit-member-limit"
+                    className="text-xs font-semibold"
+                  >
+                    Limite de pessoas ativas
+                  </FieldLabel>
+                  <Input
+                    id="plan-edit-member-limit"
+                    name="memberLimit"
+                    type="number"
+                    min="1"
+                    max="10000000"
+                    step="1"
+                    defaultValue={editPlanTarget.memberLimit ?? ""}
+                    placeholder="Em branco para ilimitado"
+                    disabled={pending}
+                    className="text-xs h-11"
+                  />
+                </Field>
 
-            <Field>
-              <FieldLabel
-                htmlFor="edit-org-slug"
-                className="text-xs font-semibold"
-              >
-                Slug (identificador URL) *
-              </FieldLabel>
-              <Input
-                id="edit-org-slug"
-                name="slug"
-                defaultValue={editOrgTarget.slug}
-                required
-                minLength={2}
-                maxLength={60}
-                disabled={pending}
-                className="text-xs h-9 font-mono"
-              />
-              <FieldDescription className="text-[10px] text-muted-foreground">
-                Cuidado: alterar o identificador afetará links diretos de acesso
-                desta organização.
-              </FieldDescription>
-            </Field>
+                <Field>
+                  <FieldLabel
+                    htmlFor="plan-edit-location-limit"
+                    className="text-xs font-semibold"
+                  >
+                    Limite de unidades ativas
+                  </FieldLabel>
+                  <Input
+                    id="plan-edit-location-limit"
+                    name="locationLimit"
+                    type="number"
+                    min="1"
+                    max="10000000"
+                    step="1"
+                    defaultValue={editPlanTarget.locationLimit ?? ""}
+                    placeholder="Em branco para ilimitado"
+                    disabled={pending}
+                    className="text-xs h-11"
+                  />
+                </Field>
 
-            <Field>
-              <FieldLabel
-                htmlFor="edit-org-status"
-                className="text-xs font-semibold"
-              >
-                Status de operação *
-              </FieldLabel>
-              <NativeSelect
-                id="edit-org-status"
-                name="status"
-                defaultValue={editOrgTarget.status}
-                disabled={pending}
-                className="w-full text-xs h-9"
-              >
-                <NativeSelectOption value="ACTIVE">
-                  Ativa (Operação normal)
-                </NativeSelectOption>
-                <NativeSelectOption value="SUSPENDED">
-                  Suspensa (Bloqueio total de acesso)
-                </NativeSelectOption>
-              </NativeSelect>
-            </Field>
-
-            <Field>
-              <FieldLabel
-                htmlFor="edit-org-reason"
-                className="text-xs font-semibold"
-              >
-                Motivo da alteração (obrigatório para auditoria) *
-              </FieldLabel>
-              <Textarea
-                id="edit-org-reason"
-                name="reason"
-                required
-                minLength={5}
-                maxLength={2000}
-                placeholder="Descreva a razão das modificações cadastrais..."
-                disabled={pending}
-                className="text-xs min-h-[60px]"
-              />
-            </Field>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
-              <Button
-                variant="outline"
-                type="button"
-                onClick={closeModals}
-                disabled={pending}
-                className="h-9 text-xs"
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                disabled={pending}
-                className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
-              >
-
-                Salvar alterações
-              </Button>
-            </div>
-          </PlatformForm>
-        )}
-      </Modal>
-
-      {/* MODAL 6: Excluir Organização */}
-      <Modal
-        open={Boolean(deleteOrgTarget)}
-        onClose={closeModals}
-        title={`Excluir organização: ${deleteOrgTarget?.name}`}
-        className="sm:max-w-lg"
-      >
-        {deleteOrgTarget && (
-          <PlatformForm
-            key={deleteOrgTarget.id}
-            action={async (form) => {
-              const confirmationSlug = String(
-                form.get("confirmationSlug") ?? "",
-              ).trim();
-              const reason = String(form.get("reason") ?? "").trim();
-
-              await handleRunAction(
-                () =>
-                  deleteOrganizationAction({
-                    organizationId: deleteOrgTarget.id,
-                    confirmationSlug,
-                    reason,
-                  }),
-                "Organização e registros vinculados excluídos com sucesso.",
-              );
-            }}
-            className="flex flex-col gap-4 text-xs"
-          >
-            <div className="p-3 rounded-xl border bg-rose-50 border-rose-200 text-rose-800 text-xs">
-              <div className="flex items-center gap-1.5 font-bold mb-1">
-                <AlertTriangle className="size-4 shrink-0 text-rose-600" />
-                Ação destrutiva e irreversível!
+                <Field className="sm:col-span-2">
+                  <FieldLabel
+                    htmlFor="plan-edit-status"
+                    className="text-xs font-semibold"
+                  >
+                    Situação no catálogo
+                  </FieldLabel>
+                  <NativeSelect
+                    id="plan-edit-status"
+                    name="status"
+                    defaultValue={editPlanTarget.status}
+                    disabled={pending}
+                    className="w-full text-xs h-11"
+                  >
+                    <NativeSelectOption value="ACTIVE">
+                      Ativo (sugerido para novas assinaturas)
+                    </NativeSelectOption>
+                    <NativeSelectOption value="ARCHIVED">
+                      Arquivado (não sugerido)
+                    </NativeSelectOption>
+                  </NativeSelect>
+                </Field>
               </div>
-              <p>
-                A exclusão da organização{" "}
-                <strong>{deleteOrgTarget.name}</strong> removerá permanentemente
-                todas as unidades, tarefas, processos operacionais, execuções e
-                desvinculará todos os membros.
-              </p>
-            </div>
 
-            <Field>
-              <FieldLabel
-                htmlFor="delete-org-confirmation"
-                className="text-xs font-semibold"
-              >
-                Para confirmar, digite exatamente o slug{" "}
-                <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-foreground font-bold">
-                  {deleteOrgTarget.slug}
-                </span>
-                :
-              </FieldLabel>
-              <Input
-                id="delete-org-confirmation"
-                name="confirmationSlug"
-                required
-                placeholder={deleteOrgTarget.slug}
-                disabled={pending}
-                className="text-xs h-9 font-mono"
-              />
-            </Field>
-
-            <Field>
-              <FieldLabel
-                htmlFor="delete-org-reason"
-                className="text-xs font-semibold"
-              >
-                Motivo da exclusão (obrigatório para auditoria) *
-              </FieldLabel>
-              <Textarea
-                id="delete-org-reason"
-                name="reason"
-                required
-                minLength={5}
-                maxLength={2000}
-                placeholder="Descreva o motivo pelo qual esta organização está sendo excluída..."
-                disabled={pending}
-                className="text-xs min-h-[70px]"
-              />
-            </Field>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
-              <Button
-                variant="outline"
-                type="button"
-                onClick={closeModals}
-                disabled={pending}
-                className="h-9 text-xs"
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                disabled={pending}
-                className="h-9 text-xs font-semibold bg-destructive text-white hover:bg-destructive/90"
-              >
-
-                Confirmar exclusão definitiva
-              </Button>
-            </div>
-          </PlatformForm>
-        )}
-      </Modal>
-
-      {/* MODAL 7: Criar Novo Usuário */}
-      <Modal
-        open={createUserOpen}
-        onClose={closeModals}
-        title="Novo usuário da plataforma"
-        className="max-h-[90dvh] overflow-y-auto sm:max-w-xl"
-      >
-        <PlatformForm
-          action={async (form) => {
-            const name = String(form.get("name") ?? "").trim();
-            const email = String(form.get("email") ?? "").trim();
-            const password = String(form.get("password") ?? "");
-            const platformRole = (form.get("platformRole") ?? "USER") as
-              "USER" | "SUPERADMIN";
-            const organizationId = String(
-              form.get("organizationId") ?? "",
-            ).trim();
-            const role = (form.get("role") || undefined) as
-              "OWNER" | "ADMIN" | "MANAGER" | "EMPLOYEE" | undefined;
-            const employeeCode = String(form.get("employeeCode") ?? "").trim();
-            const pin = String(form.get("pin") ?? "").trim();
-            await handleRunAction(
-              () =>
-                createPlatformUserAction({
-                  name,
-                  email,
-                  password,
-                  platformRole,
-                  organizationId: organizationId || undefined,
-                  role: organizationId ? role : undefined,
-                  employeeCode: employeeCode || undefined,
-                  pin: pin || undefined,
-                }),
-              "Usuário cadastrado com sucesso.",
-            );
-          }}
-          className="flex flex-col gap-4 text-xs"
-        >
-          <p className="text-muted-foreground">
-            Cadastre um novo usuário para acesso à plataforma Tarefaí ou ao
-            painel administrativo.
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field>
-              <FieldLabel htmlFor="user-name" className="text-xs font-semibold">
-                Nome completo *
-              </FieldLabel>
-              <Input
-                id="user-name"
-                name="name"
-                required
-                minLength={2}
-                maxLength={100}
-                placeholder="Ex.: Mariana Souza"
-                disabled={pending}
-                className="text-xs h-11"
-              />
-            </Field>
-
-            <Field>
-              <FieldLabel
-                htmlFor="user-email"
-                className="text-xs font-semibold"
-              >
-                E-mail de acesso *
-              </FieldLabel>
-              <Input
-                id="user-email"
-                name="email"
-                type="email"
-                required
-                placeholder="mariana@empresa.com"
-                disabled={pending}
-                className="text-xs h-11"
-              />
-            </Field>
-
-            <Field>
-              <FieldLabel
-                htmlFor="user-password"
-                className="text-xs font-semibold"
-              >
-                Senha inicial *
-              </FieldLabel>
-              <Input
-                id="user-password"
-                name="password"
-                type="password"
-                required
-                minLength={8}
-                placeholder="Mínimo de 8 caracteres"
-                disabled={pending}
-                className="text-xs h-11"
-              />
-            </Field>
-
-            <Field>
-              <FieldLabel
-                htmlFor="user-platform-role"
-                className="text-xs font-semibold"
-              >
-                Perfil de acesso global *
-              </FieldLabel>
-              <NativeSelect
-                id="user-platform-role"
-                name="platformRole"
-                defaultValue="USER"
-                disabled={pending}
-                className="w-full text-xs h-9"
-              >
-                <NativeSelectOption value="USER">
-                  Usuário Comum (Empresarial)
-                </NativeSelectOption>
-                <NativeSelectOption value="SUPERADMIN">
-                  Superadmin (Gestor da Plataforma)
-                </NativeSelectOption>
-              </NativeSelect>
-            </Field>
-          </div>
-
-          <div className="flex flex-col gap-3 p-3.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)]/40">
-            <span className="font-semibold text-[var(--text-primary)] flex items-center gap-1.5">
-              <Building2 className="size-3.5 text-[var(--brand-700)]" />
-              Vínculo empresarial inicial (opcional)
-            </span>
-            <p className="text-[11px] text-muted-foreground">
-              Vincule imediatamente este usuário a uma organização existente.
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field>
                 <FieldLabel
-                  htmlFor="user-org-select"
+                  htmlFor="plan-edit-desc"
                   className="text-xs font-semibold"
                 >
-                  Organização
+                  Descrição comercial do plano
+                </FieldLabel>
+                <Textarea
+                  id="plan-edit-desc"
+                  name="description"
+                  maxLength={500}
+                  defaultValue={editPlanTarget.description ?? ""}
+                  placeholder="Ex.: Ideal para pequenas operações que precisam padronizar rotinas..."
+                  disabled={pending}
+                  className="text-xs min-h-[60px]"
+                />
+              </Field>
+
+              <Field>
+                <FieldLabel
+                  htmlFor="plan-edit-features"
+                  className="text-xs font-semibold"
+                >
+                  Recursos inclusos e destaques (uma linha por item)
+                </FieldLabel>
+                <Textarea
+                  id="plan-edit-features"
+                  name="features"
+                  maxLength={2000}
+                  defaultValue={editPlanTarget.features ?? ""}
+                  placeholder="Ex.:&#10;Até 10 colaboradores ativos&#10;1 unidade operacional&#10;Checklists e rotinas ilimitadas"
+                  disabled={pending}
+                  className="text-xs min-h-[90px]"
+                />
+              </Field>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={closeModals}
+                  disabled={pending}
+                  className="h-9 text-xs"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={pending}
+                  className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
+                >
+
+                  Salvar alterações
+                </Button>
+              </div>
+            </PlatformForm>
+          )}
+        </Modal>
+
+        {/* MODAL: Excluir Plano Pronto */}
+        <Modal
+          open={Boolean(deletePlanTarget)}
+          onClose={closeModals}
+          title="Excluir modelo de plano pronto"
+          className="sm:max-w-md"
+        >
+          {deletePlanTarget && (
+            <PlatformForm
+              action={async () => {
+                await handleRunAction(
+                  () => deletePlatformPlanAction(deletePlanTarget.id),
+                  `Plano "${deletePlanTarget.name}" excluído do catálogo.`,
+                );
+              }}
+              className="flex flex-col gap-4 text-xs"
+            >
+              <div className="p-3.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:border-rose-900/40 dark:text-rose-300">
+                <div className="flex items-center gap-2 font-semibold">
+                  <AlertTriangle className="size-4 shrink-0 text-rose-600" />
+                  Atenção ao remover modelo
+                </div>
+                <p className="mt-1 text-[11px] leading-relaxed">
+                  Você está prestes a excluir o modelo{" "}
+                  <strong>{deletePlanTarget.name}</strong>. Empresas que já
+                  contratualizaram este plano continuarão com suas condições
+                  preservadas, mas o modelo não estará mais disponível para novas
+                  assinaturas.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={closeModals}
+                  disabled={pending}
+                  className="h-9 text-xs"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={pending}
+                  className="h-9 text-xs font-semibold bg-destructive text-white hover:bg-destructive/90"
+                >
+
+                  Confirmar exclusão
+                </Button>
+              </div>
+            </PlatformForm>
+          )}
+        </Modal>
+
+        {/* MODAL: Aplicar Plano em Empresa */}
+        <Modal
+          open={Boolean(applyPlanTarget)}
+          onClose={closeModals}
+          title={`Aplicar "${applyPlanTarget?.name}" a uma empresa`}
+          className="sm:max-w-md"
+        >
+          {applyPlanTarget && (
+            <PlatformForm
+              onSubmit={(e) => {
+                e.preventDefault();
+                const form = new FormData(e.currentTarget);
+                const orgId = String(form.get("organizationId") ?? "");
+                if (!orgId) {
+                  toast.add({
+                    title: "Selecione uma empresa",
+                    description: "Escolha qual empresa receberá este plano.",
+                    type: "error",
+                  });
+                  return;
+                }
+                const org =
+                  organizations.find((o) => o.id === orgId) ||
+                  props.allOrganizations?.find((o) => o.id === orgId);
+                if (org) {
+                  const fullOrg: GlobalOrg = {
+                    id: org.id,
+                    name: org.name,
+                    slug: org.slug,
+                    status: org.status,
+                    createdAt:
+                      "createdAt" in org
+                        ? (org as GlobalOrg).createdAt
+                        : new Date().toISOString(),
+                    membersCount:
+                      "membersCount" in org ? (org as GlobalOrg).membersCount : 0,
+                    locationsCount:
+                      "locationsCount" in org
+                        ? (org as GlobalOrg).locationsCount
+                        : 0,
+                    processesCount:
+                      "processesCount" in org
+                        ? (org as GlobalOrg).processesCount
+                        : 0,
+                    tasksCount:
+                      "tasksCount" in org ? (org as GlobalOrg).tasksCount : 0,
+                    executionsCount:
+                      "executionsCount" in org
+                        ? (org as GlobalOrg).executionsCount
+                        : 0,
+                    subscription:
+                      "subscription" in org
+                        ? (org as GlobalOrg).subscription
+                        : null,
+                  };
+                  setApplyPlanTarget(null);
+                  openSubscriptionModal(fullOrg, applyPlanTarget);
+                }
+              }}
+              className="flex flex-col gap-4 text-xs"
+            >
+              <p className="text-muted-foreground">
+                Selecione a empresa que receberá o plano{" "}
+                <strong>{applyPlanTarget.name}</strong> (
+                {applyPlanTarget.amountCents != null
+                  ? formatCurrency(applyPlanTarget.amountCents)
+                  : "R$ 0,00"}
+                /
+                {cycleLabels[
+                  applyPlanTarget.cycle as keyof typeof cycleLabels
+                ]?.toLowerCase() ?? applyPlanTarget.cycle.toLowerCase()}
+                ).
+              </p>
+
+              <Field>
+                <FieldLabel
+                  htmlFor="apply-plan-org"
+                  className="text-xs font-semibold"
+                >
+                  Empresa destino *
                 </FieldLabel>
                 <NativeSelect
-                  id="user-org-select"
+                  id="apply-plan-org"
                   name="organizationId"
-                  defaultValue=""
+                  required
                   disabled={pending}
-                  className="w-full text-xs h-9"
+                  className="w-full text-xs h-11"
                 >
                   <NativeSelectOption value="">
-                    Nenhuma (Vincular depois)
+                    -- Selecione a empresa --
                   </NativeSelectOption>
-                  {props.allOrganizations?.map((o) => (
+                  {(props.allOrganizations || organizations).map((o) => (
                     <NativeSelectOption key={o.id} value={o.id}>
                       {o.name} ({o.slug})
                     </NativeSelectOption>
@@ -3186,138 +2823,381 @@ export function SuperadminDashboardClient(props: Props) {
                 </NativeSelect>
               </Field>
 
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={closeModals}
+                  disabled={pending}
+                  className="h-9 text-xs"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={pending}
+                  className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
+                >
+                  Prosseguir para assinatura
+                </Button>
+              </div>
+            </PlatformForm>
+          )}
+        </Modal>
+
+        {/* MODAL 3: Registrar Atendimento de Suporte */}
+        <Modal
+          open={Boolean(supportOrgTarget)}
+          onClose={closeModals}
+          title="Registrar atendimento de suporte"
+        >
+          {supportOrgTarget && (
+            <PlatformForm
+              action={async (form) => {
+                const status = String(form.get("status") ?? "OPEN");
+                const note = String(form.get("note") ?? "");
+                await handleRunAction(
+                  () => addSupportNoteAction(supportOrgTarget.id, status, note),
+                  "Atendimento registrado com sucesso no histórico do cliente.",
+                );
+              }}
+              className="flex flex-col gap-4 text-xs"
+            >
+              <p className="text-muted-foreground">
+                Cliente: <strong>{supportOrgTarget.name}</strong>. O registro
+                ficará disponível para a equipe da plataforma.
+              </p>
+
               <Field>
                 <FieldLabel
-                  htmlFor="user-org-role"
+                  htmlFor="support-status"
                   className="text-xs font-semibold"
                 >
-                  Papel na organização
+                  Etapa do atendimento
                 </FieldLabel>
                 <NativeSelect
-                  id="user-org-role"
-                  name="role"
-                  defaultValue="EMPLOYEE"
-                  disabled={pending}
+                  id="support-status"
+                  name="status"
                   className="w-full text-xs h-9"
+                  disabled={pending}
                 >
-                  <NativeSelectOption value="EMPLOYEE">
-                    Colaborador / Operador
-                  </NativeSelectOption>
-                  <NativeSelectOption value="MANAGER">
-                    Gestor de Equipe
-                  </NativeSelectOption>
-                  <NativeSelectOption value="ADMIN">
-                    Administrador
-                  </NativeSelectOption>
-                  <NativeSelectOption value="OWNER">
-                    Proprietário (Owner)
-                  </NativeSelectOption>
+                  {Object.entries(supportLabels).map(([value, item]) => (
+                    <NativeSelectOption key={value} value={value}>
+                      {item.label}
+                    </NativeSelectOption>
+                  ))}
                 </NativeSelect>
               </Field>
 
               <Field>
                 <FieldLabel
-                  htmlFor="user-employee-code"
+                  htmlFor="support-note"
                   className="text-xs font-semibold"
                 >
-                  Matrícula / Código operacional
+                  Descrição do atendimento ou solução
                 </FieldLabel>
-                <Input
-                  id="user-employee-code"
-                  name="employeeCode"
-                  maxLength={50}
-                  placeholder="Ex.: MAT-1029"
+                <Textarea
+                  id="support-note"
+                  name="note"
+                  required
+                  minLength={5}
+                  maxLength={2000}
+                  rows={5}
+                  placeholder="Descreva o que foi solicitado, o diagnóstico e a ação tomada..."
                   disabled={pending}
-                  className="text-xs h-11"
+                  className="text-xs min-h-[100px]"
                 />
+                <FieldDescription className="text-[11px] text-muted-foreground mt-1">
+                  Mínimo de 5 caracteres. Este registro é auditável.
+                </FieldDescription>
               </Field>
 
-              <Field>
-                <FieldLabel
-                  htmlFor="user-pin"
-                  className="text-xs font-semibold"
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={closeModals}
+                  disabled={pending}
+                  className="h-9 text-xs"
                 >
-                  PIN rápido de terminal
-                </FieldLabel>
-                <Input
-                  id="user-pin"
-                  name="pin"
-                  maxLength={6}
-                  pattern="\d{6}"
-                  placeholder="Ex.: 123456"
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
                   disabled={pending}
-                  className="text-xs h-11 font-mono"
-                />
-              </Field>
-            </div>
-          </div>
+                  className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
+                >
 
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
-            <Button
-              variant="outline"
-              type="button"
-              onClick={closeModals}
-              disabled={pending}
-              className="h-9 text-xs"
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="submit"
-              disabled={pending}
-              className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
-            >
+                  Registrar atendimento
+                </Button>
+              </div>
+            </PlatformForm>
+          )}
+        </Modal>
 
-              Criar usuário
-            </Button>
-          </div>
-        </PlatformForm>
-      </Modal>
-
-      {/* MODAL 8: Editar Usuário */}
-      <Modal
-        open={Boolean(editUserTarget)}
-        onClose={closeModals}
-        title={`Editar usuário: ${editUserTarget?.name}`}
-        className="sm:max-w-lg"
-      >
-        {editUserTarget && (
+        {/* MODAL 4: Criar Nova Organização */}
+        <Modal
+          open={createOrgOpen}
+          onClose={closeModals}
+          title="Nova organização"
+          className="max-h-[90dvh] overflow-y-auto sm:max-w-lg"
+        >
           <PlatformForm
-            key={editUserTarget.id}
             action={async (form) => {
               const name = String(form.get("name") ?? "").trim();
-              const email = String(form.get("email") ?? "").trim();
-              const platformRole = (form.get("platformRole") ?? "USER") as
-                "USER" | "SUPERADMIN";
-              const newPassword = String(form.get("newPassword") ?? "");
-              const status = form.get("status") as "ACTIVE" | "SUSPENDED";
+              const slug = String(form.get("slug") ?? "").trim();
+              const ownerEmail = String(form.get("ownerEmail") ?? "").trim();
+              const businessSegmentId = String(form.get("businessSegmentId") ?? newOrgSegmentId).trim();
+              const createDefaultLocation =
+                form.get("createDefaultLocation") === "on";
+
               await handleRunAction(
                 () =>
-                  updatePlatformUserAction({
-                    userId: editUserTarget.id,
+                  createOrganizationAction({
                     name,
-                    email,
-                    platformRole,
-                    newPassword: newPassword || undefined,
-                    status,
+                    slug,
+                    ownerEmail,
+                    businessSegmentId: businessSegmentId || undefined,
+                    createDefaultLocation,
                   }),
-                "Usuário atualizado com sucesso.",
+                "Organização criada com sucesso.",
               );
             }}
             className="flex flex-col gap-4 text-xs"
           >
+            <p className="text-muted-foreground">
+              Cadastre uma nova organização parceira ou cliente na plataforma.
+            </p>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field>
-                <FieldLabel
-                  htmlFor="edit-user-name"
-                  className="text-xs font-semibold"
-                >
-                  Nome completo *
+                <FieldLabel htmlFor="org-name" className="text-xs font-semibold">
+                  Nome da organização *
                 </FieldLabel>
                 <Input
-                  id="edit-user-name"
+                  id="org-name"
                   name="name"
-                  defaultValue={editUserTarget.name}
+                  value={newOrgName}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setNewOrgName(val);
+                    if (!slugManuallyEdited) {
+                      setNewOrgSlug(slugify(val));
+                    }
+                  }}
+                  required
+                  minLength={2}
+                  maxLength={100}
+                  placeholder="Ex.: Barbearia Vintage"
+                  disabled={pending}
+                  className="text-xs h-9"
+                />
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="org-slug" className="text-xs font-semibold">
+                  Identificador URL (slug) *
+                </FieldLabel>
+                <Input
+                  id="org-slug"
+                  name="slug"
+                  value={newOrgSlug}
+                  onChange={(e) => {
+                    setSlugManuallyEdited(true);
+                    setNewOrgSlug(slugify(e.target.value));
+                  }}
+                  required
+                  minLength={2}
+                  maxLength={60}
+                  placeholder="ex: barbearia-vintage"
+                  disabled={pending}
+                  className="text-xs h-9 font-mono"
+                />
+                <FieldDescription className="text-[10px] text-muted-foreground">
+                  Apenas letras minúsculas, números e hifens.
+                </FieldDescription>
+              </Field>
+            </div>
+
+            <Field>
+              <FieldLabel htmlFor="org-owner-email" className="text-xs font-semibold">
+                E-mail do proprietário *
+              </FieldLabel>
+              <Input
+                id="org-owner-email"
+                name="ownerEmail"
+                type="email"
+                value={newOrgOwnerEmail}
+                onChange={(e) => setNewOrgOwnerEmail(e.target.value)}
+                required
+                placeholder="ex: proprietario@empresa.com"
+                disabled={pending}
+                className="text-xs h-9"
+              />
+              <FieldDescription className="text-[10px] text-muted-foreground">
+                Acesso inicial com o nome da empresa e a senha padrão: <strong>tarefai123@</strong>
+              </FieldDescription>
+            </Field>
+
+            <Field>
+              <div className="flex items-center justify-between">
+                <FieldLabel htmlFor="org-segment" className="text-xs font-semibold">
+                  Tipo de negócio (Job da empresa)
+                </FieldLabel>
+                <button
+                  type="button"
+                  onClick={() => setInlineSegmentAddOpen(!inlineSegmentAddOpen)}
+                  className="text-[11px] font-medium text-[var(--brand-900)] hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="size-3" />
+                  {inlineSegmentAddOpen ? "Cancelar" : "Adicionar outro tipo"}
+                </button>
+              </div>
+
+              {inlineSegmentAddOpen ? (
+                <div className="flex items-center gap-2 mt-1">
+                  <Input
+                    placeholder="Ex: Restaurante, Loja de sapatos..."
+                    value={inlineSegmentName}
+                    onChange={(e) => setInlineSegmentName(e.target.value)}
+                    disabled={inlineSegmentLoading}
+                    className="text-xs h-9 flex-1"
+                  />
+                  <Button
+                    type="button"
+                    disabled={inlineSegmentLoading || !inlineSegmentName.trim()}
+                    onClick={async () => {
+                      setInlineSegmentLoading(true);
+                      try {
+                        const res = await createBusinessSegmentAction({ name: inlineSegmentName.trim() });
+                        if (res.error) {
+                          toast.add({ title: res.error, type: "error" });
+                        } else if (res.segment) {
+                          setBusinessSegmentsList((prev) => [...prev, { ...res.segment, _count: { templates: 0, organizations: 0 } }]);
+                          setNewOrgSegmentId(res.segment.id);
+                          setInlineSegmentName("");
+                          setInlineSegmentAddOpen(false);
+                          toast.add({ title: "Tipo de negócio cadastrado e selecionado!", type: "success" });
+                        }
+                      } catch {
+                        toast.add({ title: "Erro ao adicionar tipo de negócio.", type: "error" });
+                      } finally {
+                        setInlineSegmentLoading(false);
+                      }
+                    }}
+                    className="h-9 text-xs px-3 bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
+                  >
+                    {inlineSegmentLoading ? "Salvando..." : "Salvar"}
+                  </Button>
+                </div>
+              ) : (
+                <NativeSelect
+                  id="org-segment"
+                  name="businessSegmentId"
+                  value={newOrgSegmentId}
+                  onChange={(e) => setNewOrgSegmentId(e.target.value)}
+                  disabled={pending}
+                  className="text-xs h-9"
+                >
+                  <NativeSelectOption value="">Selecione o tipo de negócio...</NativeSelectOption>
+                  {businessSegmentsList
+                    .filter((s) => s.status === "ACTIVE")
+                    .map((s) => (
+                      <NativeSelectOption key={s.id} value={s.id}>
+                        {s.name}
+                      </NativeSelectOption>
+                    ))}
+                </NativeSelect>
+              )}
+              <FieldDescription className="text-[10px] text-muted-foreground">
+                Define quais templates prontos estarão disponíveis exclusivamente para esta empresa.
+              </FieldDescription>
+            </Field>
+
+            <label className="flex items-center gap-2 cursor-pointer p-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)]/50 hover:bg-[var(--surface-muted)] transition-colors">
+              <input
+                type="checkbox"
+                name="createDefaultLocation"
+                defaultChecked
+                disabled={pending}
+                className="size-4 rounded accent-[var(--brand-900)] cursor-pointer"
+              />
+              <div>
+                <span className="font-semibold block text-[var(--text-primary)]">
+                  Criar unidade padrão ("Matriz / Principal")
+                </span>
+                <span className="text-[11px] text-muted-foreground block">
+                  Gera imediatamente uma unidade operacional ativa no fuso de São
+                  Paulo.
+                </span>
+              </div>
+            </label>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={closeModals}
+                disabled={pending}
+                className="h-9 text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={pending}
+                className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
+              >
+
+                Criar organização
+              </Button>
+            </div>
+          </PlatformForm>
+        </Modal>
+
+        {/* MODAL 5: Editar Organização */}
+        <Modal
+          open={Boolean(editOrgTarget)}
+          onClose={closeModals}
+          title={`Editar organização: ${editOrgTarget?.name}`}
+          className="sm:max-w-lg"
+        >
+          {editOrgTarget && (
+            <PlatformForm
+              key={editOrgTarget.id}
+              action={async (form) => {
+                const name = String(form.get("name") ?? "").trim();
+                const slug = String(form.get("slug") ?? "").trim();
+                const status = form.get("status") as "ACTIVE" | "SUSPENDED";
+                const businessSegmentId = String(form.get("businessSegmentId") ?? "").trim() || null;
+                const reason = String(form.get("reason") ?? "").trim();
+
+                await handleRunAction(
+                  () =>
+                    updateOrganizationAction({
+                      organizationId: editOrgTarget.id,
+                      name,
+                      slug,
+                      status,
+                      businessSegmentId,
+                      reason,
+                    }),
+                  "Organização atualizada com sucesso.",
+                );
+              }}
+              className="flex flex-col gap-4 text-xs"
+            >
+              <Field>
+                <FieldLabel
+                  htmlFor="edit-org-name"
+                  className="text-xs font-semibold"
+                >
+                  Nome da organização *
+                </FieldLabel>
+                <Input
+                  id="edit-org-name"
+                  name="name"
+                  defaultValue={editOrgTarget.name}
                   required
                   minLength={2}
                   maxLength={100}
@@ -3328,88 +3208,445 @@ export function SuperadminDashboardClient(props: Props) {
 
               <Field>
                 <FieldLabel
-                  htmlFor="edit-user-email"
+                  htmlFor="edit-org-slug"
                   className="text-xs font-semibold"
                 >
-                  E-mail *
+                  Slug (identificador URL) *
                 </FieldLabel>
                 <Input
-                  id="edit-user-email"
-                  name="email"
-                  type="email"
-                  defaultValue={editUserTarget.email ?? ""}
+                  id="edit-org-slug"
+                  name="slug"
+                  defaultValue={editOrgTarget.slug}
                   required
+                  minLength={2}
+                  maxLength={60}
                   disabled={pending}
-                  className="text-xs h-9"
+                  className="text-xs h-9 font-mono"
+                />
+                <FieldDescription className="text-[10px] text-muted-foreground">
+                  Cuidado: alterar o identificador afetará links diretos de acesso
+                  desta organização.
+                </FieldDescription>
+              </Field>
+
+              <Field>
+                <FieldLabel
+                  htmlFor="edit-org-segment"
+                  className="text-xs font-semibold"
+                >
+                  Tipo de negócio (Job da empresa)
+                </FieldLabel>
+                <NativeSelect
+                  id="edit-org-segment"
+                  name="businessSegmentId"
+                  defaultValue={editOrgTarget.businessSegmentId || ""}
+                  disabled={pending}
+                  className="w-full text-xs h-9"
+                >
+                  <NativeSelectOption value="">Nenhum (Sem segmento vinculado)</NativeSelectOption>
+                  {businessSegmentsList
+                    .filter((s) => s.status === "ACTIVE")
+                    .map((s) => (
+                      <NativeSelectOption key={s.id} value={s.id}>
+                        {s.name}
+                      </NativeSelectOption>
+                    ))}
+                </NativeSelect>
+                <FieldDescription className="text-[10px] text-muted-foreground">
+                  Altera o segmento e os templates disponíveis para a empresa.
+                </FieldDescription>
+              </Field>
+
+              <Field>
+                <FieldLabel
+                  htmlFor="edit-org-status"
+                  className="text-xs font-semibold"
+                >
+                  Status de operação *
+                </FieldLabel>
+                <NativeSelect
+                  id="edit-org-status"
+                  name="status"
+                  defaultValue={editOrgTarget.status}
+                  disabled={pending}
+                  className="w-full text-xs h-9"
+                >
+                  <NativeSelectOption value="ACTIVE">
+                    Ativa (Operação normal)
+                  </NativeSelectOption>
+                  <NativeSelectOption value="SUSPENDED">
+                    Suspensa (Bloqueio total de acesso)
+                  </NativeSelectOption>
+                </NativeSelect>
+              </Field>
+
+              <Field>
+                <FieldLabel
+                  htmlFor="edit-org-reason"
+                  className="text-xs font-semibold"
+                >
+                  Motivo da alteração (obrigatório para auditoria) *
+                </FieldLabel>
+                <Textarea
+                  id="edit-org-reason"
+                  name="reason"
+                  required
+                  minLength={5}
+                  maxLength={2000}
+                  placeholder="Descreva a razão das modificações cadastrais..."
+                  disabled={pending}
+                  className="text-xs min-h-[60px]"
+                />
+              </Field>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={closeModals}
+                  disabled={pending}
+                  className="h-9 text-xs"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={pending}
+                  className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
+                >
+
+                  Salvar alterações
+                </Button>
+              </div>
+            </PlatformForm>
+          )}
+        </Modal>
+
+        {/* MODAL 6: Excluir Organização */}
+        <Modal
+          open={Boolean(deleteOrgTarget)}
+          onClose={closeModals}
+          title={`Excluir organização: ${deleteOrgTarget?.name}`}
+          className="sm:max-w-lg"
+        >
+          {deleteOrgTarget && (
+            <PlatformForm
+              key={deleteOrgTarget.id}
+              action={async (form) => {
+                const confirmationSlug = String(
+                  form.get("confirmationSlug") ?? "",
+                ).trim();
+                const reason = String(form.get("reason") ?? "").trim();
+
+                await handleRunAction(
+                  () =>
+                    deleteOrganizationAction({
+                      organizationId: deleteOrgTarget.id,
+                      confirmationSlug,
+                      reason,
+                    }),
+                  "Organização e registros vinculados excluídos com sucesso.",
+                );
+              }}
+              className="flex flex-col gap-4 text-xs"
+            >
+              <div className="p-3 rounded-xl border bg-rose-50 border-rose-200 text-rose-800 text-xs">
+                <div className="flex items-center gap-1.5 font-bold mb-1">
+                  <AlertTriangle className="size-4 shrink-0 text-rose-600" />
+                  Ação destrutiva e irreversível!
+                </div>
+                <p>
+                  A exclusão da organização
+                  <strong> {deleteOrgTarget.name}</strong> removerá permanentemente
+                  todas as unidades, tarefas, processos operacionais, execuções e
+                  desvinculará todos os membros.
+                </p>
+              </div>
+
+              <Field>
+                <FieldLabel
+                  htmlFor="delete-org-confirmation"
+                  className="text-xs font-semibold"
+                >
+                  Para confirmar, digite exatamente o slug{" "}
+                  <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-foreground font-bold">
+                    {deleteOrgTarget.slug}
+                  </span>
+                  :
+                </FieldLabel>
+                <Input
+                  id="delete-org-confirmation"
+                  name="confirmationSlug"
+                  required
+                  placeholder={deleteOrgTarget.slug}
+                  disabled={pending}
+                  className="text-xs h-9 font-mono"
                 />
               </Field>
 
               <Field>
                 <FieldLabel
-                  htmlFor="edit-user-platform-role"
+                  htmlFor="delete-org-reason"
                   className="text-xs font-semibold"
                 >
-                  Papel na plataforma *
+                  Motivo da exclusão (obrigatório para auditoria) *
                 </FieldLabel>
-                <NativeSelect
-                  id="edit-user-platform-role"
-                  name="platformRole"
-                  defaultValue={
-                    editUserTarget.platformRole === "SUPERADMIN"
-                      ? "SUPERADMIN"
-                      : "USER"
-                  }
+                <Textarea
+                  id="delete-org-reason"
+                  name="reason"
+                  required
+                  minLength={5}
+                  maxLength={2000}
+                  placeholder="Descreva o motivo pelo qual esta organização está sendo excluída..."
                   disabled={pending}
-                  className="w-full text-xs h-9"
+                  className="text-xs min-h-[70px]"
+                />
+              </Field>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={closeModals}
+                  disabled={pending}
+                  className="h-9 text-xs"
                 >
-                  <NativeSelectOption value="USER">
-                    Usuário Comum
-                  </NativeSelectOption>
-                  <NativeSelectOption value="SUPERADMIN">
-                    Superadmin
-                  </NativeSelectOption>
-                </NativeSelect>
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={pending}
+                  className="h-9 text-xs font-semibold bg-destructive text-white hover:bg-destructive/90"
+                >
+
+                  Confirmar exclusão definitiva
+                </Button>
+              </div>
+            </PlatformForm>
+          )}
+        </Modal>
+
+        {/* MODAL 7: Criar Novo Usuário */}
+        <Modal
+          open={createUserOpen}
+          onClose={closeModals}
+          title="Novo usuário da plataforma"
+          className="max-h-[90dvh] overflow-y-auto sm:max-w-xl"
+        >
+          <PlatformForm
+            action={async (form) => {
+              const name = String(form.get("name") ?? "").trim();
+              const email = String(form.get("email") ?? "").trim();
+              const password = String(form.get("password") ?? "");
+              const platformRole = (form.get("platformRole") ?? "USER") as
+                "USER" | "SUPERADMIN";
+              const organizationId = String(
+                form.get("organizationId") ?? "",
+              ).trim();
+              const role = (form.get("role") || undefined) as
+                "OWNER" | "ADMIN" | "MANAGER" | "EMPLOYEE" | undefined;
+              const employeeCode = String(form.get("employeeCode") ?? "").trim();
+              const pin = String(form.get("pin") ?? "").trim();
+              await handleRunAction(
+                () =>
+                  createPlatformUserAction({
+                    name,
+                    email,
+                    password,
+                    platformRole,
+                    organizationId: organizationId || undefined,
+                    role: organizationId ? role : undefined,
+                    employeeCode: employeeCode || undefined,
+                    pin: pin || undefined,
+                  }),
+                "Usuário cadastrado com sucesso.",
+              );
+            }}
+            className="flex flex-col gap-4 text-xs"
+          >
+            <p className="text-muted-foreground">
+              Cadastre um novo usuário para acesso à plataforma Tarefaí ou ao
+              painel administrativo.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field>
+                <FieldLabel htmlFor="user-name" className="text-xs font-semibold">
+                  Nome completo *
+                </FieldLabel>
+                <Input
+                  id="user-name"
+                  name="name"
+                  required
+                  minLength={2}
+                  maxLength={100}
+                  placeholder="Ex.: Mariana Souza"
+                  disabled={pending}
+                  className="text-xs h-11"
+                />
               </Field>
 
               <Field>
                 <FieldLabel
-                  htmlFor="edit-user-status"
+                  htmlFor="user-email"
                   className="text-xs font-semibold"
                 >
-                  Status *
+                  E-mail de acesso *
+                </FieldLabel>
+                <Input
+                  id="user-email"
+                  name="email"
+                  type="email"
+                  required
+                  placeholder="mariana@empresa.com"
+                  disabled={pending}
+                  className="text-xs h-11"
+                />
+              </Field>
+
+              <Field>
+                <FieldLabel
+                  htmlFor="user-password"
+                  className="text-xs font-semibold"
+                >
+                  Senha inicial *
+                </FieldLabel>
+                <Input
+                  id="user-password"
+                  name="password"
+                  type="password"
+                  required
+                  minLength={8}
+                  placeholder="Mínimo de 8 caracteres"
+                  disabled={pending}
+                  className="text-xs h-11"
+                />
+              </Field>
+
+              <Field>
+                <FieldLabel
+                  htmlFor="user-platform-role"
+                  className="text-xs font-semibold"
+                >
+                  Perfil de acesso global *
                 </FieldLabel>
                 <NativeSelect
-                  id="edit-user-status"
-                  name="status"
-                  defaultValue={editUserTarget.status}
+                  id="user-platform-role"
+                  name="platformRole"
+                  defaultValue="USER"
                   disabled={pending}
                   className="w-full text-xs h-9"
                 >
-                  <NativeSelectOption value="ACTIVE">Ativo</NativeSelectOption>
-                  <NativeSelectOption value="SUSPENDED">
-                    Suspenso
+                  <NativeSelectOption value="USER">
+                    Usuário Comum (Empresarial)
+                  </NativeSelectOption>
+                  <NativeSelectOption value="SUPERADMIN">
+                    Superadmin (Gestor da Plataforma)
                   </NativeSelectOption>
                 </NativeSelect>
               </Field>
             </div>
 
-            <Field>
-              <FieldLabel
-                htmlFor="edit-user-new-password"
-                className="text-xs font-semibold"
-              >
-                Redefinir senha (opcional)
-              </FieldLabel>
-              <Input
-                id="edit-user-new-password"
-                name="newPassword"
-                type="password"
-                minLength={8}
-                placeholder="Deixe em branco para manter a senha atual"
-                disabled={pending}
-                className="text-xs h-9"
-              />
-            </Field>
+            <div className="flex flex-col gap-3 p-3.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)]/40">
+              <span className="font-semibold text-[var(--text-primary)] flex items-center gap-1.5">
+                <Building2 className="size-3.5 text-[var(--brand-700)]" />
+                Vínculo empresarial inicial (opcional)
+              </span>
+              <p className="text-[11px] text-muted-foreground">
+                Vincule imediatamente este usuário a uma organização existente.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field>
+                  <FieldLabel
+                    htmlFor="user-org-select"
+                    className="text-xs font-semibold"
+                  >
+                    Organização
+                  </FieldLabel>
+                  <NativeSelect
+                    id="user-org-select"
+                    name="organizationId"
+                    defaultValue=""
+                    disabled={pending}
+                    className="w-full text-xs h-9"
+                  >
+                    <NativeSelectOption value="">
+                      Nenhuma (Vincular depois)
+                    </NativeSelectOption>
+                    {props.allOrganizations?.map((o) => (
+                      <NativeSelectOption key={o.id} value={o.id}>
+                        {o.name} ({o.slug})
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                </Field>
+
+                <Field>
+                  <FieldLabel
+                    htmlFor="user-org-role"
+                    className="text-xs font-semibold"
+                  >
+                    Papel na organização
+                  </FieldLabel>
+                  <NativeSelect
+                    id="user-org-role"
+                    name="role"
+                    defaultValue="EMPLOYEE"
+                    disabled={pending}
+                    className="w-full text-xs h-9"
+                  >
+                    <NativeSelectOption value="EMPLOYEE">
+                      Colaborador / Operador
+                    </NativeSelectOption>
+                    <NativeSelectOption value="MANAGER">
+                      Gestor de Equipe
+                    </NativeSelectOption>
+                    <NativeSelectOption value="ADMIN">
+                      Administrador
+                    </NativeSelectOption>
+                    <NativeSelectOption value="OWNER">
+                      Proprietário (Owner)
+                    </NativeSelectOption>
+                  </NativeSelect>
+                </Field>
+
+                <Field>
+                  <FieldLabel
+                    htmlFor="user-employee-code"
+                    className="text-xs font-semibold"
+                  >
+                    Matrícula / Código operacional
+                  </FieldLabel>
+                  <Input
+                    id="user-employee-code"
+                    name="employeeCode"
+                    maxLength={50}
+                    placeholder="Ex.: MAT-1029"
+                    disabled={pending}
+                    className="text-xs h-11"
+                  />
+                </Field>
+
+                <Field>
+                  <FieldLabel
+                    htmlFor="user-pin"
+                    className="text-xs font-semibold"
+                  >
+                    PIN rápido de terminal
+                  </FieldLabel>
+                  <Input
+                    id="user-pin"
+                    name="pin"
+                    maxLength={6}
+                    pattern="\d{6}"
+                    placeholder="Ex.: 123456"
+                    disabled={pending}
+                    className="text-xs h-11 font-mono"
+                  />
+                </Field>
+              </div>
+            </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
               <Button
@@ -3427,90 +3664,760 @@ export function SuperadminDashboardClient(props: Props) {
                 className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
               >
 
-                Salvar alterações
+                Criar usuário
               </Button>
             </div>
           </PlatformForm>
-        )}
-      </Modal>
+        </Modal>
 
-      {/* MODAL 9: Excluir Usuário */}
-      <Modal
-        open={Boolean(deleteUserTarget)}
-        onClose={closeModals}
-        title={`Excluir usuário: ${deleteUserTarget?.name}`}
-        className="sm:max-w-lg"
-      >
-        {deleteUserTarget && (
+        {/* MODAL 8: Editar Usuário */}
+        <Modal
+          open={Boolean(editUserTarget)}
+          onClose={closeModals}
+          title={`Editar usuário: ${editUserTarget?.name}`}
+          className="sm:max-w-lg"
+        >
+          {editUserTarget && (
+            <PlatformForm
+              key={editUserTarget.id}
+              action={async (form) => {
+                const name = String(form.get("name") ?? "").trim();
+                const email = String(form.get("email") ?? "").trim();
+                const platformRole = (form.get("platformRole") ?? "USER") as
+                  "USER" | "SUPERADMIN";
+                const newPassword = String(form.get("newPassword") ?? "");
+                const status = form.get("status") as "ACTIVE" | "SUSPENDED";
+                await handleRunAction(
+                  () =>
+                    updatePlatformUserAction({
+                      userId: editUserTarget.id,
+                      name,
+                      email,
+                      platformRole,
+                      newPassword: newPassword || undefined,
+                      status,
+                    }),
+                  "Usuário atualizado com sucesso.",
+                );
+              }}
+              className="flex flex-col gap-4 text-xs"
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field>
+                  <FieldLabel
+                    htmlFor="edit-user-name"
+                    className="text-xs font-semibold"
+                  >
+                    Nome completo *
+                  </FieldLabel>
+                  <Input
+                    id="edit-user-name"
+                    name="name"
+                    defaultValue={editUserTarget.name}
+                    required
+                    minLength={2}
+                    maxLength={100}
+                    disabled={pending}
+                    className="text-xs h-9"
+                  />
+                </Field>
+
+                <Field>
+                  <FieldLabel
+                    htmlFor="edit-user-email"
+                    className="text-xs font-semibold"
+                  >
+                    E-mail *
+                  </FieldLabel>
+                  <Input
+                    id="edit-user-email"
+                    name="email"
+                    type="email"
+                    defaultValue={editUserTarget.email ?? ""}
+                    required
+                    disabled={pending}
+                    className="text-xs h-9"
+                  />
+                </Field>
+
+                <Field>
+                  <FieldLabel
+                    htmlFor="edit-user-platform-role"
+                    className="text-xs font-semibold"
+                  >
+                    Papel na plataforma *
+                  </FieldLabel>
+                  <NativeSelect
+                    id="edit-user-platform-role"
+                    name="platformRole"
+                    defaultValue={
+                      editUserTarget.platformRole === "SUPERADMIN"
+                        ? "SUPERADMIN"
+                        : "USER"
+                    }
+                    disabled={pending}
+                    className="w-full text-xs h-9"
+                  >
+                    <NativeSelectOption value="USER">
+                      Usuário Comum
+                    </NativeSelectOption>
+                    <NativeSelectOption value="SUPERADMIN">
+                      Superadmin
+                    </NativeSelectOption>
+                  </NativeSelect>
+                </Field>
+
+                <Field>
+                  <FieldLabel
+                    htmlFor="edit-user-status"
+                    className="text-xs font-semibold"
+                  >
+                    Status *
+                  </FieldLabel>
+                  <NativeSelect
+                    id="edit-user-status"
+                    name="status"
+                    defaultValue={editUserTarget.status}
+                    disabled={pending}
+                    className="w-full text-xs h-9"
+                  >
+                    <NativeSelectOption value="ACTIVE">Ativo</NativeSelectOption>
+                    <NativeSelectOption value="SUSPENDED">
+                      Suspenso
+                    </NativeSelectOption>
+                  </NativeSelect>
+                </Field>
+              </div>
+
+              <Field>
+                <FieldLabel
+                  htmlFor="edit-user-new-password"
+                  className="text-xs font-semibold"
+                >
+                  Redefinir senha (opcional)
+                </FieldLabel>
+                <Input
+                  id="edit-user-new-password"
+                  name="newPassword"
+                  type="password"
+                  minLength={8}
+                  placeholder="Deixe em branco para manter a senha atual"
+                  disabled={pending}
+                  className="text-xs h-9"
+                />
+              </Field>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={closeModals}
+                  disabled={pending}
+                  className="h-9 text-xs"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={pending}
+                  className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
+                >
+
+                  Salvar alterações
+                </Button>
+              </div>
+            </PlatformForm>
+          )}
+        </Modal>
+
+        {/* MODAL 9: Excluir Usuário */}
+        <Modal
+          open={Boolean(deleteUserTarget)}
+          onClose={closeModals}
+          title={`Excluir usuário: ${deleteUserTarget?.name}`}
+          className="sm:max-w-lg"
+        >
+          {deleteUserTarget && (
+            <PlatformForm
+              key={deleteUserTarget.id}
+              action={async (form) => {
+                const confirmationEmail = String(
+                  form.get("confirmationEmail") ?? "",
+                ).trim();
+                const reason = String(form.get("reason") ?? "").trim();
+
+                await handleRunAction(
+                  () =>
+                    deletePlatformUserAction({
+                      userId: deleteUserTarget.id,
+                      confirmationEmail,
+                      reason,
+                    }),
+                  "Conta de usuário excluída com sucesso.",
+                );
+              }}
+              className="flex flex-col gap-4 text-xs"
+            >
+              <div className="p-3 rounded-xl border bg-rose-50 border-rose-200 text-rose-800 text-xs">
+                <div className="flex items-center gap-1.5 font-bold mb-1">
+                  <AlertTriangle className="size-4 shrink-0 text-rose-600" />
+                  Ação destrutiva!
+                </div>
+                <p>
+                  A exclusão da conta de <strong>{deleteUserTarget.name}</strong>{" "}
+                  revogará todos os acessos e desvinculará a pessoa de todas as
+                  organizações ({deleteUserTarget.memberships.length} organizações
+                  vinculadas).
+                </p>
+              </div>
+
+              <Field>
+                <FieldLabel
+                  htmlFor="delete-user-confirmation"
+                  className="text-xs font-semibold"
+                >
+                  Para confirmar, digite exatamente o e-mail{" "}
+                  <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-foreground font-bold">
+                    {deleteUserTarget.email ?? "sem-email"}
+                  </span>
+                  :
+                </FieldLabel>
+                <Input
+                  id="delete-user-confirmation"
+                  name="confirmationEmail"
+                  type="email"
+                  required
+                  placeholder={deleteUserTarget.email ?? ""}
+                  disabled={pending}
+                  className="text-xs h-9"
+                />
+              </Field>
+
+              <Field>
+                <FieldLabel
+                  htmlFor="delete-user-reason"
+                  className="text-xs font-semibold"
+                >
+                  Motivo da exclusão (obrigatório para auditoria) *
+                </FieldLabel>
+                <Textarea
+                  id="delete-user-reason"
+                  name="reason"
+                  required
+                  minLength={5}
+                  maxLength={2000}
+                  placeholder="Descreva o motivo da exclusão da conta..."
+                  disabled={pending}
+                  className="text-xs min-h-[60px]"
+                />
+              </Field>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={closeModals}
+                  disabled={pending}
+                  className="h-9 text-xs"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={pending}
+                  className="h-9 text-xs font-semibold bg-destructive text-white hover:bg-destructive/90"
+                >
+
+                  Confirmar exclusão
+                </Button>
+              </div>
+            </PlatformForm>
+          )}
+        </Modal>
+
+        {/* MODAL 10: Gerenciar Vínculos Organizacionais */}
+        <Modal
+          open={Boolean(manageMembershipsTarget)}
+          onClose={closeModals}
+          title={`Vínculos organizacionais: ${manageMembershipsTarget?.name}`}
+          className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl"
+        >
+          {manageMembershipsTarget && (
+            <div className="flex flex-col gap-5 text-xs">
+              {/* Lista de Vínculos Existentes */}
+              <div className="flex flex-col gap-2.5">
+                <h3 className="font-bold text-sm text-[var(--text-primary)]">
+                  Organizações vinculadas atualmente (
+                  {manageMembershipsTarget.memberships.length})
+                </h3>
+
+                {manageMembershipsTarget.memberships.length === 0 ? (
+                  <p className="text-muted-foreground italic p-3 rounded-xl bg-muted/30 border border-border/50">
+                    Este usuário ainda não possui nenhum vínculo ativo com
+                    organizações.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {manageMembershipsTarget.memberships.map((m) => (
+                      <div
+                        key={m.organizationId}
+                        className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <strong className="text-sm font-semibold text-[var(--text-primary)] block truncate">
+                            {m.organizationName}
+                          </strong>
+                          <span className="text-xs text-muted-foreground">
+                            Papel atual:{" "}
+                            <Badge variant="outline" className="text-[10px] ml-1">
+                              {uiLabel(m.role)}
+                            </Badge>
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          {/* Formulário rápido de alteração de papel */}
+                          <PlatformForm
+                            action={async (form) => {
+                              const newRole = form.get("newRole") as
+                                "OWNER" | "ADMIN" | "MANAGER" | "EMPLOYEE";
+                              if (newRole === m.role) return;
+                              setRoleChangeTarget({
+                                membership: m,
+                                user: manageMembershipsTarget,
+                                newRole,
+                              });
+                            }}
+                            className="flex items-center gap-1.5"
+                          >
+                            <NativeSelect
+                              name="newRole"
+                              defaultValue={m.role}
+                              disabled={pending}
+                              className="h-8 text-xs w-28"
+                              aria-label="Alterar papel"
+                            >
+                              <NativeSelectOption value="EMPLOYEE">
+                                Colaborador
+                              </NativeSelectOption>
+                              <NativeSelectOption value="MANAGER">
+                                Gestor
+                              </NativeSelectOption>
+                              <NativeSelectOption value="ADMIN">
+                                Administrador
+                              </NativeSelectOption>
+                              <NativeSelectOption value="OWNER">
+                                Proprietário
+                              </NativeSelectOption>
+                            </NativeSelect>
+                            <Button
+                              type="submit"
+                              variant="outline"
+                              size="sm"
+                              disabled={pending}
+                              className="h-8 text-xs font-semibold px-2"
+                              title="Salvar novo papel"
+                            >
+                              Salvar
+                            </Button>
+                          </PlatformForm>
+
+                          {/* Botão de desvincular */}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={pending}
+                            onClick={() => {
+                              setUnlinkTarget({
+                                membership: m,
+                                user: manageMembershipsTarget,
+                              });
+                            }}
+                            className="h-8 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive px-2"
+                            title="Remover vínculo"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Formulário para Adicionar Novo Vínculo */}
+              <PlatformForm
+                action={async (form) => {
+                  const organizationId = String(
+                    form.get("organizationId") ?? "",
+                  ).trim();
+                  const role = form.get("role") as
+                    "OWNER" | "ADMIN" | "MANAGER" | "EMPLOYEE";
+                  const employeeCode = String(
+                    form.get("employeeCode") ?? "",
+                  ).trim();
+                  const pin = String(form.get("pin") ?? "").trim();
+                  const reason = String(form.get("reason") ?? "").trim();
+
+                  await handleRunAction(
+                    () =>
+                      addOrganizationMemberAction({
+                        organizationId,
+                        userId: manageMembershipsTarget.id,
+                        role,
+                        employeeCode: employeeCode || undefined,
+                        pin: pin || undefined,
+                        reason,
+                      }),
+                    "Usuário vinculado à organização com sucesso.",
+                  );
+                }}
+                className="flex flex-col gap-3 p-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)]/50"
+              >
+                <h4 className="font-bold text-xs text-[var(--text-primary)] flex items-center gap-1.5">
+                  <Plus className="size-3.5 text-[var(--brand-700)]" />
+                  Vincular a uma nova organização
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Field>
+                    <FieldLabel
+                      htmlFor="link-org-select"
+                      className="text-xs font-semibold"
+                    >
+                      Organização *
+                    </FieldLabel>
+                    <NativeSelect
+                      id="link-org-select"
+                      name="organizationId"
+                      required
+                      disabled={pending}
+                      className="w-full text-xs h-9"
+                    >
+                      <NativeSelectOption value="">
+                        Selecione uma organização...
+                      </NativeSelectOption>
+                      {props.allOrganizations
+                        ?.filter(
+                          (o) =>
+                            !manageMembershipsTarget.memberships.some(
+                              (m) => m.organizationId === o.id,
+                            ),
+                        )
+                        .map((o) => (
+                          <NativeSelectOption key={o.id} value={o.id}>
+                            {o.name} ({o.slug})
+                          </NativeSelectOption>
+                        ))}
+                    </NativeSelect>
+                  </Field>
+
+                  <Field>
+                    <FieldLabel
+                      htmlFor="link-org-role"
+                      className="text-xs font-semibold"
+                    >
+                      Papel *
+                    </FieldLabel>
+                    <NativeSelect
+                      id="link-org-role"
+                      name="role"
+                      defaultValue="EMPLOYEE"
+                      disabled={pending}
+                      className="w-full text-xs h-9"
+                    >
+                      <NativeSelectOption value="EMPLOYEE">
+                        Colaborador
+                      </NativeSelectOption>
+                      <NativeSelectOption value="MANAGER">
+                        Gestor
+                      </NativeSelectOption>
+                      <NativeSelectOption value="ADMIN">
+                        Administrador
+                      </NativeSelectOption>
+                      <NativeSelectOption value="OWNER">
+                        Proprietário
+                      </NativeSelectOption>
+                    </NativeSelect>
+                  </Field>
+
+                  <Field>
+                    <FieldLabel
+                      htmlFor="link-employee-code"
+                      className="text-xs font-semibold"
+                    >
+                      Matrícula operacional (opcional)
+                    </FieldLabel>
+                    <Input
+                      id="link-employee-code"
+                      name="employeeCode"
+                      maxLength={50}
+                      placeholder="Ex.: FUNC-001"
+                      disabled={pending}
+                      className="text-xs h-9"
+                    />
+                  </Field>
+
+                  <Field>
+                    <FieldLabel
+                      htmlFor="link-pin"
+                      className="text-xs font-semibold"
+                    >
+                      PIN de terminal (6 dígitos, opcional)
+                    </FieldLabel>
+                    <Input
+                      id="link-pin"
+                      name="pin"
+                      maxLength={6}
+                      pattern="\d{6}"
+                      placeholder="Ex.: 654321"
+                      disabled={pending}
+                      className="text-xs h-9 font-mono"
+                    />
+                  </Field>
+                </div>
+
+                <Field>
+                  <FieldLabel
+                    htmlFor="link-reason"
+                    className="text-xs font-semibold"
+                  >
+                    Motivo da vinculação (obrigatório para auditoria) *
+                  </FieldLabel>
+                  <Textarea
+                    id="link-reason"
+                    name="reason"
+                    required
+                    minLength={5}
+                    maxLength={2000}
+                    placeholder="Descreva a razão da inclusão deste membro na organização..."
+                    disabled={pending}
+                    className="text-sm! min-h-12.5"
+                  />
+                </Field>
+
+                <div className="flex justify-end pt-1">
+                  <Button
+                    type="submit"
+                    disabled={pending}
+                    className="h-8 text-xs font-semibold bg-brand-900 text-white hover:bg-brand-700"
+                  >
+
+                    Adicionar vínculo
+                  </Button>
+                </div>
+              </PlatformForm>
+
+              <div className="flex justify-end pt-2 border-t border-[var(--border-subtle)]">
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={closeModals}
+                  disabled={pending}
+                  className="h-9 text-xs"
+                >
+                  Fechar
+                </Button>
+              </div>
+            </div>
+          )}
+        </Modal>
+
+        {/* MODAL 15: Confirmação de Alteração de Cargo */}
+        <Modal
+          open={Boolean(roleChangeTarget)}
+          onClose={() => setRoleChangeTarget(null)}
+          title="Alterar papel do membro"
+          className="sm:max-w-md"
+        >
+          {roleChangeTarget && (
+            <PlatformForm
+              action={async (form) => {
+                const reason = String(form.get("reason") ?? "").trim();
+                await handleRunAction(
+                  () =>
+                    updateOrganizationMemberRoleAction({
+                      organizationId: roleChangeTarget.membership.organizationId,
+                      userId: roleChangeTarget.user.id,
+                      newRole: roleChangeTarget.newRole,
+                      reason,
+                    }),
+                  "Papel atualizado com sucesso.",
+                );
+                setRoleChangeTarget(null);
+              }}
+              className="flex flex-col gap-4 text-xs"
+            >
+              <p className="text-muted-foreground">
+                Confirma alterar o papel de <strong>{roleChangeTarget.user.name}</strong> na organização{" "}
+                <strong>{roleChangeTarget.membership.organizationName}</strong> para{" "}
+                <strong>{uiLabel(roleChangeTarget.newRole)}</strong>?
+              </p>
+
+              <Field>
+                <FieldLabel htmlFor="role-change-reason" className="text-xs font-semibold">
+                  Motivo da alteração (obrigatório para auditoria) *
+                </FieldLabel>
+                <Textarea
+                  id="role-change-reason"
+                  name="reason"
+                  required
+                  minLength={5}
+                  maxLength={2000}
+                  placeholder="Informe o motivo da alteração de cargo (mínimo 5 caracteres)..."
+                  disabled={pending}
+                  className="text-sm! min-h-16"
+                />
+              </Field>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={() => setRoleChangeTarget(null)}
+                  disabled={pending}
+                  className="h-9 text-xs"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={pending}
+                  className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
+                >
+                  Confirmar alteração
+                </Button>
+              </div>
+            </PlatformForm>
+          )}
+        </Modal>
+
+        {/* MODAL 16: Confirmação de Desvínculo */}
+        <Modal
+          open={Boolean(unlinkTarget)}
+          onClose={() => setUnlinkTarget(null)}
+          title="Desvincular membro da organização"
+          className="sm:max-w-md"
+        >
+          {unlinkTarget && (
+            <PlatformForm
+              action={async (form) => {
+                const reason = String(form.get("reason") ?? "").trim();
+                await handleRunAction(
+                  () =>
+                    removeOrganizationMemberAction({
+                      organizationId: unlinkTarget.membership.organizationId,
+                      userId: unlinkTarget.user.id,
+                      reason,
+                    }),
+                  "Membro desvinculado com sucesso.",
+                );
+                setUnlinkTarget(null);
+              }}
+              className="flex flex-col gap-4 text-xs"
+            >
+              <div className="p-3 rounded-lg bg-[var(--sa-danger-soft)] text-[var(--sa-danger)] border border-[var(--sa-danger)]/20">
+                Atenção: Esta ação revogará todos os acessos de{" "}
+                <strong>{unlinkTarget.user.name}</strong> na organização{" "}
+                <strong>{unlinkTarget.membership.organizationName}</strong>.
+              </div>
+
+              <Field>
+                <FieldLabel htmlFor="unlink-reason" className="text-xs font-semibold">
+                  Motivo do desligamento (obrigatório para auditoria) *
+                </FieldLabel>
+                <Textarea
+                  id="unlink-reason"
+                  name="reason"
+                  required
+                  minLength={5}
+                  maxLength={2000}
+                  placeholder="Descreva o motivo do desvínculo (mínimo 5 caracteres)..."
+                  disabled={pending}
+                  className="text-sm! min-h-16"
+                />
+              </Field>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={() => setUnlinkTarget(null)}
+                  disabled={pending}
+                  className="h-9 text-xs"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={pending}
+                  className="h-9 text-xs font-semibold bg-[var(--sa-danger)] text-white hover:bg-rose-700"
+                >
+                  Confirmar desvínculo
+                </Button>
+              </div>
+            </PlatformForm>
+          )}
+        </Modal>
+
+        {/* MODAIS DE SEGMENTOS E TEMPLATES DE PLATAFORMA */}
+
+        {/* Modal: Novo Segmento */}
+        <Modal
+          open={createSegmentOpen}
+          onClose={closeModals}
+          title="Novo tipo de negócio (Segmento)"
+          className="sm:max-w-md"
+        >
           <PlatformForm
-            key={deleteUserTarget.id}
             action={async (form) => {
-              const confirmationEmail = String(
-                form.get("confirmationEmail") ?? "",
-              ).trim();
-              const reason = String(form.get("reason") ?? "").trim();
-
+              const name = String(form.get("name") ?? "").trim();
+              const description = String(form.get("description") ?? "").trim();
               await handleRunAction(
-                () =>
-                  deletePlatformUserAction({
-                    userId: deleteUserTarget.id,
-                    confirmationEmail,
-                    reason,
-                  }),
-                "Conta de usuário excluída com sucesso.",
+                async () => {
+                  const res = await createBusinessSegmentAction({ name, description });
+                  if (res.segment) {
+                    setBusinessSegmentsList((prev) => [
+                      ...prev,
+                      { ...res.segment, _count: { templates: 0, organizations: 0 } },
+                    ]);
+                  }
+                  return res;
+                },
+                "Segmento cadastrado com sucesso."
               );
             }}
             className="flex flex-col gap-4 text-xs"
           >
-            <div className="p-3 rounded-xl border bg-rose-50 border-rose-200 text-rose-800 text-xs">
-              <div className="flex items-center gap-1.5 font-bold mb-1">
-                <AlertTriangle className="size-4 shrink-0 text-rose-600" />
-                Ação destrutiva!
-              </div>
-              <p>
-                A exclusão da conta de <strong>{deleteUserTarget.name}</strong>{" "}
-                revogará todos os acessos e desvinculará a pessoa de todas as
-                organizações ({deleteUserTarget.memberships.length} organizações
-                vinculadas).
-              </p>
-            </div>
+            <p className="text-muted-foreground">
+              Cadastre um segmento (tipo de negócio) para organizar os modelos de processos prontos da plataforma.
+            </p>
 
             <Field>
-              <FieldLabel
-                htmlFor="delete-user-confirmation"
-                className="text-xs font-semibold"
-              >
-                Para confirmar, digite exatamente o e-mail{" "}
-                <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-foreground font-bold">
-                  {deleteUserTarget.email ?? "sem-email"}
-                </span>
-                :
+              <FieldLabel htmlFor="new-segment-name" className="text-xs font-semibold">
+                Nome do segmento (ex: Restaurante, Loja de sapatos) *
               </FieldLabel>
               <Input
-                id="delete-user-confirmation"
-                name="confirmationEmail"
-                type="email"
+                id="new-segment-name"
+                name="name"
                 required
-                placeholder={deleteUserTarget.email ?? ""}
+                minLength={2}
+                maxLength={100}
+                placeholder="Ex: Restaurante, Loja de calçados..."
                 disabled={pending}
                 className="text-xs h-9"
               />
             </Field>
 
             <Field>
-              <FieldLabel
-                htmlFor="delete-user-reason"
-                className="text-xs font-semibold"
-              >
-                Motivo da exclusão (obrigatório para auditoria) *
+              <FieldLabel htmlFor="new-segment-desc" className="text-xs font-semibold">
+                Descrição (opcional)
               </FieldLabel>
               <Textarea
-                id="delete-user-reason"
-                name="reason"
-                required
-                minLength={5}
-                maxLength={2000}
-                placeholder="Descreva o motivo da exclusão da conta..."
+                id="new-segment-desc"
+                name="description"
+                maxLength={500}
+                placeholder="Descreva as características deste segmento operacional..."
                 disabled={pending}
                 className="text-xs min-h-[60px]"
               />
@@ -3529,341 +4436,208 @@ export function SuperadminDashboardClient(props: Props) {
               <Button
                 type="submit"
                 disabled={pending}
-                className="h-9 text-xs font-semibold bg-destructive text-white hover:bg-destructive/90"
+                className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
               >
-
-                Confirmar exclusão
+                Criar segmento
               </Button>
             </div>
           </PlatformForm>
-        )}
-      </Modal>
+        </Modal>
 
-      {/* MODAL 10: Gerenciar Vínculos Organizacionais */}
-      <Modal
-        open={Boolean(manageMembershipsTarget)}
-        onClose={closeModals}
-        title={`Vínculos organizacionais: ${manageMembershipsTarget?.name}`}
-        className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl"
-      >
-        {manageMembershipsTarget && (
-          <div className="flex flex-col gap-5 text-xs">
-            {/* Lista de Vínculos Existentes */}
-            <div className="flex flex-col gap-2.5">
-              <h3 className="font-bold text-sm text-[var(--text-primary)]">
-                Organizações vinculadas atualmente (
-                {manageMembershipsTarget.memberships.length})
-              </h3>
-
-              {manageMembershipsTarget.memberships.length === 0 ? (
-                <p className="text-muted-foreground italic p-3 rounded-xl bg-muted/30 border border-border/50">
-                  Este usuário ainda não possui nenhum vínculo ativo com
-                  organizações.
-                </p>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {manageMembershipsTarget.memberships.map((m) => (
-                    <div
-                      key={m.organizationId}
-                      className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <strong className="text-sm font-semibold text-[var(--text-primary)] block truncate">
-                          {m.organizationName}
-                        </strong>
-                        <span className="text-xs text-muted-foreground">
-                          Papel atual:{" "}
-                          <Badge variant="outline" className="text-[10px] ml-1">
-                            {uiLabel(m.role)}
-                          </Badge>
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        {/* Formulário rápido de alteração de papel */}
-                        <PlatformForm
-                          action={async (form) => {
-                            const newRole = form.get("newRole") as
-                              "OWNER" | "ADMIN" | "MANAGER" | "EMPLOYEE";
-                            const reason = prompt(
-                              "Informe o motivo da alteração de cargo (mínimo 5 caracteres):",
-                            );
-                            if (!reason || reason.trim().length < 5) {
-                              if (reason !== null) {
-                                toast.add({
-                                  title: "Operação cancelada",
-                                  description:
-                                    "O motivo é obrigatório para auditoria (mínimo 5 caracteres).",
-                                  type: "error",
-                                });
-                              }
-                              return;
-                            }
-                            await handleRunAction(
-                              () =>
-                                updateOrganizationMemberRoleAction({
-                                  organizationId: m.organizationId,
-                                  userId: manageMembershipsTarget.id,
-                                  newRole,
-                                  reason: reason.trim(),
-                                }),
-                              "Papel atualizado com sucesso.",
-                            );
-                          }}
-                          className="flex items-center gap-1.5"
-                        >
-                          <NativeSelect
-                            name="newRole"
-                            defaultValue={m.role}
-                            disabled={pending}
-                            className="h-8 text-xs w-28"
-                            aria-label="Alterar papel"
-                          >
-                            <NativeSelectOption value="EMPLOYEE">
-                              Colaborador
-                            </NativeSelectOption>
-                            <NativeSelectOption value="MANAGER">
-                              Gestor
-                            </NativeSelectOption>
-                            <NativeSelectOption value="ADMIN">
-                              Administrador
-                            </NativeSelectOption>
-                            <NativeSelectOption value="OWNER">
-                              Proprietário
-                            </NativeSelectOption>
-                          </NativeSelect>
-                          <Button
-                            type="submit"
-                            variant="outline"
-                            size="sm"
-                            disabled={pending}
-                            className="h-8 text-xs font-semibold px-2"
-                            title="Salvar novo papel"
-                          >
-                            Salvar
-                          </Button>
-                        </PlatformForm>
-
-                        {/* Botão de desvincular */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={pending}
-                          onClick={async () => {
-                            const reason = prompt(
-                              `Confirma desvincular ${manageMembershipsTarget.name} da organização ${m.organizationName}?\nInforme o motivo:`,
-                            );
-                            if (!reason || reason.trim().length < 5) {
-                              if (reason !== null) {
-                                toast.add({
-                                  title: "Operação cancelada",
-                                  description:
-                                    "O motivo é obrigatório para auditoria (mínimo 5 caracteres).",
-                                  type: "error",
-                                });
-                              }
-                              return;
-                            }
-                            await handleRunAction(
-                              () =>
-                                removeOrganizationMemberAction({
-                                  organizationId: m.organizationId,
-                                  userId: manageMembershipsTarget.id,
-                                  reason: reason.trim(),
-                                }),
-                              "Membro desvinculado com sucesso.",
-                            );
-                          }}
-                          className="h-8 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive px-2"
-                          title="Remover vínculo"
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Formulário para Adicionar Novo Vínculo */}
+        {/* Modal: Editar Segmento */}
+        <Modal
+          open={Boolean(editSegmentTarget)}
+          onClose={closeModals}
+          title={`Editar segmento: ${editSegmentTarget?.name}`}
+          className="sm:max-w-md"
+        >
+          {editSegmentTarget && (
             <PlatformForm
+              key={editSegmentTarget.id}
               action={async (form) => {
-                const organizationId = String(
-                  form.get("organizationId") ?? "",
-                ).trim();
-                const role = form.get("role") as
-                  "OWNER" | "ADMIN" | "MANAGER" | "EMPLOYEE";
-                const employeeCode = String(
-                  form.get("employeeCode") ?? "",
-                ).trim();
-                const pin = String(form.get("pin") ?? "").trim();
-                const reason = String(form.get("reason") ?? "").trim();
-
+                const name = String(form.get("name") ?? "").trim();
+                const description = String(form.get("description") ?? "").trim();
+                const status = form.get("status") as "ACTIVE" | "INACTIVE";
                 await handleRunAction(
-                  () =>
-                    addOrganizationMemberAction({
-                      organizationId,
-                      userId: manageMembershipsTarget.id,
-                      role,
-                      employeeCode: employeeCode || undefined,
-                      pin: pin || undefined,
-                      reason,
-                    }),
-                  "Usuário vinculado à organização com sucesso.",
+                  async () => {
+                    const res = await updateBusinessSegmentAction({
+                      id: editSegmentTarget.id,
+                      name,
+                      description,
+                      status,
+                    });
+                    if (res.success) {
+                      setBusinessSegmentsList((prev) =>
+                        prev.map((s) => (s.id === editSegmentTarget.id ? { ...s, name, description, status } : s))
+                      );
+                    }
+                    return res;
+                  },
+                  "Segmento atualizado com sucesso."
                 );
               }}
-              className="flex flex-col gap-3 p-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)]/50"
+              className="flex flex-col gap-4 text-xs"
             >
-              <h4 className="font-bold text-xs text-[var(--text-primary)] flex items-center gap-1.5">
-                <Plus className="size-3.5 text-[var(--brand-700)]" />
-                Vincular a uma nova organização
-              </h4>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Field>
-                  <FieldLabel
-                    htmlFor="link-org-select"
-                    className="text-xs font-semibold"
-                  >
-                    Organização *
-                  </FieldLabel>
-                  <NativeSelect
-                    id="link-org-select"
-                    name="organizationId"
-                    required
-                    disabled={pending}
-                    className="w-full text-xs h-9"
-                  >
-                    <NativeSelectOption value="">
-                      Selecione uma organização...
-                    </NativeSelectOption>
-                    {props.allOrganizations
-                      ?.filter(
-                        (o) =>
-                          !manageMembershipsTarget.memberships.some(
-                            (m) => m.organizationId === o.id,
-                          ),
-                      )
-                      .map((o) => (
-                        <NativeSelectOption key={o.id} value={o.id}>
-                          {o.name} ({o.slug})
-                        </NativeSelectOption>
-                      ))}
-                  </NativeSelect>
-                </Field>
-
-                <Field>
-                  <FieldLabel
-                    htmlFor="link-org-role"
-                    className="text-xs font-semibold"
-                  >
-                    Papel *
-                  </FieldLabel>
-                  <NativeSelect
-                    id="link-org-role"
-                    name="role"
-                    defaultValue="EMPLOYEE"
-                    disabled={pending}
-                    className="w-full text-xs h-9"
-                  >
-                    <NativeSelectOption value="EMPLOYEE">
-                      Colaborador
-                    </NativeSelectOption>
-                    <NativeSelectOption value="MANAGER">
-                      Gestor
-                    </NativeSelectOption>
-                    <NativeSelectOption value="ADMIN">
-                      Administrador
-                    </NativeSelectOption>
-                    <NativeSelectOption value="OWNER">
-                      Proprietário
-                    </NativeSelectOption>
-                  </NativeSelect>
-                </Field>
-
-                <Field>
-                  <FieldLabel
-                    htmlFor="link-employee-code"
-                    className="text-xs font-semibold"
-                  >
-                    Matrícula operacional (opcional)
-                  </FieldLabel>
-                  <Input
-                    id="link-employee-code"
-                    name="employeeCode"
-                    maxLength={50}
-                    placeholder="Ex.: FUNC-001"
-                    disabled={pending}
-                    className="text-xs h-9"
-                  />
-                </Field>
-
-                <Field>
-                  <FieldLabel
-                    htmlFor="link-pin"
-                    className="text-xs font-semibold"
-                  >
-                    PIN de terminal (6 dígitos, opcional)
-                  </FieldLabel>
-                  <Input
-                    id="link-pin"
-                    name="pin"
-                    maxLength={6}
-                    pattern="\d{6}"
-                    placeholder="Ex.: 654321"
-                    disabled={pending}
-                    className="text-xs h-9 font-mono"
-                  />
-                </Field>
-              </div>
-
               <Field>
-                <FieldLabel
-                  htmlFor="link-reason"
-                  className="text-xs font-semibold"
-                >
-                  Motivo da vinculação (obrigatório para auditoria) *
+                <FieldLabel htmlFor="edit-seg-name" className="text-xs font-semibold">
+                  Nome do segmento *
                 </FieldLabel>
-                <Textarea
-                  id="link-reason"
-                  name="reason"
+                <Input
+                  id="edit-seg-name"
+                  name="name"
+                  defaultValue={editSegmentTarget.name}
                   required
-                  minLength={5}
-                  maxLength={2000}
-                  placeholder="Descreva a razão da inclusão deste membro na organização..."
+                  minLength={2}
+                  maxLength={100}
                   disabled={pending}
-                  className="text-sm! min-h-12.5"
+                  className="text-xs h-9"
                 />
               </Field>
 
-              <div className="flex justify-end pt-1">
+              <Field>
+                <FieldLabel htmlFor="edit-seg-desc" className="text-xs font-semibold">
+                  Descrição
+                </FieldLabel>
+                <Textarea
+                  id="edit-seg-desc"
+                  name="description"
+                  defaultValue={editSegmentTarget.description || ""}
+                  maxLength={500}
+                  disabled={pending}
+                  className="text-xs min-h-[60px]"
+                />
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="edit-seg-status" className="text-xs font-semibold">
+                  Status
+                </FieldLabel>
+                <NativeSelect
+                  id="edit-seg-status"
+                  name="status"
+                  defaultValue={editSegmentTarget.status}
+                  disabled={pending}
+                  className="w-full text-xs h-9"
+                >
+                  <NativeSelectOption value="ACTIVE">Ativo</NativeSelectOption>
+                  <NativeSelectOption value="INACTIVE">Inativo</NativeSelectOption>
+                </NativeSelect>
+              </Field>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={closeModals}
+                  disabled={pending}
+                  className="h-9 text-xs"
+                >
+                  Cancelar
+                </Button>
                 <Button
                   type="submit"
                   disabled={pending}
-                  className="h-8 text-xs font-semibold bg-brand-900 text-white hover:bg-brand-700"
+                  className="h-9 text-xs font-semibold bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)]"
                 >
-
-                  Adicionar vínculo
+                  Salvar alterações
                 </Button>
               </div>
             </PlatformForm>
+          )}
+        </Modal>
 
-            <div className="flex justify-end pt-2 border-t border-[var(--border-subtle)]">
-              <Button
-                variant="outline"
-                type="button"
-                onClick={closeModals}
-                disabled={pending}
-                className="h-9 text-xs"
-              >
-                Fechar
-              </Button>
+        {/* Modal: Excluir Segmento */}
+        <Modal
+          open={Boolean(deleteSegmentTarget)}
+          onClose={closeModals}
+          title={`Remover segmento: ${deleteSegmentTarget?.name}`}
+          className="sm:max-w-md"
+        >
+          {deleteSegmentTarget && (
+            <div className="flex flex-col gap-4 text-xs">
+              <p className="text-muted-foreground">
+                Tem certeza que deseja remover o segmento <strong>{deleteSegmentTarget.name}</strong>?
+                {deleteSegmentTarget._count.organizations > 0
+                  ? " Como existem empresas vinculadas, o segmento será inativado ao invés de apagado."
+                  : " Esta ação não poderá ser desfeita."}
+              </p>
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={closeModals}
+                  disabled={pending}
+                  className="h-9 text-xs"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={pending}
+                  onClick={() =>
+                    handleRunAction(
+                      async () => {
+                        const res = await deleteBusinessSegmentAction({ id: deleteSegmentTarget.id });
+                        if (res.success) {
+                          setBusinessSegmentsList((prev) => prev.filter((s) => s.id !== deleteSegmentTarget.id));
+                        }
+                        return res;
+                      },
+                      "Segmento removido com sucesso."
+                    )
+                  }
+                  className="h-9 text-xs"
+                >
+                  Confirmar remoção
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
-      </Modal>
-    </AppShell>
+          )}
+        </Modal>
+
+
+
+        {/* Modal: Excluir Template Pronto */}
+        <Modal
+          open={Boolean(deletePlatformTemplateTarget)}
+          onClose={closeModals}
+          title={`Remover template: ${deletePlatformTemplateTarget?.name}`}
+          className="sm:max-w-md"
+        >
+          {deletePlatformTemplateTarget && (
+            <div className="flex flex-col gap-4 text-xs">
+              <p className="text-muted-foreground">
+                Tem certeza que deseja remover o template <strong>{deletePlatformTemplateTarget.name}</strong>?
+                Esta ação removerá o modelo da biblioteca de novos clientes.
+              </p>
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={closeModals}
+                  disabled={pending}
+                  className="h-9 text-xs"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={pending}
+                  onClick={() =>
+                    handleRunAction(
+                      () => deletePlatformTemplateAction({ id: deletePlatformTemplateTarget.id }),
+                      "Template removido com sucesso."
+                    )
+                  }
+                  className="h-9 text-xs"
+                >
+                  Confirmar remoção
+                </Button>
+              </div>
+            </div>
+          )}
+        </Modal>
+      </AppShell>
     </PlatformActivityBoundary>
   );
 }

@@ -1,5 +1,5 @@
 "use client";
-import {clearEmployeeDrafts} from "@/presentation/lib/employee-drafts";
+import { clearEmployeeDrafts } from "@/presentation/lib/employee-drafts";
 
 import { useState, useActionState, useEffect } from "react";
 import { Brand } from "@/presentation/components/shared/brand";
@@ -49,10 +49,10 @@ import { cn } from "@/lib/utils";
 import { QRCodeSVG } from "qrcode.react";
 
 export default function LoginPage() {
-  useEffect(()=>{void clearEmployeeDrafts().catch(()=>{});},[]);
+  useEffect(() => { void clearEmployeeDrafts().catch(() => { }); }, []);
   const [tab, setTab] = useState<"pin" | "password" | "biometrics">("pin");
   const [isBiometricsPending, setIsBiometricsPending] = useState(false);
-  
+
   // Mobile & Platform compatibility state
   const [isMobile, setIsMobile] = useState(true);
   const [isPlatformBiometricAvailable, setIsPlatformBiometricAvailable] = useState<boolean | null>(null);
@@ -256,7 +256,7 @@ export default function LoginPage() {
         <p className="auth-story-footer">Gestão e execução operacional</p>
       </aside>
       <div className="auth-form-panel">
-        <div className="w-full max-w-105 mx-auto">
+        <div className="w-full max-w-130 mx-auto">
           <div className="auth-form-brand">
             <Brand />
           </div>
@@ -295,7 +295,7 @@ export default function LoginPage() {
               )}
             >
               <KeyRound className="size-4 text-brand-700" />
-              <span>Acesso por PIN</span>
+              <span>PIN</span>
             </ToggleGroupItem>
             <ToggleGroupItem
               value="password"

@@ -18,11 +18,11 @@ function test(name: string, run: () => void) { run(); passed++; console.log(`OK:
 const now = new Date("2026-09-25T12:00:00Z");
 const item = { required: true, status: "AVAILABLE", startedAt: null as Date | null };
 const execution = { status: "AVAILABLE", availableAt: now, tasks: [item] };
-test("opcionais não bloqueiam nem quando todas as tarefas são opcionais", () => assert.equal(resolveExecutionStatus({ ...execution, tasks: [{ ...item, required: false }] }, now), "COMPLETED"));
+test("processo apenas com opcionais não conclui antes de executar suas etapas", () => assert.equal(resolveExecutionStatus({ ...execution, tasks: [{ ...item, required: false }] }, now), "AVAILABLE"));
 test("execução futura só se encerra após disponibilidade", () => assert.equal(resolveExecutionStatus({ ...execution, availableAt: new Date(now.getTime() + 1), tasks: [{ ...item, required: false }] }, now), "SCHEDULED"));
 test("aprovação obrigatória pendente impede conclusão", () => assert.equal(resolveExecutionStatus({ ...execution, tasks: [{ ...item, status: "COMPLETED", approvalWorkflow: { status: "PENDING" } }] }, now), "PENDING_REVIEW"));
 test("tarefa pausada se reflete na execução", () => assert.equal(resolveExecutionStatus({ ...execution, tasks: [{ ...item, status: "PAUSED", startedAt: now }] }, now), "PAUSED"));
-test("atualização opcional não reabre execução concluída", () => assert.equal(resolveExecutionStatus({ ...execution, status: "COMPLETED" }, now), "COMPLETED"));
+test("atualização opcional não reabre execução concluída", () => assert.equal(resolveExecutionStatus({ ...execution, status: "COMPLETED", tasks: [{ ...item, status: "COMPLETED" }, { ...item, required: false }] }, now), "COMPLETED"));
 test("duração efetiva desconta pausa de 2 minutos", () => assert.equal(effectiveWorkSeconds([{ startedAt: new Date(now.getTime() - 600000), endedAt: null, pauses: [{ startedAt: new Date(now.getTime() - 180000), endedAt: new Date(now.getTime() - 60000) }] }], now), 480));
 test("admin não altera proprietário nem outro admin", () => { assert.equal(canManageMember("ADMIN", "actor", { id: "target", role: "OWNER" }), false); assert.equal(canManageMember("ADMIN", "actor", { id: "target", role: "ADMIN" }), false); });
 test("gestor gerencia funcionário mas não promove a admin, e admin não promove a admin", () => { assert.equal(canManageMember("MANAGER", "actor", { id: "target", role: "EMPLOYEE" }), true); assert.equal(canManageMember("MANAGER", "actor", { id: "target", role: "EMPLOYEE" }, "ADMIN"), false); assert.equal(canManageMember("ADMIN", "actor", { id: "target", role: "EMPLOYEE" }, "ADMIN"), false); });
@@ -38,7 +38,7 @@ test("TOTP rejeita replay e código fora da janela", () => { const code = totpAt
 test("segredo cifrado e prova resistem a adulteração", () => {
   const record = { secret, lastCounter: -1, failures: 0, lockedUntil: 0 };
   const encrypted = sealTotp(record);
-  assert.deepEqual(openTotp(encrypted), record);
+  assert.deepEqual(JSON.parse(JSON.stringify(openTotp(encrypted))), record);
   assert.equal(encrypted.includes(secret), false);
   const bytes = Buffer.from(encrypted.slice(3), "base64url"); bytes[30] ^= 1;
   assert.throws(() => openTotp("v1:" + bytes.toString("base64url")));
@@ -108,4 +108,4 @@ async function integration() {
   }, { maxWait: 30000, timeout: 120000 }); } catch (error) { if (error !== rollback) throw error; }
 }
 
-integration().then(() => console.log(`${passed} verificações passaram; fixtures revertidas.`)).catch(error => { console.error(error); process.exitCode = 1; }).finally(() => prisma.$disconnect());
+export const verification = integration().then(() => console.log(`${passed} verificações passaram; fixtures revertidas.`)).catch(error => { console.error(error); process.exitCode = 1; }).finally(() => prisma.$disconnect());

@@ -92,6 +92,7 @@ async function main() {
     await expect.poll(() => mutationRequests).toBe(1);
     await expect(submit).toBeDisabled();
     await expect(submit.locator('[data-slot="spinner"]')).toBeVisible();
+    await expect(submit.locator('[data-slot="spinner"] svg')).toBeVisible();
     await expect(page.locator("#org-name")).toBeDisabled();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toBeVisible();

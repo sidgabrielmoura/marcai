@@ -1,0 +1,30 @@
+{
+  "results": [
+    {
+      "id": "browser-deadline-moves-without-reload",
+      "status": "passed"
+    },
+    {
+      "id": "browser-process-attention-keeps-independent-step",
+      "status": "passed"
+    },
+    {
+      "id": "browser-dependency-moves-entire-process-to-overdue",
+      "status": "passed"
+    },
+    {
+      "id": "browser-management-block-has-no-completion-action",
+      "status": "passed"
+    },
+    {
+      "id": "browser-claim-is-unique-and-opens-task",
+      "status": "passed"
+    },
+    {
+      "id": "browser-quick-completion-persists-once",
+      "status": "passed"
+    }
+  ],
+  "errors": [],
+  "isolatedDatabase": true
+}

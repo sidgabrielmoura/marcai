@@ -1,5 +1,11 @@
 "use client";
-import {columnFor} from "@/application/mobile/policy";
+import { boardState, columnFor } from "@/application/mobile/policy";
+import {
+  operationPermission,
+  processProgress,
+  processBadge,
+  type BoardSummary,
+} from "@/domain/rules/employee-workflow";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -30,7 +36,15 @@ import type { TaskStatus, Priority, Criticality } from "@/domain/types";
 export interface EmployeeTask {
   roundId: string;
   timezone: string;
-  column?:ColumnId;
+  column?: ColumnId;
+  dependencyBlocked?: boolean;
+  maxDuration?: number | null;
+  requiresApproval?: boolean;
+  definitionOrder?: number | null;
+  processSummary?: BoardSummary;
+  managementBlocked?: boolean;
+  executionStatus?: string | null;
+  executionAvailableAt?: string | null;
   id: string;
   executionId: string | null;
   title: string;
@@ -75,19 +89,25 @@ export type KanbanBoardItem =
       totalTasks: number;
       completedTasks: number;
       progressPercent: number;
+      progressLabel: string;
       locationName: string | null;
       teamName: string | null;
+      timezone: string;
       scheduledDate: string | null;
       deadlineAt: string | null;
       priority: Priority;
       hasImpediment: boolean;
       allUnassigned: boolean;
       anyOverdue: boolean;
+      attention: boolean;
       allCompleted: boolean;
       isScheduled: boolean;
     };
 
-export function buildKanbanItems(tasks: EmployeeTask[], now: number = Date.now()): KanbanBoardItem[] {
+export function buildKanbanItems(
+  tasks: EmployeeTask[],
+  now: number = Date.now(),
+): KanbanBoardItem[] {
   const items: KanbanBoardItem[] = [];
   const processMap = new Map<string, EmployeeTask[]>();
 
@@ -106,21 +126,38 @@ export function buildKanbanItems(tasks: EmployeeTask[], now: number = Date.now()
   }
 
   for (const [executionId, pTasks] of processMap.entries()) {
-    const totalTasks = pTasks.length;
-    const completedTasks = pTasks.filter((t) => t.status === "COMPLETED").length;
-    const allCompleted = totalTasks > 0 && completedTasks === totalTasks;
-    const progressPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-    const allUnassigned = pTasks.every((t) => t.isUnassigned);
-    const anyOverdue = pTasks.some(
-      (t) =>
-        t.status !== "COMPLETED" &&
-        (t.slaExceeded || (t.deadlineAt && new Date(t.deadlineAt).getTime() < now))
+    pTasks.sort(
+      (a, b) =>
+        (a.definitionOrder ?? Infinity) - (b.definitionOrder ?? Infinity),
     );
+    const summary = pTasks.find((task) => task.processSummary)?.processSummary;
+    const totalTasks = summary?.totalTasks ?? pTasks.length;
+    const completedTasks =
+      summary?.completedTasks ??
+      pTasks.filter((t) => t.status === "COMPLETED").length;
+    const allCompleted = summary?.executionStatus
+      ? summary.executionStatus === "COMPLETED"
+      : totalTasks > 0 && completedTasks === totalTasks;
+    const progress = processProgress(pTasks, summary);
+    const progressPercent = progress.percent;
+    const allUnassigned = pTasks.every((t) => t.isUnassigned);
+    const { anyOverdue, attention } = boardState(pTasks, now);
     const first = pTasks[0];
     const earliestScheduled =
-      pTasks.filter((t) => t.status !== "COMPLETED").find((t) => !!t.scheduledDate)?.scheduledDate ||
-      first.scheduledDate;
-    const isScheduled = !!earliestScheduled && new Date(earliestScheduled).getTime() > now;
+      pTasks
+        .filter((t) => t.status !== "COMPLETED")
+        .find((t) => !!t.scheduledDate)?.scheduledDate || first.scheduledDate;
+    const pendingTasks = pTasks.filter(
+      (t) => !["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(t.status),
+    );
+    const isScheduled =
+      summary?.column === "upcoming" ||
+      (!attention &&
+        totalTasks === pTasks.length &&
+        pendingTasks.length > 0 &&
+        pendingTasks.every(
+          (t) => !!t.scheduledDate && Date.parse(t.scheduledDate) > now,
+        ));
 
     const priorities: Priority[] = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
     const maxPriority = pTasks.reduce((max, t) => {
@@ -138,14 +175,17 @@ export function buildKanbanItems(tasks: EmployeeTask[], now: number = Date.now()
       totalTasks,
       completedTasks,
       progressPercent,
+      progressLabel: progress.label,
       locationName: first.locationName,
       teamName: first.teamName,
+      timezone: first.timezone,
       scheduledDate: earliestScheduled,
       deadlineAt: first.deadlineAt,
       priority: maxPriority,
       hasImpediment: pTasks.some((t) => t.hasImpediment),
       allUnassigned,
       anyOverdue,
+      attention,
       allCompleted,
       isScheduled,
     });
@@ -159,17 +199,10 @@ import {
   getTaskDeadlineStatus,
 } from "@/domain/rules/task-metrics";
 
-export {
-  type DeadlineStatus,
-  getTaskDeadlineStatus,
-};
+export { type DeadlineStatus, getTaskDeadlineStatus };
 
 export type ColumnId =
-  | "today"
-  | "overdue"
-  | "unassigned"
-  | "completed"
-  | "upcoming";
+  "today" | "overdue" | "unassigned" | "completed" | "upcoming";
 
 interface ColumnDef {
   id: ColumnId;
@@ -247,7 +280,10 @@ interface EmployeeKanbanBoardProps {
   initialColumn?: ColumnId;
 }
 
-const typeFilterItems: Array<{ label: string; value: "ALL" | "STANDARD" | "FORM" }> = [
+const typeFilterItems: Array<{
+  label: string;
+  value: "ALL" | "STANDARD" | "FORM";
+}> = [
   { label: "Todos", value: "ALL" },
   { label: "Tarefas", value: "STANDARD" },
   { label: "Com Perguntas", value: "FORM" },
@@ -259,14 +295,19 @@ export function EmployeeKanbanBoard({
   initialColumn = "today",
 }: EmployeeKanbanBoardProps) {
   const [activeColumn, setActiveColumn] = useState<ColumnId>(initialColumn);
-  const [filterType, setFilterType] = useState<"ALL" | "STANDARD" | "FORM">("ALL");
+  const [filterType, setFilterType] = useState<"ALL" | "STANDARD" | "FORM">(
+    "ALL",
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [now, setNow] = useState(snapshotAt);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null);
+  const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(
+    null,
+  );
   const [processDrawerOpen, setProcessDrawerOpen] = useState(false);
-  const showLocation = new Set(tasks.map((task) => task.locationName).filter(Boolean)).size > 1;
+  const showLocation =
+    new Set(tasks.map((task) => task.locationName).filter(Boolean)).size > 1;
 
   function handleOpenTask(taskId: string) {
     setSelectedTaskId(taskId);
@@ -284,7 +325,11 @@ export function EmployeeKanbanBoard({
       const url = new URL(window.location.href);
       if (url.searchParams.has("taskId")) {
         url.searchParams.delete("taskId");
-        window.history.replaceState(null, "", url.pathname + (url.search ? url.search : ""));
+        window.history.replaceState(
+          null,
+          "",
+          url.pathname + (url.search ? url.search : ""),
+        );
       }
     }
   }
@@ -305,7 +350,11 @@ export function EmployeeKanbanBoard({
       const url = new URL(window.location.href);
       if (url.searchParams.has("executionId")) {
         url.searchParams.delete("executionId");
-        window.history.replaceState(null, "", url.pathname + (url.search ? url.search : ""));
+        window.history.replaceState(
+          null,
+          "",
+          url.pathname + (url.search ? url.search : ""),
+        );
       }
     }
   }
@@ -329,7 +378,8 @@ export function EmployeeKanbanBoard({
   // A single clock for all cards, calculated from timestamps to avoid drift.
   useEffect(() => {
     const clientAnchor = Date.now();
-    const tick = () => setNow(snapshotAt + Math.max(0, Date.now() - clientAnchor));
+    const tick = () =>
+      setNow(snapshotAt + Math.max(0, Date.now() - clientAnchor));
     tick();
     const interval = window.setInterval(tick, 1000);
     document.addEventListener("visibilitychange", tick);
@@ -343,7 +393,10 @@ export function EmployeeKanbanBoard({
   const columnRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Construir itens unificados de Kanban (tarefas avulsas e processos agrupados)
-  const allKanbanItems = useMemo(() => buildKanbanItems(tasks, now), [tasks, now]);
+  const allKanbanItems = useMemo(
+    () => buildKanbanItems(tasks, now),
+    [tasks, now],
+  );
 
   // Filtragem de busca e tipo
   const filteredItems = useMemo(() => {
@@ -354,13 +407,13 @@ export function EmployeeKanbanBoard({
         result = result.filter((it) =>
           it.type === "TASK"
             ? it.task.taskType === "FORM"
-            : it.tasks.some((t) => t.taskType === "FORM")
+            : it.tasks.some((t) => t.taskType === "FORM"),
         );
       } else {
         result = result.filter((it) =>
           it.type === "TASK"
             ? it.task.taskType !== "FORM"
-            : it.tasks.some((t) => t.taskType !== "FORM")
+            : it.tasks.some((t) => t.taskType !== "FORM"),
         );
       }
     }
@@ -371,7 +424,8 @@ export function EmployeeKanbanBoard({
       if (it.type === "TASK") {
         return (
           it.task.title.toLowerCase().includes(q) ||
-          (it.task.locationName && it.task.locationName.toLowerCase().includes(q)) ||
+          (it.task.locationName &&
+            it.task.locationName.toLowerCase().includes(q)) ||
           (it.task.processName && it.task.processName.toLowerCase().includes(q))
         );
       } else {
@@ -385,16 +439,23 @@ export function EmployeeKanbanBoard({
   }, [allKanbanItems, filterType, searchQuery]);
 
   // Agrupamento por coluna
-  const groupedTasks=useMemo(()=>{
-    const groups:Record<ColumnId,KanbanBoardItem[]>={today:[],overdue:[],unassigned:[],completed:[],upcoming:[]};
-    for(const item of filteredItems){
-      const columns=(item.type==='TASK'?[item.task]:item.tasks).map(task=>columnFor(task,now) as ColumnId);
-      const active=columns.filter(c=>c!=='completed');
-      const column:ColumnId=active.includes('today')?'today':active.includes('overdue')?'overdue':active[0]??columns[0]??'today';
+  const groupedTasks = useMemo(() => {
+    const groups: Record<ColumnId, KanbanBoardItem[]> = {
+      today: [],
+      overdue: [],
+      unassigned: [],
+      completed: [],
+      upcoming: [],
+    };
+    for (const item of filteredItems) {
+      const column: ColumnId =
+        item.type === "TASK"
+          ? columnFor(item.task, now)
+          : boardState(item.tasks, now).column;
       groups[column].push(item);
     }
     return groups;
-  },[filteredItems,now]);
+  }, [filteredItems, now]);
 
   // Navegar suavemente até uma coluna específica
   function scrollToColumn(colId: ColumnId) {
@@ -418,7 +479,9 @@ export function EmployeeKanbanBoard({
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
-            const colId = entry.target.getAttribute("data-column-id") as ColumnId;
+            const colId = entry.target.getAttribute(
+              "data-column-id",
+            ) as ColumnId;
             if (colId) {
               setActiveColumn(colId);
             }
@@ -485,16 +548,16 @@ export function EmployeeKanbanBoard({
             item.value === "ALL"
               ? allKanbanItems.length
               : item.value === "FORM"
-              ? allKanbanItems.filter((it) =>
-                  it.type === "TASK"
-                    ? it.task.taskType === "FORM"
-                    : it.tasks.some((t) => t.taskType === "FORM")
-                ).length
-              : allKanbanItems.filter((it) =>
-                  it.type === "TASK"
-                    ? it.task.taskType !== "FORM"
-                    : it.tasks.some((t) => t.taskType !== "FORM")
-                ).length;
+                ? allKanbanItems.filter((it) =>
+                    it.type === "TASK"
+                      ? it.task.taskType === "FORM"
+                      : it.tasks.some((t) => t.taskType === "FORM"),
+                  ).length
+                : allKanbanItems.filter((it) =>
+                    it.type === "TASK"
+                      ? it.task.taskType !== "FORM"
+                      : it.tasks.some((t) => t.taskType !== "FORM"),
+                  ).length;
           return (
             <button
               key={item.value}
@@ -533,22 +596,24 @@ export function EmployeeKanbanBoard({
               key={col.id}
               type="button"
               onClick={() => scrollToColumn(col.id)}
-              className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${isActive
-                ? "bg-[var(--brand-900)] text-white border-[var(--brand-900)] shadow-xs scale-102"
-                : isOverdueCol
-                  ? "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
-                  : "bg-[var(--surface)] text-[var(--brand-900)] border-[var(--border-subtle)] hover:bg-[var(--canvas)]"
-                }`}
+              className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${
+                isActive
+                  ? "bg-[var(--brand-900)] text-white border-[var(--brand-900)] shadow-xs scale-102"
+                  : isOverdueCol
+                    ? "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
+                    : "bg-[var(--surface)] text-[var(--brand-900)] border-[var(--border-subtle)] hover:bg-[var(--canvas)]"
+              }`}
             >
               <Icon className="size-3.5 shrink-0" />
               <span>{col.shortTitle}</span>
               <span
-                className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${isActive
-                  ? "bg-white/20 text-white"
-                  : isOverdueCol
-                    ? "bg-red-200 text-red-900"
-                    : "bg-slate-100 text-slate-700"
-                  }`}
+                className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
+                  isActive
+                    ? "bg-white/20 text-white"
+                    : isOverdueCol
+                      ? "bg-red-200 text-red-900"
+                      : "bg-slate-100 text-slate-700"
+                }`}
               >
                 {count}
               </span>
@@ -566,10 +631,11 @@ export function EmployeeKanbanBoard({
               type="button"
               onClick={() => scrollToColumn(col.id)}
               aria-label={`Ir para ${col.title}`}
-              className={`transition-all duration-300 rounded-full ${isActive
-                ? "w-6 h-1.5 bg-[var(--brand-900)]"
-                : "w-1.5 h-1.5 bg-slate-300 hover:bg-slate-400"
-                }`}
+              className={`transition-all duration-300 rounded-full ${
+                isActive
+                  ? "w-6 h-1.5 bg-[var(--brand-900)]"
+                  : "w-1.5 h-1.5 bg-slate-300 hover:bg-slate-400"
+              }`}
             />
           );
         })}
@@ -645,7 +711,7 @@ export function EmployeeKanbanBoard({
                         showLocation={showLocation}
                         onOpenTask={handleOpenTask}
                       />
-                    )
+                    ),
                   )
                 )}
               </div>
@@ -671,7 +737,6 @@ export function EmployeeKanbanBoard({
   );
 }
 
-
 function TaskCard({
   task,
   now,
@@ -687,16 +752,19 @@ function TaskCard({
 }) {
   const clock = taskClock(task, now, snapshotAt);
   const completed = task.status === "COMPLETED";
-  const isScheduled = !!task.scheduledDate && new Date(task.scheduledDate).getTime() > now;
+  const isScheduled = clock.isScheduled;
+  const permission = operationPermission(task, now, !task.isUnassigned);
   const deadlineInfo = getTaskDeadlineStatus(task, now);
   const state = isScheduled
-    ? `Programada para às ${new Date(task.scheduledDate!).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
-    : ({
-        PAUSED: "Pausada",
-        NEEDS_CORRECTION: "Correção solicitada",
-        BLOCKED: "Aguardando etapa anterior",
-        SUBMITTED: "Aguardando aprovação",
-      } as Record<string, string>)[task.status];
+    ? `Programada para às ${new Date(task.scheduledDate!).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: task.timezone })}`
+    : (
+        {
+          PAUSED: "Pausada",
+          NEEDS_CORRECTION: "Correção solicitada",
+          BLOCKED: "Aguardando etapa anterior",
+          SUBMITTED: "Aguardando aprovação",
+        } as Record<string, string>
+      )[task.status];
   const action = completed
     ? "Ver entrega"
     : isScheduled
@@ -712,7 +780,9 @@ function TaskCard({
             : "Abrir tarefa";
 
   return (
-    <Card className={`employee-task-card shrink-0 h-fit gap-2.5 ring-0 rounded-xl border p-3.5 shadow-none flex flex-col transition-all ${isScheduled ? "grayscale contrast-90 opacity-85 border-slate-300 dark:border-slate-700 bg-slate-50/90 dark:bg-muted/20 select-none" : "border-[var(--border-subtle)] bg-[var(--surface)]"}`}>
+    <Card
+      className={`employee-task-card shrink-0 h-fit gap-2.5 ring-0 rounded-xl border p-3.5 shadow-none flex flex-col transition-all ${isScheduled ? "grayscale contrast-90 opacity-85 border-slate-300 dark:border-slate-700 bg-slate-50/90 dark:bg-muted/20 select-none" : "border-[var(--border-subtle)] bg-[var(--surface)]"}`}
+    >
       {/* Badge de prazo/tolerância acima do título */}
       <div className="flex items-center justify-between gap-1.5 flex-wrap">
         <Badge
@@ -737,30 +807,50 @@ function TaskCard({
         className="text-left rounded-sm text-sm font-semibold leading-snug text-[var(--text-primary)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--brand-700)] cursor-pointer"
       >
         <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wide bg-[var(--canvas)] border border-[var(--border-subtle)] px-2 py-0.5 rounded-full mr-2 align-middle inline-block mb-1">
-          {task.origin === "PROCESS" ? "Processo" : task.taskType === "FORM" ? "Tarefa com Perguntas" : "Tarefa Avulsa"}
+          {task.origin === "PROCESS"
+            ? "Processo"
+            : task.taskType === "FORM"
+              ? "Tarefa com Perguntas"
+              : "Tarefa Avulsa"}
         </span>
-        <br/>
+        <br />
         {task.title}
       </button>
 
       {showLocation && task.locationName && (
-        <p className="text-xs text-[var(--text-secondary)]">{task.locationName}</p>
+        <p className="text-xs text-[var(--text-secondary)]">
+          {task.locationName}
+        </p>
       )}
 
       {state && (
-        <p className="text-xs font-medium text-[var(--text-secondary)]">{state}</p>
+        <p className="text-xs font-medium text-[var(--text-secondary)]">
+          {state}
+        </p>
       )}
 
       {/* Somente tempo decorrido da tarefa ou status de agendamento */}
       {isScheduled ? (
         <div className="min-w-0 pt-0.5">
-          <p className="text-[11px] text-[var(--text-secondary)]">Liberação automática</p>
+          <p className="text-[11px] text-[var(--text-secondary)]">
+            Liberação automática
+          </p>
           <span className="text-xs font-semibold text-[var(--text-primary)]">
-            Disponível às {new Date(task.scheduledDate!).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+            Disponível às{" "}
+            {new Date(task.scheduledDate!).toLocaleTimeString("pt-BR", {
+              hour: "2-digit",
+              minute: "2-digit",
+              timeZone: task.timezone,
+            })}
           </span>
         </div>
       ) : (
-        <div className="min-w-0 pt-0.5" role="timer" aria-live="off" aria-label="Tempo decorrido">
+        <div
+          className="min-w-0 pt-0.5"
+          role="timer"
+          aria-live="off"
+          aria-label="Tempo decorrido"
+        >
           <p className="text-[11px] text-[var(--text-secondary)]">
             {completed
               ? "Tempo total"
@@ -782,11 +872,19 @@ function TaskCard({
               <span>Aguardando horário</span>
             </span>
             <span className="text-[11px] font-mono text-slate-500">
-              {new Date(task.scheduledDate!).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+              {new Date(task.scheduledDate!).toLocaleTimeString("pt-BR", {
+                hour: "2-digit",
+                minute: "2-digit",
+                timeZone: task.timezone,
+              })}
             </span>
           </div>
-        ) : task.isUnassigned && task.status !== "BLOCKED" ? (
-          <ClaimTaskButton taskId={task.id} onClaimed={(id) => onOpenTask(id)} />
+        ) : task.isUnassigned &&
+          operationPermission(task, now, true, "claim").allowed ? (
+          <ClaimTaskButton
+            taskId={task.id}
+            onClaimed={(id) => onOpenTask(id)}
+          />
         ) : clock.toleranceExceeded ? (
           <Button
             type="button"
@@ -797,12 +895,18 @@ function TaskCard({
             <span>Bloqueada (Tolerância esgotada)</span>
             <ArrowRight className="size-3.5" aria-hidden="true" />
           </Button>
-        ) : task.status === "IN_PROGRESS" && !task.hasRequiredEvidence && task.taskType !== "FORM" ? (
+        ) : permission.allowed &&
+          ["AVAILABLE", "IN_PROGRESS", "NEEDS_CORRECTION"].includes(
+            task.status,
+          ) &&
+          !task.hasRequiredEvidence &&
+          task.taskType !== "FORM" ? (
           <div className="flex items-center gap-2">
             <QuickCompleteButton
               taskId={task.id}
               roundId={task.roundId}
               taskTitle={task.title}
+              requiresApproval={task.requiresApproval}
               className="flex-1 h-10! bg-[var(--brand-900)]! shadow-none!"
             />
             <Button
@@ -845,10 +949,14 @@ function ProcessCard({
 }) {
   const isCompleted = item.allCompleted;
   const isOverdue = item.anyOverdue;
+  const attention = item.attention;
   const isScheduled = item.isScheduled;
+  const badge = processBadge(boardState(item.tasks, now));
 
   return (
-    <Card className={`employee-process-card shrink-0 h-fit gap-3 ring-0 rounded-xl border p-3.5 shadow-none flex flex-col transition-all ${isScheduled ? "grayscale contrast-90 opacity-85 border-slate-300 dark:border-slate-700 bg-slate-50/90 dark:bg-muted/20 select-none" : "border-[var(--border-subtle)] bg-[var(--surface)] hover:border-[var(--brand-700)]/40"}`}>
+    <Card
+      className={`employee-process-card shrink-0 h-fit gap-3 ring-0 rounded-xl border p-3.5 shadow-none flex flex-col transition-all ${isScheduled ? "grayscale contrast-90 opacity-85 border-slate-300 dark:border-slate-700 bg-slate-50/90 dark:bg-muted/20 select-none" : "border-[var(--border-subtle)] bg-[var(--surface)] hover:border-[var(--brand-700)]/40"}`}
+    >
       {/* Top Badges */}
       <div className="flex items-center justify-between gap-1.5 flex-wrap">
         <div className="flex items-center gap-1.5">
@@ -867,6 +975,13 @@ function ProcessCard({
             >
               <Check className="size-3" aria-hidden="true" />
               <span>Concluído</span>
+            </Badge>
+          ) : attention ? (
+            <Badge
+              variant="outline"
+              className="text-[11px] font-semibold px-2 py-0.5 rounded-full border bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
+            >
+              Atenção
             </Badge>
           ) : isOverdue ? (
             <Badge
@@ -896,7 +1011,7 @@ function ProcessCard({
               variant="outline"
               className="text-[11px] font-semibold px-2 py-0.5 rounded-full border bg-slate-50 text-slate-700 border-slate-200 dark:bg-muted/40 dark:text-slate-300 dark:border-border"
             >
-              Em andamento
+              {badge.label}
             </Badge>
           )}
         </div>
@@ -921,15 +1036,15 @@ function ProcessCard({
       </button>
 
       {showLocation && item.locationName && (
-        <p className="text-xs text-[var(--text-secondary)] -mt-1">{item.locationName}</p>
+        <p className="text-xs text-[var(--text-secondary)] -mt-1">
+          {item.locationName}
+        </p>
       )}
 
       {/* Progress Section */}
       <div className="flex flex-col gap-1.5 pt-1">
         <div className="flex items-center justify-between text-xs text-[var(--text-secondary)]">
-          <span className="font-medium">
-            {item.completedTasks} de {item.totalTasks} tarefas concluídas
-          </span>
+          <span className="font-medium">{item.progressLabel}</span>
           <span className="font-semibold tabular-nums text-[var(--text-primary)]">
             {item.progressPercent}%
           </span>
@@ -940,8 +1055,8 @@ function ProcessCard({
               isCompleted
                 ? "bg-emerald-600 dark:bg-emerald-500"
                 : isScheduled
-                ? "bg-slate-400 dark:bg-slate-500"
-                : "bg-[var(--brand-900)] dark:bg-[var(--brand-700)]"
+                  ? "bg-slate-400 dark:bg-slate-500"
+                  : "bg-[var(--brand-900)] dark:bg-[var(--brand-700)]"
             }`}
             style={{ width: `${item.progressPercent}%` }}
           />
@@ -959,8 +1074,8 @@ function ProcessCard({
                   isDone
                     ? "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300"
                     : isScheduled
-                    ? "bg-slate-100 border-slate-200 text-slate-500 dark:bg-muted/30 dark:border-border dark:text-slate-400"
-                    : "bg-slate-50 border-slate-200 text-slate-600 dark:bg-muted/30 dark:border-border dark:text-slate-400"
+                      ? "bg-slate-100 border-slate-200 text-slate-500 dark:bg-muted/30 dark:border-border dark:text-slate-400"
+                      : "bg-slate-50 border-slate-200 text-slate-600 dark:bg-muted/30 dark:border-border dark:text-slate-400"
                 }`}
               >
                 {isDone ? (
@@ -985,7 +1100,12 @@ function ProcessCard({
             </span>
             {item.scheduledDate && (
               <span className="text-[11px] font-mono text-slate-500">
-                Inicia às {new Date(item.scheduledDate).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                Inicia às{" "}
+                {new Date(item.scheduledDate).toLocaleTimeString("pt-BR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  timeZone: item.timezone,
+                })}
               </span>
             )}
           </div>
@@ -994,14 +1114,20 @@ function ProcessCard({
             type="button"
             variant="ghost"
             onClick={() => onOpenProcess(item.executionId)}
-            className="h-9 w-full justify-between px-0 text-xs font-semibold text-[var(--brand-900)] hover:bg-transparent hover:underline cursor-pointer"
+            className={
+              attention
+                ? "h-9 w-full justify-between px-3 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-300 hover:bg-amber-100 cursor-pointer"
+                : "h-9 w-full justify-between px-0 text-xs font-semibold text-[var(--brand-900)] hover:bg-transparent hover:underline cursor-pointer"
+            }
           >
             <span>
-              {isCompleted
-                ? "Ver processo concluído"
-                : item.completedTasks > 0
-                ? "Continuar processo"
-                : "Abrir processo"}
+              {attention
+                ? "Atenção"
+                : isCompleted
+                  ? "Ver processo concluído"
+                  : item.completedTasks > 0
+                    ? "Continuar processo"
+                    : "Abrir processo"}
             </span>
             <ArrowRight className="size-3.5" aria-hidden="true" />
           </Button>
@@ -1010,4 +1136,3 @@ function ProcessCard({
     </Card>
   );
 }
-

@@ -174,7 +174,7 @@ export function SelectOrgClient({
               {user.name}
             </span>
             <span className="text-[11px] text-[var(--text-secondary)] truncate max-w-[180px]">
-              {user.email || "Acesso por PIN"}
+              {user.email || "PIN"}
             </span>
           </div>
 

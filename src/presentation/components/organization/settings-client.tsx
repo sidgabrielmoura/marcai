@@ -247,7 +247,6 @@ export function SettingsClient({
             </Card>
           </TabsContent>
 
-          {/* Aba SLA */}
           <TabsContent value="sla" keepMounted>
             <Card className="p-6">
               <CardContent className="p-0 flex flex-col gap-5">

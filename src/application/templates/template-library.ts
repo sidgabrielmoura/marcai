@@ -12,7 +12,7 @@ import { prisma } from "@/infrastructure/database/prisma";
 import { templateCatalog } from "@/infrastructure/templates/catalog";
 
 export const canManageTemplates = (context: Pick<AuthenticatedContext, "role">) => ["OWNER", "ADMIN"].includes(context.role);
-export const templateReferenceSchema = z.string().max(160).regex(/^(catalog:[VALEM][0-9]{2}|organization:[a-zA-Z0-9_-]+)$/);
+export const templateReferenceSchema = z.string().max(160).regex(/^(catalog:[VALEM][0-9]{2}|platform:[a-zA-Z0-9_-]+|organization:[a-zA-Z0-9_-]+)$/);
 type TemplateDb = Pick<Prisma.TransactionClient, "reusableProcessTemplate" | "reusableProcessTemplateVersion">;
 const json = (value: unknown) => value as Prisma.InputJsonValue;
 export class TemplateInputError extends Error {}
@@ -20,12 +20,20 @@ export class TemplateInputError extends Error {}
 export async function listTemplateLibrary(context: AuthenticatedContext, includeArchived = false, publishedOnly = false): Promise<TemplateItem[]> {
   if (!isManagement(context)) return [];
   const admin = canManageTemplates(context) && !publishedOnly;
-  const rows = await prisma.reusableProcessTemplate.findMany({
-    where: { organizationId: context.organizationId, ...(admin
-      ? includeArchived ? {} : { status: { not: "ARCHIVED" } }
-      : { status: "PUBLISHED", publishedVersionId: { not: null } }) },
-    include: { publishedVersion: true }, orderBy: { updatedAt: "desc" },
-  });
+
+  const [org, rows] = await Promise.all([
+    prisma.organization.findUnique({
+      where: { id: context.organizationId },
+      select: { businessSegmentId: true },
+    }),
+    prisma.reusableProcessTemplate.findMany({
+      where: { organizationId: context.organizationId, ...(admin
+        ? includeArchived ? {} : { status: { not: "ARCHIVED" } }
+        : { status: "PUBLISHED", publishedVersionId: { not: null } }) },
+      include: { publishedVersion: true }, orderBy: { updatedAt: "desc" },
+    }),
+  ]);
+
   const privateItems: TemplateItem[] = rows.flatMap(row => {
     const parsed = (admin ? reusableTemplateDraftSchema : reusableTemplateDefinitionSchema).safeParse(admin ? row.draftDefinition : row.publishedVersion?.definition);
     if (!parsed.success) return [];
@@ -35,12 +43,61 @@ export async function listTemplateLibrary(context: AuthenticatedContext, include
       hasDraft: !!row.publishedVersion && JSON.stringify(row.draftDefinition) !== JSON.stringify(row.publishedVersion.definition),
       updatedAt: row.updatedAt.toISOString(), definition: parsed.data }];
   });
-  return [...templateCatalog, ...privateItems];
+
+  let platformItems: TemplateItem[] = [];
+  if (org?.businessSegmentId) {
+    const platformRows = await prisma.platformTemplate.findMany({
+      where: { segmentId: org.businessSegmentId, status: "ACTIVE" },
+      orderBy: { createdAt: "asc" },
+    });
+    platformItems = platformRows.flatMap(row => {
+      const parsed = reusableTemplateDefinitionSchema.safeParse(row.definition);
+      if (!parsed.success) return [];
+      return [{
+        id: row.id,
+        reference: "platform:" + row.id,
+        name: row.name || parsed.data.name,
+        description: row.description || parsed.data.description,
+        jobKey: parsed.data.jobKey ?? "CUSTOM",
+        origin: "CATALOG" as const,
+        status: "PUBLISHED" as const,
+        revision: 1,
+        version: row.version,
+        hasDraft: false,
+        updatedAt: row.updatedAt.toISOString(),
+        definition: parsed.data,
+      }];
+    });
+  }
+
+  return [...platformItems, ...privateItems];
 }
 
 export async function resolvePublishedTemplate(context: AuthenticatedContext, reference: string, db: TemplateDb = prisma): Promise<TemplateItem | null> {
   if (!isManagement(context) || !templateReferenceSchema.safeParse(reference).success) return null;
   if (reference.startsWith("catalog:")) return templateCatalog.find(t => t.reference === reference) ?? null;
+
+  if (reference.startsWith("platform:")) {
+    const platformId = reference.slice("platform:".length);
+    const row = await prisma.platformTemplate.findFirst({
+      where: { id: platformId, status: "ACTIVE" },
+    });
+    if (!row) return null;
+    const parsed = reusableTemplateDefinitionSchema.safeParse(row.definition);
+    if (!parsed.success) return null;
+    return {
+      id: row.id,
+      reference,
+      name: row.name || parsed.data.name,
+      description: row.description || parsed.data.description,
+      jobKey: parsed.data.jobKey ?? "CUSTOM",
+      definition: parsed.data,
+      origin: "CATALOG",
+      status: "PUBLISHED",
+      version: row.version,
+    };
+  }
+
   const version = await db.reusableProcessTemplateVersion.findFirst({
     where: { id: reference.slice("organization:".length), template: { organizationId: context.organizationId, status: "PUBLISHED" } },
     include: { template: true },

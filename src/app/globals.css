@@ -197,6 +197,7 @@
 .sa-operation-boundary[aria-busy="true"] a[href] { cursor: progress; }
 .sa-operation-status { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 12px 18px; border: 1px solid var(--border-subtle); border-radius: 999px; background: var(--surface); color: var(--brand-900); box-shadow: var(--shadow-float); font-size: 13px; z-index: 60; }
 [data-platform-loading="true"] svg:not([data-slot="spinner"]) { display: none; }
+[data-platform-loading="true"] [data-slot="spinner"] svg { display: block; }
 [data-platform-loading="true"] { cursor: progress; }
 @media (max-width: 479px) {
   .superadmin-page .sa-pagination { justify-content: center; }
@@ -513,4 +514,77 @@
     color: var(--muted-foreground);
     opacity: 1;
   }
+}
+
+/* Superadmin map: Leaflet's own CSS positions tiles; these overrides stay in the platform map. */
+.superadmin-page .sa-map { min-width: 0; }
+.superadmin-page .sa-map-toolbar { display: flex; align-items: end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.superadmin-page .sa-map-search { flex: 1 1 280px; max-width: 520px; min-width: 0; }
+.superadmin-page .sa-map-search [data-slot="input-group"] { min-height: 44px; }
+.superadmin-page .sa-map-toolbar-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.superadmin-page .sa-map-summary { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-block: 14px; font-size: 12px; color: var(--text-secondary); }
+.superadmin-page .sa-map-summary > span:first-child { color: var(--text-primary); font-weight: 500; }
+.superadmin-page .sa-map-precision { display: flex; align-items: center; gap: 8px; padding: 10px 12px; margin-bottom: 14px; border-radius: 10px; background: var(--brand-soft); color: var(--brand-900); font-size: 12px; line-height: 1.5; }
+.superadmin-page .sa-map-precision svg { width: 16px; height: 16px; flex-shrink: 0; }
+.superadmin-page .sa-map-canvas-wrap { position: relative; isolation: isolate; border-radius: 16px; overflow: hidden; }
+.superadmin-page .sa-map-canvas { width: 100%; height: clamp(360px, 62dvh, 720px); background: var(--canvas); z-index: 0; font-family: inherit; }
+.superadmin-page .sa-map-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 12px; background: var(--canvas); font-size: 13px; padding: 20px; flex-wrap: wrap; }
+.superadmin-page .sa-map-empty { position: absolute; inset: 24px 44px 44px; display: grid; align-content: center; pointer-events: none; }
+.superadmin-page .sa-map-empty [data-slot="empty"] { padding: 20px; }
+.superadmin-page .sa-map-empty [data-slot="empty-title"] { font-size: 15px; }
+.superadmin-page .sa-map-legend { margin-top: 12px; font-size: 11px; line-height: 1.6; color: var(--text-secondary); }
+.superadmin-page .sa-map-warning { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 12px; color: var(--sa-warning); font-size: 12px; }
+.superadmin-page .sa-map-pending { margin-top: 14px; font-size: 12px; color: var(--text-secondary); }
+.superadmin-page .sa-map-pending summary { cursor: pointer; color: var(--text-primary); }
+.superadmin-page .sa-map-pending ul { margin-top: 10px; }
+.superadmin-page .sa-map-pending li { display: flex; flex-direction: column; gap: 5px; padding: 12px 0; border-top: 1px solid var(--border-subtle); overflow-wrap: anywhere; }
+.superadmin-dialog .sa-map-filter-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.superadmin-page .sa-map-marker { background: none; border: 0; display: grid; justify-items: center; padding-top: 4px; }
+.superadmin-page .sa-map-marker:focus-visible { outline: 3px solid var(--brand-700); outline-offset: 3px; border-radius: 12px; }
+.superadmin-page .sa-map-pin { position: relative; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 12px 12px 12px 2px; border: 2px solid var(--brand-900); color: var(--brand-900); background: var(--surface); box-shadow: 0 2px 6px rgb(22 77 54 / .15); }
+.superadmin-page .sa-map-pin[data-precision="city"] { border-style: dashed; }
+.superadmin-page .sa-map-pin[data-status="inactive"] { color: var(--sa-danger); border-color: var(--sa-danger); }
+.superadmin-page .sa-map-pin-letter { font-size: 13px; font-weight: 600; }
+.superadmin-page .sa-map-pin--cluster { border-radius: 50%; background: var(--brand-900); color: var(--surface); border-style: solid; }
+.superadmin-page .sa-map-pin--cluster[data-status="inactive"] { background: var(--sa-danger); color: var(--surface); }
+.superadmin-page .sa-map-spread-line { stroke: var(--brand-700); }
+.superadmin-page .sa-map-expanded { margin-top: 12px; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+.superadmin-page .sa-map-leaflet-popup .leaflet-popup-content-wrapper { border-radius: 16px; background: var(--surface); color: var(--text-primary); box-shadow: 0 8px 24px rgb(22 77 54 / .15); }
+.superadmin-page .sa-map-leaflet-popup .leaflet-popup-content { margin: 0; font-family: inherit; width: min(336px, calc(100vw - 104px)) !important; overscroll-behavior: contain; scrollbar-width: thin; border: 0; }
+.superadmin-page .sa-map-popup { display: flex; flex-direction: column; max-height: var(--sa-map-popup-max-height); overflow-wrap: anywhere; }
+.superadmin-page .sa-map-popup-header { display: flex; align-items: start; justify-content: space-between; gap: 8px; padding: 20px 20px 0; flex-shrink: 0; }
+.superadmin-page .sa-map-popup-header .sa-identity { align-items: start; }
+.superadmin-page .sa-map-popup-header [data-slot="button"] { flex-shrink: 0; min-height: 36px; min-width: 36px; }
+.superadmin-page .sa-map-popup-status { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 20px 0; flex-shrink: 0; }
+.superadmin-page .sa-map-popup-body { display: flex; flex-direction: column; gap: 14px; padding: 14px 20px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.superadmin-page .sa-map-popup-location { display: flex; gap: 10px; padding-top: 14px; border-top: 1px solid var(--border-subtle); }
+.superadmin-page .sa-map-popup-location > svg { flex-shrink: 0; width: 16px; height: 16px; color: var(--brand-700); margin-top: 2px; }
+.superadmin-page .sa-map-popup-location h3 { font-size: 13px; font-weight: 500; line-height: 1.5; margin: 0; }
+.superadmin-page .sa-map-popup-location p { font-size: 12px; line-height: 1.5; color: var(--text-secondary); margin: 4px 0 0; }
+.superadmin-page .sa-map-popup .sa-map-popup-precision { font-size: 11px; line-height: 1.5; color: var(--brand-900); background: var(--brand-soft); border-radius: 10px; padding: 10px 12px; margin: 0; }
+.superadmin-page .sa-map-popup-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; margin: 0; }
+.superadmin-page .sa-map-popup-facts > div { min-width: 0; }
+.superadmin-page .sa-map-popup-facts dt { font-size: 11px; line-height: 1.5; color: var(--text-secondary); }
+.superadmin-page .sa-map-popup-facts dd { font-size: 13px; line-height: 1.5; font-weight: 500; margin: 3px 0 0; }
+.superadmin-page .sa-map-popup-facts dd span { display: block; font-size: 11px; font-weight: 400; color: var(--text-secondary); }
+.superadmin-page .sa-map-popup-actions { display: flex; gap: 8px; padding: 14px 20px 20px; border-top: 1px solid var(--border-subtle); flex-shrink: 0; }
+.superadmin-page .sa-map-popup-actions [data-slot="button"] { flex: 1; min-height: 44px; text-decoration: none; }
+.superadmin-page .sa-map-popup-actions a:first-child { color: var(--primary-foreground); }
+.superadmin-page .sa-map-popup-actions a:last-child { color: var(--text-primary); }
+.superadmin-page .sa-map-canvas .leaflet-control-attribution { font-size: 11px; }
+@media (max-width: 479px) {
+  .superadmin-page .sa-map-search { flex-basis: 100%; }
+  .superadmin-page .sa-map-toolbar-actions { width: 100%; }
+  .superadmin-page .sa-map-toolbar-actions [data-slot="button"] { flex-grow: 1; min-height: 44px; }
+  .superadmin-page .sa-map-canvas { height: 420px; }
+  .superadmin-page .sa-map-empty { inset: 16px 34px 50px 16px; }
+  .superadmin-page .sa-map-popup-header { padding: 16px 16px 0; }
+  .superadmin-page .sa-map-popup-status { padding-inline: 16px; }
+  .superadmin-page .sa-map-popup-body { padding: 12px 16px; gap: 12px; }
+  .superadmin-page .sa-map-popup-actions { padding: 12px 16px 16px; }
+  .superadmin-page .sa-map-popup-header [data-slot="button"] { min-height: 44px; min-width: 44px; }
+}
+@media (max-width: 359px) {
+  .superadmin-page .sa-map-popup-people-label, .superadmin-page .sa-map-popup-actions a:first-child > svg { display: none; }
+  .superadmin-page .sa-map-popup-actions a:last-child { flex: 0 0 44px; padding-inline: 0; }
 }

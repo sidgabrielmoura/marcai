@@ -1,7 +1,8 @@
 "use client";
 
 import { usePushNotifications } from "@/hooks/use-push-notifications";
-import { Bell, BellRing, Loader2 } from "lucide-react";
+import { Bell, BellRing } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 
 export function PushNotificationBanner() {
@@ -41,7 +42,7 @@ export function PushNotificationBanner() {
       >
         {isSubscribing ? (
           <>
-            <Loader2 className="size-3.5 animate-spin" />
+            <Spinner className="size-3.5" aria-hidden="true" />
             <span>Ativando...</span>
           </>
         ) : (

@@ -48,8 +48,8 @@ export async function replay(c:AuthenticatedContext,cursor:string|null) {
  const rows=await prisma.$queryRaw<Array<{id:bigint;transaction_id:bigint;task_id:string|null;execution_id:string|null;user_id:string|null;kind:string}>>`SELECT * FROM mobile_events WHERE organization_id=${c.organizationId} AND transaction_id>${after} AND transaction_id<=${value} AND (user_id IS NULL OR user_id=${c.userId}) ORDER BY transaction_id,id LIMIT 1001`;
  const events=[];
  for(const r of rows.slice(0,1000)){
- if(r.task_id&&r.user_id!==c.userId&&!await prisma.task.findFirst({where:{...readable(c),id:r.task_id},select:{id:true}}))continue;
- if(r.execution_id&&!await prisma.processExecution.findFirst({where:{id:r.execution_id,organizationId:c.organizationId,tasks:{some:readable(c)}},select:{id:true}}))continue;
+ if(r.task_id&&r.user_id!==c.userId&&!await prisma.task.findFirst({where:{id:r.task_id,organizationId:c.organizationId,deletedAt:null,OR:[readable(c),{executionId:{not:null},teamId:{in:c.scope?.teamIds??[]},OR:[{locationId:null},{locationId:{in:c.scope?.locationIds??[]}}]}]},select:{id:true}}))continue;
+ if(r.execution_id&&!await prisma.processExecution.findFirst({where:{id:r.execution_id,organizationId:c.organizationId,tasks:{some:{deletedAt:null,teamId:{in:c.scope?.teamIds??[]},OR:[{locationId:null},{locationId:{in:c.scope?.locationIds??[]}}]}}},select:{id:true}}))continue;
  events.push({id:String(r.id),kind:r.kind});
  }
  const [retentionFloor]=await prisma.$queryRaw<Array<{cursor:string}>>`SELECT cursor FROM mobile_job_cursors WHERE job='events-low-watermark'`;

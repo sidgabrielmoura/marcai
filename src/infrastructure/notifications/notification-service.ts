@@ -1,4 +1,5 @@
 import { prisma } from "@/infrastructure/database/prisma";
+import { Prisma } from "@prisma/client";
 import { eventBus } from "@/infrastructure/events/event-bus";
 import { Priority, Role } from "@/domain/types";
 import { sendWebPushNotification } from "@/infrastructure/firebase/firebase-admin";
@@ -83,7 +84,7 @@ export async function dispatchNotificationAsync(params: DispatchNotificationAsyn
     });
   }
 
-  // 2. Se a ação for de alta importância, dispara Web Push via Firebase Cloud Messaging
+  // 2. Dispara Push via Firebase Cloud Messaging para Web e Mobile
   if (shouldSendPush && process.env.MOBILE_OUTBOX_ENABLED !== "1") {
     try {
       const userTokens = await prisma.userDeviceToken.findMany({
@@ -91,8 +92,22 @@ export async function dispatchNotificationAsync(params: DispatchNotificationAsyn
         select: { token: true },
       });
 
-      if (userTokens.length > 0) {
-        const tokens = userTokens.map((t) => t.token);
+      const nativeInstallations = await prisma.$queryRaw<Array<{ token: string }>>`
+        SELECT token
+        FROM mobile_installations
+        WHERE user_id IN (${Prisma.join(uniqueUsers)})
+          AND organization_id = ${params.organizationId}
+          AND revoked_at IS NULL
+          AND permission IN ('authorized', 'provisional')
+          AND last_sync_at > now() - interval '45 days'
+      `;
+
+      const allTokens = Array.from(new Set([
+        ...userTokens.map((t) => t.token),
+        ...nativeInstallations.map((i) => i.token),
+      ])).filter(Boolean);
+
+      if (allTokens.length > 0) {
         const clickAction =
           params.clickAction ||
           ((params.data as any)?.taskId
@@ -100,7 +115,7 @@ export async function dispatchNotificationAsync(params: DispatchNotificationAsyn
             : "/notifications");
 
         const pushResult = await sendWebPushNotification({
-          tokens,
+          tokens: allTokens,
           title: params.title,
           body: params.message,
           data: {
@@ -116,10 +131,15 @@ export async function dispatchNotificationAsync(params: DispatchNotificationAsyn
           await prisma.userDeviceToken.deleteMany({
             where: { token: { in: pushResult.invalidTokens } },
           });
+          await prisma.$executeRaw`
+            UPDATE mobile_installations
+            SET revoked_at = now()
+            WHERE token IN (${Prisma.join(pushResult.invalidTokens)})
+          `;
         }
       }
     } catch (pushErr) {
-      console.error("[Notification Service] Erro ao enviar Web Push assíncrono:", pushErr);
+      console.error("[Notification Service] Erro ao enviar Web/Mobile Push assíncrono:", pushErr);
     }
   }
 
@@ -215,7 +235,7 @@ export async function sendNotification(params: SendNotificationParams) {
     priority: notification.priority,
   });
 
-  // Disparo de Web Push Notification via Firebase Cloud Messaging
+  // Disparo de Web/Mobile Push Notification via Firebase Cloud Messaging
   if (channels.includes("PUSH") && process.env.MOBILE_OUTBOX_ENABLED !== "1") {
     try {
       const userTokens = await prisma.userDeviceToken.findMany({
@@ -223,9 +243,24 @@ export async function sendNotification(params: SendNotificationParams) {
         select: { token: true },
       });
 
-      if (userTokens.length > 0) {
+      const nativeInstallations = await prisma.$queryRaw<Array<{ token: string }>>`
+        SELECT token
+        FROM mobile_installations
+        WHERE user_id = ${params.userId}
+          AND organization_id = ${params.organizationId}
+          AND revoked_at IS NULL
+          AND permission IN ('authorized', 'provisional')
+          AND last_sync_at > now() - interval '45 days'
+      `;
+
+      const allTokens = Array.from(new Set([
+        ...userTokens.map((t) => t.token),
+        ...nativeInstallations.map((i) => i.token),
+      ])).filter(Boolean);
+
+      if (allTokens.length > 0) {
         const pushResult = await sendWebPushNotification({
-          tokens: userTokens.map((t) => t.token),
+          tokens: allTokens,
           title: params.title,
           body: params.message,
           data: {
@@ -244,6 +279,11 @@ export async function sendNotification(params: SendNotificationParams) {
           await prisma.userDeviceToken.deleteMany({
             where: { token: { in: pushResult.invalidTokens } },
           });
+          await prisma.$executeRaw`
+            UPDATE mobile_installations
+            SET revoked_at = now()
+            WHERE token IN (${Prisma.join(pushResult.invalidTokens)})
+          `;
         }
 
         const pushDelivery = notification.deliveries.find((d) => d.channel === "PUSH");

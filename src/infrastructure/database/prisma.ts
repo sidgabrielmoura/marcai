@@ -23,7 +23,13 @@ if (process.env.NODE_ENV !== "production") {
 const adapter = new PrismaPg(pool);
 
 // Invalida o cliente em memória quando faltam modelos adicionados ao projeto.
-if (globalForPrisma.prisma && (!("platformPlan" in globalForPrisma.prisma) || !("reusableProcessTemplate" in globalForPrisma.prisma))) {
+if (
+  globalForPrisma.prisma &&
+  (!("platformPlan" in globalForPrisma.prisma) ||
+    !("reusableProcessTemplate" in globalForPrisma.prisma) ||
+    !("platformBusinessSegment" in globalForPrisma.prisma) ||
+    !("platformTemplate" in globalForPrisma.prisma))
+) {
   globalForPrisma.prisma = undefined;
 }
 

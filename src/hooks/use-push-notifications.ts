@@ -35,15 +35,21 @@ export function usePushNotifications() {
 
       const title = payload.notification?.title || payload.data?.title || "Tarefaí";
       const body = payload.notification?.body || payload.data?.body || payload.data?.message || "";
+      const url = payload.data?.url || payload.data?.clickAction || (payload.data?.taskId ? `/tasks/${payload.data.taskId}` : "/notifications");
 
       // Se o navegador permitir e estiver em foco, exibe notificação nativa
-      if (Notification.permission === "granted") {
+      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
         try {
-          new Notification(title, {
+          const n = new Notification(title, {
             body,
             icon: "/brand-icon.svg",
-            data: payload.data,
+            data: { ...(payload.data || {}), url },
           });
+          n.onclick = (e) => {
+            e.preventDefault();
+            window.focus();
+            if (url) window.location.href = url;
+          };
         } catch {
           // Em certos navegadores mobile, Notification constructor pode falhar em primeiro plano
         }

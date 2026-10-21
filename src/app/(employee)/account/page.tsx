@@ -1,4 +1,6 @@
 import { getAuthenticatedContext } from "@/application/security/auth-context";
+import { isManagement } from "@/application/security/operational-scope";
+import { redirect } from "next/navigation";
 import { EmployeeShell } from "@/presentation/components/mobile/employee-shell";
 import { logoutAction } from "@/presentation/actions/auth-actions";
 import { PageHeader } from "@/presentation/components/shared";
@@ -16,6 +18,7 @@ import { BiometricSetup } from "@/presentation/components/shared/face-id-setup";
 export default async function EmployeeAccountPage() {
   const context = await getAuthenticatedContext();
   if (!context) return null;
+  if (isManagement(context)) redirect("/management/more");
 
   const member = await prisma.organizationMember.findUnique({
     where: { id: context.memberId },
