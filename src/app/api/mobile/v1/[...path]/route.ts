@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { recordTaskView } from "@/application/mobile/task-views";
 import { resolveDestination } from "@/application/mobile/destinations";
 import { prisma } from "@/infrastructure/database/prisma";
 import { json, failure, fail, MobileError } from "@/application/mobile/http";
@@ -231,7 +232,10 @@ async function handle(req: Request, ctx: Context) {
             b = await body(req);
           // All reads happen again on the server; a push is not permission.
           let result;
-          if (action === "start") {
+          if (action === "view") {
+            z.object({}).strict().parse(b);
+            return json(await recordTaskView(req, c, taskId));
+          } else if (action === "start") {
             const input = z
               .object({
                 justification: z.string().trim().min(3).max(1000).optional(),

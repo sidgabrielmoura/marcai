@@ -87,25 +87,7 @@ interface ManagementTaskDrawerProps {
   userRole: string;
 }
 
-const actionLabels: Record<string, string> = {
-  TASK_CREATED: "Criada",
-  TASK_STARTED: "Iniciada",
-  TASK_PAUSED: "Pausada",
-  TASK_RESUMED: "Retomada",
-  TASK_COMPLETED: "Concluída",
-  TASK_SUBMITTED: "Enviada para aprovação",
-  TASK_CANCELLED: "Cancelada",
-  TASK_TRASHED: "Lixeira",
-  EVIDENCE_SUBMITTED: "Evidência enviada",
-  EVIDENCE_APPROVED: "Evidência aprovada",
-  EVIDENCE_REJECTED: "Evidência rejeitada",
-  APPROVAL_REQUESTED: "Aprovação solicitada",
-  APPROVAL_APPROVED: "Aprovação concedida",
-  APPROVAL_REJECTED: "Aprovação negada",
-  TASK_ASSIGNED: "Atribuída",
-  TASK_TRANSFERRED: "Reatribuída",
-  TASK_REASSIGNED: "Reatribuída & Prazo renovado",
-};
+import { TaskActivityHistory } from "./task-activity-history";
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", {
@@ -1025,18 +1007,7 @@ export function ManagementTaskDrawer({
                       <h3 className="font-bold text-xs uppercase tracking-wider text-(--text-primary)">Histórico</h3>
                     </div>
                     <CardContent className="p-4 flex flex-col gap-2 text-xs">
-                      {task.activityLogs.map((log) => (
-                        <div key={log.id} className="flex items-start gap-2">
-                          <div className="size-1.5 rounded-full bg-brand-900 mt-1.5 shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <span className="font-semibold text-(--text-primary)">
-                              {actionLabels[log.action] || log.action}
-                            </span>
-                            {log.actorName && <span className="text-muted-foreground"> por {log.actorName}</span>}
-                          </div>
-                          <span className="text-[10px] text-muted-foreground shrink-0">{fmtDate(log.createdAt)}</span>
-                        </div>
-                      ))}
+                      <TaskActivityHistory logs={task.activityLogs} assignedMemberIds={task.assignments.filter((assignment) => assignment.type === "PRIMARY").map((assignment) => assignment.memberId)} />
                     </CardContent>
                   </Card>
                 )}

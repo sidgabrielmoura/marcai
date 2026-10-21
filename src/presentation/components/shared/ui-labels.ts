@@ -28,6 +28,21 @@ const labels: Record<string, string> = {
   INFORMATIVE: "Informativa",
   APPROVAL_CONDITION: "Condição de aprovação",
   TASK_CREATED: "Tarefa criada",
+  TASK_VIEWED: "Funcionário viu a tarefa",
+  TASK_UPDATED: "Tarefa atualizada",
+  TASK_ASSIGNED: "Tarefa atribuída",
+  TASK_REASSIGNED: "Responsável alterado e prazo renovado",
+  TASK_TRANSFERRED_OUT: "Tarefa transferida para outro responsável",
+  TASK_SUBMITTED: "Tarefa enviada para aprovação",
+  TASK_CORRECTION_REQUESTED: "Correção da tarefa solicitada",
+  TASK_OVERDUE: "Prazo da tarefa excedido",
+  TASK_EXPIRING_SOON: "Tarefa próxima do vencimento",
+  TASK_TOLERANCE_EXCEEDED: "Tolerância da tarefa excedida",
+  TASK_MANAGEMENT_BLOCKED: "Tarefa bloqueada pela gestão",
+  TASK_MANAGEMENT_UNBLOCKED: "Tarefa desbloqueada pela gestão",
+  TASK_UNBLOCKED: "Tarefa liberada após dependência",
+  TASK_OCCURRENCE_CREATED: "Ocorrência da tarefa registrada",
+  TASK_ALERT: "Alerta da tarefa",
   TASK_STARTED: "Tarefa iniciada",
   TASK_COMPLETED: "Tarefa concluída",
   TASK_TRANSFERRED: "Responsável alterado",
@@ -40,9 +55,17 @@ const labels: Record<string, string> = {
   TASK_RESTORED: "Tarefa restaurada",
   TASK_PURGED: "Tarefa excluída definitivamente",
   EVIDENCE_SUBMITTED: "Evidência enviada",
+  EVIDENCE_APPROVED: "Evidência aprovada",
+  EVIDENCE_REJECTED: "Evidência rejeitada",
+  EVIDENCE_MAX_ATTEMPTS: "Limite de tentativas de comprovação atingido",
   EVIDENCE_VALIDATION_FAILED: "Evidência recusada",
   APPROVAL_APPROVED: "Etapa aprovada",
   APPROVAL_REJECTED: "Etapa rejeitada",
+  APPROVAL_REQUESTED: "Aprovação solicitada",
+  APPROVAL_UPDATED: "Aprovação atualizada",
+  APPROVAL_DEADLINE_EXCEEDED: "Prazo de aprovação excedido",
+  APPROVAL_OVERDUE: "Aprovação atrasada",
+  APPROVAL_PENDING: "Aprovação pendente",
   MEMBER_INVITED: "Pessoa convidada",
   MEMBER_PIN_RESET: "PIN redefinido",
   MEMBER_STATUS_ACTIVE: "Acesso ativado",
@@ -63,5 +86,5 @@ const labels: Record<string, string> = {
 };
 
 export function uiLabel(value: string) {
-  return labels[value] ?? value.replaceAll("_", " ").toLocaleLowerCase("pt-BR");
+  return labels[value.toUpperCase()] ?? value.replaceAll("_", " ").toLocaleLowerCase("pt-BR");
 }

@@ -1,4 +1,5 @@
 "use server";
+import { recordTaskView } from "@/application/mobile/task-views";
 import { webTaskDetail } from "@/application/mobile/web-task-contract";
 import {
   saveEvidence as saveTaskEvidence,
@@ -289,6 +290,17 @@ export async function completeTaskAction(
 }
 
 export type TaskDetailResult = Awaited<ReturnType<typeof webTaskDetail>>;
+export async function recordTaskViewAction(taskId: string, receipt: string): Promise<ActionResult> {
+  const context = await getAuthenticatedContext(false);
+  if (!context) return { error: "Não autenticado." };
+  try {
+    z.string().uuid().parse(receipt);
+    return await recordTaskView(webRequest(receipt)!, context, taskId);
+  } catch {
+    return { error: "Não foi possível registrar a visualização." };
+  }
+}
+
 export async function getTaskDetailAction(
   taskId: string,
 ): Promise<{ success?: boolean; error?: string; task?: TaskDetailResult }> {

@@ -37,6 +37,7 @@ import {
   NativeSelectOption,
 } from "@/components/ui/native-select";
 import { uiLabel } from "../shared/ui-labels";
+import { TaskActivityHistory } from "./task-activity-history";
 
 function isPauseOccurrence(o: {
   type?: string;
@@ -235,6 +236,7 @@ interface ManagementTaskDetailProps {
     activityLogs: Array<{
       id: string;
       action: string;
+      actorId: string | null;
       actorName: string | null;
       createdAt: Date | string;
       metadata: any;
@@ -1534,29 +1536,7 @@ export function ManagementTaskDetailClient({
           <span>Histórico de atividades</span>
         </h3>
 
-        <div className="flex flex-col divide-y divide-[var(--border-subtle)] text-[length:var(--type-label)]">
-          {task.activityLogs.map((log) => (
-            <div
-              key={log.id}
-              className="py-2.5 first:pt-0 last:pb-0 flex items-center justify-between"
-            >
-              <div>
-                <span className="font-semibold text-[var(--brand-900)]">
-                  {uiLabel(log.action)}
-                </span>
-                <span className="text-[length:var(--type-caption)] text-[var(--text-secondary)] block">
-                  Por: {log.actorName || "Sistema"}
-                </span>
-              </div>
-              <span className="text-[length:var(--type-caption)] text-[var(--text-secondary)] font-mono">
-                {new Date(log.createdAt).toLocaleTimeString("pt-BR", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </span>
-            </div>
-          ))}
-        </div>
+        <TaskActivityHistory logs={task.activityLogs} assignedMemberIds={task.assignments.filter((assignment) => assignment.type === "PRIMARY").map((assignment) => assignment.memberId)} />
       </Card>
 
       <Dialog open={showTransferModal} onOpenChange={setShowTransferModal}>

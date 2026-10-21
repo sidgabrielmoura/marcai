@@ -1,4 +1,5 @@
 "use client";
+import { useTaskView } from "@/presentation/hooks/use-task-view";
 import { FormChoiceInput } from "@/presentation/components/shared/form-choice-input";
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -116,6 +117,7 @@ export function EmployeeTaskDetailDrawer({
   const [evidenceDrafts, setEvidenceDrafts] = useState<Record<string, EvidenceDraft>>({});
   const [formAnswers, setFormAnswers] = useState<Record<string, any>>({});
   const [drawerOccurrencesOpen, setDrawerOccurrencesOpen] = useState(false);
+  useTaskView(open && task?.id === taskId ? taskId : null);
 
   const loadTask = useCallback(async (id: string) => {
     setLoading(true);

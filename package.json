@@ -11,6 +11,7 @@
     "test:domain": "tsx scripts/verify-domain-rules.ts",
     "test:operational": "tsx scripts/verify-operational-rules.ts",
     "test:regressions": "tsx scripts/verify-workflow-regressions.ts",
+    "test:task-history": "tsx scripts/verify-task-history.ts",
     "test:templates": "tsx scripts/verify-template-library.ts",
     "test:templates:ui": "tsx scripts/verify-template-ui.ts",
     "test:superadmin:ui": "tsx scripts/verify-superadmin-ui.ts",

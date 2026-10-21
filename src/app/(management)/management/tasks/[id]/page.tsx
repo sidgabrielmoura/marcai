@@ -135,7 +135,6 @@ export default async function ManagementTaskDetailPage({ params }: PageProps) {
       entityId: task.id,
     },
     orderBy: { createdAt: "desc" },
-    take: 10,
   });
 
   const actors = await prisma.organizationMember.findMany({
@@ -227,6 +226,7 @@ export default async function ManagementTaskDetailPage({ params }: PageProps) {
           activityLogs: activityLogs.map((l) => ({
             id: l.id,
             action: l.action,
+            actorId: l.actorId,
             actorName: l.actorId
               ? (actorNames.get(l.actorId) ?? "Pessoa não disponível")
               : null,

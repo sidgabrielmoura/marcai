@@ -128,10 +128,17 @@ export async function sendWebPushNotification(
   const messaging = getFirebaseAdminMessaging();
 
   // FCM data só aceita strings
-  const stringData: Record<string, string> = {};
+  const stringData: Record<string, string> = {
+    title: payload.title,
+    body: payload.body,
+    message: payload.body,
+    clickAction: payload.clickAction || "",
+  };
   if (payload.data) {
     for (const [key, value] of Object.entries(payload.data)) {
-      stringData[key] = String(value);
+      if (value !== undefined && value !== null) {
+        stringData[key] = String(value);
+      }
     }
   }
 
@@ -149,7 +156,8 @@ export async function sendWebPushNotification(
         icon: "ic_stat_marcai",
         sound: "default",
         priority: "high",
-        clickAction: payload.clickAction || undefined,
+        defaultSound: true,
+        defaultVibrateTimings: true,
       },
     },
     apns: {
