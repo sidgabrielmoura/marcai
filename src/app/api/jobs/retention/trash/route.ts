@@ -9,7 +9,7 @@ async function handleTrashCron(request: Request) {
     return Response.json({ error: auth.error }, { status: auth.status });
   }
 
-  const url = new URL(request.url);
+  const url = new URL(request.url, "http://localhost");
   const organizationId = url.searchParams.get("organizationId") || undefined;
 
   const result = await purgeTrashedTasks(organizationId);

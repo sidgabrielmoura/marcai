@@ -4,6 +4,7 @@ import { eventBus } from "@/infrastructure/events/event-bus";
 import { Priority, Role } from "@/domain/types";
 import { sendWebPushNotification } from "@/infrastructure/firebase/firebase-admin";
 import { sendOperationalAlertEmail } from "@/infrastructure/email";
+import { publishRealtimeNotification } from "@/infrastructure/realtime/ably";
 
 export interface SendNotificationParams {
   organizationId: string;
@@ -71,21 +72,20 @@ export async function dispatchNotificationAsync(params: DispatchNotificationAsyn
       ? params.forcePush
       : isPushEligible(params.type, String(params.priority || ""));
 
-  // 1. Emite em tempo real para o barramento SSE (In-App)
-  for (const userId of uniqueUsers) {
-    eventBus.publish("NOTIFICATION_CREATED", params.organizationId, {
-      userId,
-      title: params.title,
-      message: params.message,
-      type: params.type,
-      priority: params.priority || "MEDIUM",
-      data: params.data,
-      timestamp: new Date().toISOString(),
-    });
-  }
+  // 1. Emite em tempo real via Ably (e local eventBus)
+  void publishRealtimeNotification({
+    organizationId: params.organizationId,
+    userIds: uniqueUsers,
+    title: params.title,
+    message: params.message,
+    type: params.type,
+    priority: String(params.priority || "MEDIUM"),
+    data: params.data,
+    clickAction: params.clickAction,
+  });
 
-  // 2. Dispara Push via Firebase Cloud Messaging para Web e Mobile
-  if (shouldSendPush && process.env.MOBILE_OUTBOX_ENABLED !== "1") {
+  // 2. Dispara Push via Firebase Cloud Messaging para Web e Mobile em tempo real
+  if (shouldSendPush) {
     try {
       const userTokens = await prisma.userDeviceToken.findMany({
         where: { userId: { in: uniqueUsers } },
@@ -216,8 +216,8 @@ export async function sendNotification(params: SendNotificationParams) {
       deliveries: {
         create: channels.map((channel) => ({
           channel,
-          status: channel === "PUSH" && process.env.MOBILE_OUTBOX_ENABLED === "1" ? "QUEUED" : "SENT",
-          sentAt: channel === "PUSH" && process.env.MOBILE_OUTBOX_ENABLED === "1" ? null : new Date(),
+          status: "SENT",
+          sentAt: new Date(),
         })),
       },
     },
@@ -226,17 +226,21 @@ export async function sendNotification(params: SendNotificationParams) {
     },
   });
 
-  // Emite evento em tempo real via eventBus para os clientes conectados
-  eventBus.publish("NOTIFICATION_CREATED", params.organizationId, {
-    notificationId: notification.id,
+  // Emite notificação em tempo real via Ably (e local eventBus)
+  void publishRealtimeNotification({
+    organizationId: params.organizationId,
     userId: params.userId,
     title: params.title,
     message: params.message,
+    type: params.type,
     priority: notification.priority,
+    data: params.data,
+    notificationId: notification.id,
+    clickAction: params.clickAction,
   });
 
-  // Disparo de Web/Mobile Push Notification via Firebase Cloud Messaging
-  if (channels.includes("PUSH") && process.env.MOBILE_OUTBOX_ENABLED !== "1") {
+  // Disparo de Web/Mobile Push Notification via Firebase Cloud Messaging em tempo real
+  if (channels.includes("PUSH")) {
     try {
       const userTokens = await prisma.userDeviceToken.findMany({
         where: { userId: params.userId },
