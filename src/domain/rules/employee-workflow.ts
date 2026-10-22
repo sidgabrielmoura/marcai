@@ -168,17 +168,19 @@ export function columnFor(task: WorkflowTask, now: number): BoardColumn {
   )
     return "upcoming";
   if (timing.scheduled) return "today";
-  const scheduledAt = instant(task.scheduledDate);
+  const scheduledAt =
+    instant(task.scheduledDate) ?? instant(task.executionAvailableAt);
   const pastDayWithoutDeadline =
     timing.dueAt === null &&
     scheduledAt !== null &&
     dayKey(scheduledAt, task.timezone) < today;
   if (
     !timing.scheduled &&
-    !terminal(task.status) &&
-    ((timing.dueAt !== null && now > timing.dueAt) ||
-      timing.phase === "EXCEEDED" ||
-      pastDayWithoutDeadline)
+    (task.status === "NOT_COMPLETED" ||
+      (!terminal(task.status) &&
+        ((timing.dueAt !== null && now > timing.dueAt) ||
+          timing.phase === "EXCEEDED" ||
+          pastDayWithoutDeadline)))
   )
     return "overdue";
   if (task.isUnassigned) return "unassigned";
@@ -287,7 +289,13 @@ export function boardState(tasks: WorkflowTask[], now: number): BoardSummary {
     column: columnFor(task, now),
   }));
   const active = evaluated.filter(({ task }) => !readOnly(task.status));
-  const anyOverdue = active.some(({ column }) => column === "overdue");
+  const anyOverdue =
+    active.some(({ column }) => column === "overdue") ||
+    evaluated.some(
+      ({ task }) =>
+        task.status === "NOT_COMPLETED" ||
+        deadline(task, now).phase === "EXCEEDED",
+    );
   const available = active.some(
     ({ task, column }) =>
       column !== "overdue" &&
@@ -295,14 +303,30 @@ export function boardState(tasks: WorkflowTask[], now: number): BoardSummary {
         .allowed,
   );
   const attention = anyOverdue && available;
-  let column: BoardColumn = attention
-    ? "today"
-    : anyOverdue
-      ? "overdue"
+  const isScheduled =
+    active.length > 0 &&
+    active.every(({ task }) => deadline(task, now).scheduled);
+
+  let column: BoardColumn;
+  if (
+    active.length === 0 &&
+    evaluated.length > 0 &&
+    evaluated.every(({ column: col }) => col === "completed")
+  ) {
+    column = "completed";
+  } else if (isScheduled) {
+    column = "upcoming";
+  } else if (available) {
+    column = attention
+      ? "today"
       : evaluated.some((item) => item.column === "today")
         ? "today"
         : (evaluated.find((item) => item.column !== "completed")?.column ??
-          "completed");
+          "today");
+  } else {
+    column = "overdue";
+  }
+
   if (summary && tasks.length < summary.totalTasks) return { ...summary };
   if (summary?.executionStatus === "COMPLETED") column = "completed";
   else if (summary?.executionStatus && column === "completed") column = "today";
@@ -312,9 +336,7 @@ export function boardState(tasks: WorkflowTask[], now: number): BoardSummary {
     attention: column === "completed" ? false : attention,
     anyOverdue,
     totalTasks: summary?.totalTasks ?? tasks.length,
-    isScheduled:
-      active.length > 0 &&
-      active.every(({ task }) => deadline(task, now).scheduled),
+    isScheduled,
   };
 }
 

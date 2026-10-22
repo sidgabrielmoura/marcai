@@ -331,19 +331,12 @@ async function operate(
     tx: Prisma.TransactionClient,
     task: OperationalTask,
     c: Context,
-    postCommit: (task: () => Promise<unknown>) => void,
   ) => Promise<ActionResult>,
   deleted = false,
 ): Promise<ActionResult> {
   const c = await getAuthenticatedContext();
   if (!c || (management && !isManagement(c)))
     return { error: "Você não tem permissão para esta ação." };
-  
-  const postCommitTasks: Array<() => Promise<unknown>> = [];
-  const addPostCommit = (task: () => Promise<unknown>) => {
-    postCommitTasks.push(task);
-  };
-
   const result = await prisma.$transaction(
     async (tx) => {
       await lockTask(tx, c.organizationId, taskId);
@@ -356,7 +349,7 @@ async function operate(
         include: taskInclude,
       });
       if (!task) return { error: "Tarefa não encontrada no seu escopo." };
-      const result = await fn(tx, task, c, addPostCommit);
+      const result = await fn(tx, task, c);
       if (result.success)
         await synchronizeExecution(
           tx,
@@ -369,14 +362,6 @@ async function operate(
     },
     { timeout: 20000 },
   );
-
-  if (result.success && postCommitTasks.length > 0) {
-    try {
-      await Promise.allSettled(postCommitTasks.map((task) => task()));
-    } catch (err) {
-      console.error("[operate] Erro ao executar tarefas pós-commit:", err);
-    }
-  }
   for (const path of [
     "/tasks",
     "/history",
@@ -552,7 +537,7 @@ export async function reassignTaskAction(
   const { taskId, memberId, deadlineMinutes, customDeadlineAt, reason } =
     parsed.data;
 
-  return operate(taskId, true, async (tx, task, c, postCommit) => {
+  return operate(taskId, true, async (tx, task, c) => {
     if (terminal(task.status))
       return { error: "Tarefas encerradas não podem ser reatribuídas." };
     const member = await eligibleMember(
@@ -605,16 +590,14 @@ export async function reassignTaskAction(
             message: `A tarefa “${task.title}” foi transferida para outro responsável.`,
           },
         });
-        postCommit(async () => {
-          await dispatchNotificationAsync({
-            organizationId: c.organizationId,
-            userIds: [current.member.userId],
-            type: "TASK_TRANSFERRED_OUT",
-            title: "Tarefa transferida",
-            message: `A tarefa “${task.title}” foi transferida para outro responsável.`,
-            clickAction: "/notifications",
-            forcePush: false,
-          });
+        void dispatchNotificationAsync({
+          organizationId: c.organizationId,
+          userIds: [current.member.userId],
+          type: "TASK_TRANSFERRED_OUT",
+          title: "Tarefa transferida",
+          message: `A tarefa “${task.title}” foi transferida para outro responsável.`,
+          clickAction: "/notifications",
+          forcePush: false,
         });
       }
 
@@ -643,38 +626,27 @@ export async function reassignTaskAction(
     const renewed = !!newDeadline && oldTiming.phase === "EXCEEDED";
     if (renewed && isSameMember)
       await endSessions(tx, task, new Date(oldTiming.limitAt ?? now.getTime()));
-
-    // Ao reatribuir ou destravar a tarefa, a ação de gestão remove o bloqueio manual (managementBlocked).
-    // A tarefa só permanece BLOCKED se ainda houver dependências operacionais pendentes (dependency.isBlocked).
-    // Agendamentos futuros aguardam em AVAILABLE.
-    // Nova atribuição (!isSameMember) disponibiliza a tarefa em AVAILABLE para o novo operador iniciar.
-    // Tarefas anteriormente PAUSED ou BLOCKED retornam a AVAILABLE (saindo da coluna Bloqueadas).
-    const nextStatus = dependency.isBlocked
-      ? "BLOCKED"
-      : future
-        ? "AVAILABLE"
-        : !isSameMember
+    const nextStatus =
+      task.managementBlocked || dependency.isBlocked
+        ? "BLOCKED"
+        : future
           ? "AVAILABLE"
-          : task.status === "PAUSED" || task.status === "BLOCKED"
-            ? "AVAILABLE"
+          : task.status === "BLOCKED" || task.status === "AVAILABLE"
+            ? "IN_PROGRESS"
             : task.status;
 
     await tx.task.update({
       where: { id: task.id },
       data: {
         status: nextStatus,
-        managementBlocked: false,
-        managementBlockReason: null,
         startedAt:
-          dependency.isBlocked || future
-            ? null
-            : !isSameMember
+          task.managementBlocked || dependency.isBlocked || future
+            ? future || renewed
               ? null
-              : task.status === "PAUSED" || task.status === "BLOCKED"
-                ? null
-                : renewed
-                  ? now
-                  : (task.startedAt ?? now),
+              : task.startedAt
+            : renewed
+              ? now
+              : (task.startedAt ?? now),
         ...(newDeadline
           ? {
               deadlineAt: newDeadline,
@@ -726,18 +698,16 @@ export async function reassignTaskAction(
       },
     });
 
-    postCommit(async () => {
-      await dispatchNotificationAsync({
-        organizationId: c.organizationId,
-        userIds: [member.userId],
-        type: "TASK_ASSIGNED",
-        priority: task.priority,
-        title: notifTitle,
-        message: notifMessage,
-        data: { taskId },
-        clickAction: `/tasks/${taskId}`,
-        forcePush: true,
-      });
+    void dispatchNotificationAsync({
+      organizationId: c.organizationId,
+      userIds: [member.userId],
+      type: "TASK_ASSIGNED",
+      priority: task.priority,
+      title: notifTitle,
+      message: notifMessage,
+      data: { taskId },
+      clickAction: `/tasks/${taskId}`,
+      forcePush: true,
     });
 
     await audit(tx, task, c, "TASK_REASSIGNED", {

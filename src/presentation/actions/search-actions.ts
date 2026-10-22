@@ -1,5 +1,6 @@
 "use server";
 import {searchTasks} from "@/application/mobile/data";
+import { withReadRequest } from "@/infrastructure/database/request-memo";
 
 import { listTemplateLibrary } from "@/application/templates/template-library";
 import { processTemplateHref, templateJobs } from "@/domain/rules/reusable-template-definition";
@@ -13,6 +14,10 @@ import { readProcessDefinition } from "@/domain/rules/process-definition";
 export type SearchResult = { id: string; group: string; title: string; detail: string; href: string };
 
 export async function searchWorkspaceAction(query: string): Promise<SearchResult[]> {
+  return withReadRequest(() => searchWorkspace(query));
+}
+
+async function searchWorkspace(query: string): Promise<SearchResult[]> {
   const parsed = z.string().trim().min(2).max(100).safeParse(query);
   if (!parsed.success) return [];
   const contains = { contains: parsed.data, mode: "insensitive" as const };

@@ -4,6 +4,8 @@ import { mobileSessionContext } from "./mobile-context";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { Role } from "@/domain/types";
+import { cache } from "react";
+import { requestRead } from "@/infrastructure/database/request-memo";
 
 const COOKIE_NAME = "gestao_session";
 function sessionSecret() {
@@ -44,12 +46,19 @@ export async function decryptSession(token: string): Promise<SessionData | null>
     });
     const data=payload as unknown as SessionData;
     if(typeof data.sessionId!=="string"||!/^[0-9a-f-]{36}$/.test(data.sessionId))return null;
-    const [stored]=await prisma.$queryRaw<Array<{credential_version:string}>>`SELECT credential_version FROM web_auth_sessions WHERE id=${data.sessionId}::uuid AND user_id=${data.userId} AND member_id=${data.activeMemberId} AND organization_id=${data.activeOrgId} AND revoked_at IS NULL AND expires_at>now()`;
+    const [stored]=await prisma.$queryRaw<Array<{
+      credential_version:string; password_hash:string|null; pin_hash:string|null;
+      user_status:string; member_status:string|null; member_role:string|null; organization_status:string|null;
+    }>>`SELECT s.credential_version, u."passwordHash" AS password_hash, u.status AS user_status,
+      m."pinHash" AS pin_hash, m.status AS member_status, m.role AS member_role, o.status AS organization_status
+      FROM web_auth_sessions s JOIN users u ON u.id=s.user_id
+      LEFT JOIN organization_members m ON m.id=s.member_id AND m."userId"=s.user_id AND m."organizationId"=s.organization_id
+      LEFT JOIN organizations o ON o.id=m."organizationId"
+      WHERE s.id=${data.sessionId}::uuid AND s.user_id=${data.userId} AND s.member_id=${data.activeMemberId}
+      AND s.organization_id=${data.activeOrgId} AND s.revoked_at IS NULL AND s.expires_at>now()`;
     if(!stored)return null;
-    const user=await prisma.user.findUnique({where:{id:data.userId}});
-    const member=data.activeMemberId?await prisma.organizationMember.findFirst({where:{id:data.activeMemberId,userId:data.userId,organizationId:data.activeOrgId},include:{organization:true}}):null;
-    if(!user||user.status!=="ACTIVE"||(data.role!=="SUPERADMIN"&&(!member||member.status!=="ACTIVE"||member.organization.status!=="ACTIVE"||member.role!==data.role)))return null;
-    const version=createHash("sha256").update((user.passwordHash??"")+":"+(member?.pinHash??"")).digest("hex");
+    if(stored.user_status!=="ACTIVE"||(data.role!=="SUPERADMIN"&&(stored.member_status!=="ACTIVE"||stored.organization_status!=="ACTIVE"||stored.member_role!==data.role)))return null;
+    const version=createHash("sha256").update((stored.password_hash??"")+":"+(stored.pin_hash??"")).digest("hex");
     return version===stored.credential_version?data:null;
   } catch {
     return null;
@@ -69,13 +78,19 @@ export async function createSession(data: SessionData): Promise<void> {
   });
 }
 
-export async function getSession(): Promise<SessionData | null> {
-  const mobile = mobileSessionContext.getStore();
-  if (mobile) return mobile;
+const getWebSession = cache(async (): Promise<SessionData | null> => {
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;
   return decryptSession(token);
+});
+
+export async function getSession(): Promise<SessionData | null> {
+  const mobile = mobileSessionContext.getStore();
+  if (mobile) return mobile;
+  // React cache is scoped to a server render, never shared across requests.
+  // Outside rendering (mutations, route handlers and stream ticks), reads are fresh.
+  return requestRead("web-session", getWebSession);
 }
 
 export async function clearSession(): Promise<void> {

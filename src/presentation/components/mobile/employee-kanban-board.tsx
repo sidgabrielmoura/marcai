@@ -4,6 +4,8 @@ import {
   operationPermission,
   processProgress,
   processBadge,
+  deadline,
+  dependencyBlocked,
   type BoardSummary,
 } from "@/domain/rules/employee-workflow";
 
@@ -955,7 +957,15 @@ function ProcessCard({
 
   return (
     <Card
-      className={`employee-process-card shrink-0 h-fit gap-3 ring-0 rounded-xl border p-3.5 shadow-none flex flex-col transition-all ${isScheduled ? "grayscale contrast-90 opacity-85 border-slate-300 dark:border-slate-700 bg-slate-50/90 dark:bg-muted/20 select-none" : "border-[var(--border-subtle)] bg-[var(--surface)] hover:border-[var(--brand-700)]/40"}`}
+      className={`employee-process-card shrink-0 h-fit gap-3 ring-0 rounded-xl border p-3.5 shadow-none flex flex-col transition-all ${
+        isScheduled
+          ? "grayscale contrast-90 opacity-85 border-slate-300 dark:border-slate-700 bg-slate-50/90 dark:bg-muted/20 select-none"
+          : isOverdue
+            ? "border-red-300 dark:border-red-800/70 bg-[var(--surface)] hover:border-red-400"
+            : attention
+              ? "border-amber-300 dark:border-amber-800/60 bg-[var(--surface)] hover:border-amber-400"
+              : "border-[var(--border-subtle)] bg-[var(--surface)] hover:border-[var(--brand-700)]/40"
+      }`}
     >
       {/* Top Badges */}
       <div className="flex items-center justify-between gap-1.5 flex-wrap">
@@ -986,9 +996,10 @@ function ProcessCard({
           ) : isOverdue ? (
             <Badge
               variant="outline"
-              className="text-[11px] font-semibold px-2 py-0.5 rounded-full border bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800"
+              className="text-[11px] font-semibold px-2 py-0.5 rounded-full border bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800 flex items-center gap-1"
             >
-              Atrasado
+              <AlertTriangle className="size-3" aria-hidden="true" />
+              <span>Atrasado</span>
             </Badge>
           ) : isScheduled ? (
             <Badge
@@ -1054,9 +1065,11 @@ function ProcessCard({
             className={`h-full transition-all duration-300 rounded-full ${
               isCompleted
                 ? "bg-emerald-600 dark:bg-emerald-500"
-                : isScheduled
-                  ? "bg-slate-400 dark:bg-slate-500"
-                  : "bg-[var(--brand-900)] dark:bg-[var(--brand-700)]"
+                : isOverdue
+                  ? "bg-red-500 dark:bg-red-600"
+                  : isScheduled
+                    ? "bg-slate-400 dark:bg-slate-500"
+                    : "bg-[var(--brand-900)] dark:bg-[var(--brand-700)]"
             }`}
             style={{ width: `${item.progressPercent}%` }}
           />
@@ -1066,20 +1079,39 @@ function ProcessCard({
         <div className="flex items-center gap-1.5 overflow-x-auto pt-1 scrollbar-none">
           {item.tasks.map((task, idx) => {
             const isDone = task.status === "COMPLETED";
+            const taskTiming = deadline(task, now);
+            const isTaskOverdue =
+              !isDone &&
+              (columnFor(task, now) === "overdue" ||
+                taskTiming.phase === "EXCEEDED" ||
+                task.status === "NOT_COMPLETED" ||
+                (taskTiming.dueAt !== null && now > taskTiming.dueAt));
+            const isTaskBlocked =
+              !isDone &&
+              !isTaskOverdue &&
+              (dependencyBlocked(task) ||
+                task.status === "BLOCKED" ||
+                task.managementBlocked);
             return (
               <div
                 key={task.id}
-                title={`${idx + 1}. ${task.title} (${isDone ? "Concluída" : "Pendente"})`}
+                title={`${idx + 1}. ${task.title} (${isDone ? "Concluída" : isTaskOverdue ? "Atrasada" : isTaskBlocked ? "Bloqueada" : "Pendente"})`}
                 className={`flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md border shrink-0 ${
                   isDone
                     ? "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300"
-                    : isScheduled
-                      ? "bg-slate-100 border-slate-200 text-slate-500 dark:bg-muted/30 dark:border-border dark:text-slate-400"
-                      : "bg-slate-50 border-slate-200 text-slate-600 dark:bg-muted/30 dark:border-border dark:text-slate-400"
+                    : isTaskOverdue
+                      ? "bg-red-50 border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800 dark:text-red-300"
+                      : isTaskBlocked
+                        ? "bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-300"
+                        : isScheduled
+                          ? "bg-slate-100 border-slate-200 text-slate-500 dark:bg-muted/30 dark:border-border dark:text-slate-400"
+                          : "bg-slate-50 border-slate-200 text-slate-600 dark:bg-muted/30 dark:border-border dark:text-slate-400"
                 }`}
               >
                 {isDone ? (
                   <Check className="size-2.5 text-emerald-600 dark:text-emerald-400 stroke-[3]" />
+                ) : isTaskOverdue ? (
+                  <AlertTriangle className="size-2.5 text-red-600 dark:text-red-400" />
                 ) : (
                   <span className="font-mono">{idx + 1}</span>
                 )}
@@ -1117,17 +1149,23 @@ function ProcessCard({
             className={
               attention
                 ? "h-9 w-full justify-between px-3 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-300 hover:bg-amber-100 cursor-pointer"
-                : "h-9 w-full justify-between px-0 text-xs font-semibold text-[var(--brand-900)] hover:bg-transparent hover:underline cursor-pointer"
+                : isOverdue
+                  ? "h-9 w-full justify-between px-3 text-xs font-semibold text-red-700 bg-red-50/70 border border-red-200 hover:bg-red-100/80 cursor-pointer"
+                  : "h-9 w-full justify-between px-0 text-xs font-semibold text-[var(--brand-900)] hover:bg-transparent hover:underline cursor-pointer"
             }
           >
             <span>
               {attention
                 ? "Atenção"
-                : isCompleted
-                  ? "Ver processo concluído"
-                  : item.completedTasks > 0
-                    ? "Continuar processo"
-                    : "Abrir processo"}
+                : isOverdue
+                  ? item.completedTasks > 0
+                    ? "Ver etapas atrasadas"
+                    : "Processo em atraso"
+                  : isCompleted
+                    ? "Ver processo concluído"
+                    : item.completedTasks > 0
+                      ? "Continuar processo"
+                      : "Abrir processo"}
             </span>
             <ArrowRight className="size-3.5" aria-hidden="true" />
           </Button>

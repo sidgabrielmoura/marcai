@@ -3,7 +3,7 @@ import {
   evaluateEarlyExecution,
   type EarlyExecutionPolicy,
 } from "@/domain/rules/early-execution";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma";
 import type { AuthenticatedContext } from "@/application/security/auth-context";
 import { taskScope } from "@/application/security/operational-scope";
@@ -58,7 +58,7 @@ export const includeTask = {
     include: { submissions: { orderBy: { createdAt: "asc" as const } } },
   },
   dependencies: {
-    include: { dependsOnTask: { include: { approvalWorkflow: true } } },
+    include: { dependsOnTask: { select: { title: true, status: true, approvalWorkflow: { select: { status: true } } } } },
   },
   occurrences: {
     where: { type: { not: "PAUSE_ALERT" } },
@@ -67,6 +67,29 @@ export const includeTask = {
   },
 } as const;
 export type LoadedTask = Prisma.TaskGetPayload<{ include: typeof includeTask }>;
+// Lists retain the facts used by permissions and clocks without downloading form
+// answers, instructions, evidence contents or the full approval history.
+export const listTaskArgs = {
+  omit: { description: true, instructions: true, formFields: true, formAnswers: true },
+  include: {
+    ...includeTask,
+    approvalWorkflow: true,
+    occurrences: false,
+    evidenceRequirements: {
+      include: { submissions: { omit: { value: true, metadata: true }, orderBy: { createdAt: "asc" as const } } },
+    },
+  },
+} as const;
+function listTaskDefaults(task: Prisma.TaskGetPayload<typeof listTaskArgs>): LoadedTask {
+  return {
+    ...task, description: null, instructions: null, formFields: null, formAnswers: null,
+    approvalWorkflow: task.approvalWorkflow ? { ...task.approvalWorkflow, steps: [] } : null,
+    occurrences: [],
+    evidenceRequirements: task.evidenceRequirements.map(requirement => ({
+      ...requirement, submissions: requirement.submissions.map(submission => ({ ...submission, value: null, metadata: null })),
+    })),
+  };
+}
 export function readable(c: AuthenticatedContext): Prisma.TaskWhereInput {
   return {
     organizationId: c.organizationId,
@@ -527,22 +550,20 @@ function appearsOnBoard(task: BoardVisibilityTask, now: Date) {
       ))
   );
 }
-async function projectTaskList(
+export async function projectTaskList(
   tasks: LoadedTask[],
   context: AuthenticatedContext,
   now = new Date(),
 ) {
-  const rounds = await prisma.activityLog.findMany({
-    where: {
-      organizationId: context.organizationId,
-      entityType: "TASK",
-      entityId: { in: tasks.map((task) => task.id) },
-      action: { in: ["TASK_CORRECTION_REQUESTED", "APPROVAL_REJECTED"] },
-    },
-    distinct: ["entityId"],
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    select: { entityId: true, id: true, createdAt: true },
-  });
+  if (!tasks.length) return [];
+  const rounds = await prisma.$queryRaw<Array<{ entityId: string; id: string; createdAt: Date }>>(Prisma.sql`
+    SELECT DISTINCT ON ("entityId") "entityId", id, "createdAt"
+    FROM activity_logs
+    WHERE "organizationId" = ${context.organizationId} AND "entityType" = 'TASK'
+      AND "entityId" IN (${Prisma.join(tasks.map(task => task.id))})
+      AND action IN ('TASK_CORRECTION_REQUESTED', 'APPROVAL_REJECTED')
+    ORDER BY "entityId", "createdAt" DESC, id DESC
+  `);
   const roundByTask = new Map(rounds.map((round) => [round.entityId, round]));
   return Promise.all(
     tasks.map((task) =>
@@ -557,6 +578,7 @@ export async function listTasks(
   search = "",
   type = "all",
   now = new Date(),
+  boardCache?: { value?: Awaited<ReturnType<typeof boardCounts>> },
 ) {
   const cohort: Prisma.TaskWhereInput = {
     AND: [
@@ -640,17 +662,18 @@ export async function listTasks(
           }
         : {}),
     },
-    include: includeTask,
+    ...listTaskArgs,
     orderBy: [{ priority: "desc" }, { deadlineAt: "asc" }, { id: "asc" }],
     take: 101,
   });
   const page = rows.slice(0, 100);
   const projected = await projectTaskList(
-    page.filter((task) => appearsOnBoard(task, now)),
+    page.filter((task) => appearsOnBoard(task, now)).map(listTaskDefaults),
     c,
     now,
   );
-  const board = await boardCounts(c, cohort, now);
+  const board = boardCache?.value ?? await boardCounts(c, cohort, now);
+  if (boardCache) boardCache.value = board;
   return {
     items: projected.map((t) =>
       t.origin === "PROCESS" && t.executionId
@@ -681,12 +704,12 @@ export async function history(
       updatedAt: { gte: new Date(Date.now() - period * 86400000) },
       ...(cursor ? { AND: [historyCursor(cursor)] } : {}),
     },
-    include: includeTask,
+    ...listTaskArgs,
     orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
     take: 21,
   });
   return {
-    items: await Promise.all(rows.slice(0, 20).map((t) => project(t, c))),
+    items: await projectTaskList(rows.slice(0, 20).map(listTaskDefaults), c),
     nextCursor:
       rows.length > 20
         ? Buffer.from(
@@ -735,7 +758,7 @@ export async function execution(c: AuthenticatedContext, id: string) {
       organizationId: c.organizationId,
       ...executionTeamScope,
     },
-    include: includeTask,
+    ...listTaskArgs,
     orderBy: [{ definitionOrder: "asc" }, { id: "asc" }],
   });
   const required = e.tasks.filter((t) => t.required),
@@ -758,7 +781,7 @@ export async function execution(c: AuthenticatedContext, id: string) {
     personalTotal: visible.length,
     personalCompleted: visible.filter(done).length,
     hasHiddenSteps: visible.length < e.tasks.length,
-    visibleTasks: await projectTaskList(visible, c),
+    visibleTasks: await projectTaskList(visible.map(listTaskDefaults), c),
   };
 }
 
@@ -846,6 +869,7 @@ async function boardCounts(
       slaDueAt: t.slaDueAt?.toISOString(),
       scheduledDate: t.scheduledDate?.toISOString(),
       startedAt: t.startedAt?.toISOString(),
+      completedAt: t.completedAt?.toISOString(),
       toleranceMinutes: t.toleranceMinutes,
       maxDuration: t.maxDuration,
       isUnassigned: !t.assignments.some((a) => a.type === "PRIMARY"),
@@ -951,11 +975,11 @@ export async function searchTasks(c: AuthenticatedContext, term: string) {
         },
       ],
     },
-    include: includeTask,
+    ...listTaskArgs,
     orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
     take: 20,
   });
-  return Promise.all(rows.map((t) => project(t, c)));
+  return projectTaskList(rows.map(listTaskDefaults), c);
 }
 
 function encodeCursor(t: {

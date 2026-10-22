@@ -6,10 +6,10 @@ import { prisma } from "@/infrastructure/database/prisma";
 import { getOptimizedCloudinaryUrl } from "@/infrastructure/cloudinary/cloudinary-service";
 
 const searchSchema = z.object({
-  taskId: z.string().optional(),
-  q: z.string().optional(),
+  taskId: z.string().min(1).max(128).optional(),
+  q: z.string().trim().max(100).optional(),
   type: z.enum(["PHOTO", "VIDEO", "FILE", "SIGNATURE", "ALL"]).default("ALL"),
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).max(1000).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
@@ -53,7 +53,8 @@ export async function GET(req: Request) {
       prisma.evidenceSubmission.count({ where: whereClause }),
       prisma.evidenceSubmission.findMany({
         where: whereClause,
-        include: {
+        select: {
+          id: true, fileUrl: true, storageKey: true, value: true, metadata: true, createdAt: true,
           requirement: {
             select: {
               id: true,
@@ -70,11 +71,11 @@ export async function GET(req: Request) {
           submitter: {
             select: {
               id: true,
-              user: { select: { name: true, avatarUrl: true } },
+              user: { select: { name: true } },
             },
           },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         skip,
         take: params.limit,
       }),

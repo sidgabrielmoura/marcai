@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { recordTaskView } from "@/application/mobile/task-views";
+import { eventStream } from "@/application/mobile/event-stream";
 import { resolveDestination } from "@/application/mobile/destinations";
 import { prisma } from "@/infrastructure/database/prisma";
 import { json, failure, fail, MobileError } from "@/application/mobile/http";
@@ -431,58 +432,7 @@ async function handle(req: Request, ctx: Context) {
         if (method === "GET" && route === "events")
           return json(await replay(c, url.searchParams.get("cursor")));
         if (method === "GET" && route === "events/stream") {
-          const encoder = new TextEncoder(),
-            controller = new AbortController();
-          req.signal.addEventListener("abort", () => controller.abort(), {
-            once: true,
-          });
-          let cursor = url.searchParams.get("cursor"),
-            ended = false;
-          const stream = new ReadableStream({
-            async start(out) {
-              const start = Date.now();
-              try {
-                while (
-                  !controller.signal.aborted &&
-                  Date.now() - start < 25000
-                ) {
-                  // Revalidate session, role and all scopes during the connection.
-                  const events = await withAuth(req, (_, fresh) =>
-                    replay(fresh, cursor),
-                  );
-                  cursor = events.nextCursor;
-                  out.enqueue(
-                    encoder.encode(
-                      "event: sync\ndata: " + JSON.stringify(events) + "\n\n",
-                    ),
-                  );
-                  await new Promise((resolve) => setTimeout(resolve, 2000));
-                }
-              } catch {
-                try {
-                  out.enqueue(encoder.encode("event: revoked\ndata: {}\n\n"));
-                } catch {}
-              } finally {
-                if (!ended) {
-                  ended = true;
-                  try {
-                    out.close();
-                  } catch {}
-                }
-              }
-            },
-            cancel() {
-              ended = true;
-              controller.abort();
-            },
-          });
-          return new Response(stream, {
-            headers: {
-              "Content-Type": "text/event-stream",
-              "Cache-Control": "private, no-store, no-transform",
-              "X-Accel-Buffering": "no",
-            },
-          });
+            return eventStream({ request: req, initialContext: c, mobile: true, authenticate: () => withAuth(req, async (_, fresh) => fresh) });
         }
         if (method === "POST" && route === "passkeys/register/options") {
           await rateRequest(req, "passkey-register", c.userId);

@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import { SignJWT,jwtVerify,EncryptJWT,jwtDecrypt } from 'jose';
 import { z } from 'zod';
 import { prisma } from '@/infrastructure/database/prisma';
-import { getAuthenticatedContext } from '@/application/security/auth-context';
+import { getAuthenticatedContext, authenticatedMemberSelect, contextFromMember } from '@/application/security/auth-context';
 import { mobileSessionContext } from '@/infrastructure/security/mobile-context';
 import { securityKey,hasSecondFactorProof,secondFactorProof,openTotp,sealTotp,verifyTotp,hashRecoveryCode,generateTotpSecret,generateRecoveryCodes,buildTotpUri } from '@/infrastructure/security/totp';
 import { MobileError,fail } from './http';
@@ -29,7 +29,7 @@ export async function rateRequest(req:Request,kind:string,identity='') {
 const credential=(u:{passwordHash:string|null},m:{pinHash:string|null})=>hash((u.passwordHash??'')+':'+(m.pinHash??''));
 type DbSession={id:string;user_id:string;member_id:string;installation_id:string;proof:string|null;credential_version:string;expires_at:Date;revoked_at:Date|null};
 async function activeMember(memberId:string,userId:string,proof:string|null,version:string,db:Pick<Prisma.TransactionClient,'organizationMember'>=prisma) {
- const m=await db.organizationMember.findFirst({where:{id:memberId,userId,status:'ACTIVE',user:{status:'ACTIVE'},organization:{status:'ACTIVE'}},include:identityInclude});
+ const m=await db.organizationMember.findFirst({where:{id:memberId,userId,status:'ACTIVE',user:{status:'ACTIVE'},organization:{status:'ACTIVE'}},select:authenticatedMemberSelect});
  if(!m || m.user.platformRole==='SUPERADMIN' || !hasSecondFactorProof(m.user,proof??undefined) || credential(m.user,m)!==version)fail(401,'SESSION_REVOKED','Seu acesso mudou. Entre novamente.');
  return m;
 }
@@ -162,8 +162,9 @@ export async function authenticate(req:Request) {
 export async function withAuth<T>(req:Request,work:(auth:Awaited<ReturnType<typeof authenticate>>,context:NonNullable<Awaited<ReturnType<typeof getAuthenticatedContext>>>)=>Promise<T>,employee=true) {
  const auth=await authenticate(req);
  return mobileSessionContext.run(auth.data,async()=>{
- const context=await getAuthenticatedContext(false);
- if(!context)fail(401,'SESSION_REVOKED','Seu acesso mudou.');
+ // authenticate already validated this membership, credential version and 2FA.
+ // Reuse its projection only within this invocation, never across requests/ticks.
+ const context=contextFromMember(auth.member);
  if(employee&&context.role!=='EMPLOYEE')fail(403,'ROLE_UNSUPPORTED','Este aplicativo é exclusivo para funcionários. Use a gestão no navegador.');
  return work(auth,context);
  });

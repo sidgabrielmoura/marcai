@@ -9,6 +9,15 @@ import { canGenerateExecutionForRoutine, resolveExecutionInitialStatus } from "@
 import { nextOccurrence } from "@/domain/rules/schedule";
 import { dispatchNotificationAsync } from "@/infrastructure/notifications/notification-service";
 
+export function routineScheduledAt(routine: {
+  updatedAt: Date; recurrenceRule: string; startsAt: Date; endsAt: Date | null; timezone: string;
+  process: { updatedAt: Date; validFrom: Date | null; validUntil: Date | null };
+}, previous: { scheduledAt: Date } | undefined, now: Date, automatic: boolean) {
+  const floor = new Date(Math.max(now.getTime() - (automatic ? 60000 : 1), routine.updatedAt.getTime() - 1, routine.process.updatedAt.getTime() - 1, previous?.scheduledAt.getTime() ?? 0, (routine.process.validFrom?.getTime() ?? 0) - 1));
+  const scheduledAt = nextOccurrence(routine.recurrenceRule, routine.startsAt, routine.endsAt, routine.timezone, floor);
+  return !scheduledAt || routine.process.validUntil && scheduledAt > routine.process.validUntil ? null : scheduledAt;
+}
+
 export async function generateRoutineExecution(routineId: string, context: AuthenticatedContext, now = new Date(), automatic = false) {
   const notifications: DispatchNotificationAsyncParams[] = [];
   const result = await prisma.$transaction(async tx => {
@@ -34,9 +43,8 @@ export async function generateRoutineExecution(routineId: string, context: Authe
       }
       return { error: check.reason || "A execução anterior ainda está pendente. Conclua-a ou altere a regra de pendência na rotina.", blocked: true };
     }
-    const floor = new Date(Math.max(now.getTime() - (automatic ? 60000 : 1), routine.updatedAt.getTime() - 1, routine.process.updatedAt.getTime() - 1, routine.executions[0]?.scheduledAt.getTime() ?? 0, (routine.process.validFrom?.getTime() ?? 0) - 1));
-    const scheduledAt = nextOccurrence(routine.recurrenceRule, routine.startsAt, routine.endsAt, routine.timezone, floor);
-    if (!scheduledAt || routine.process.validUntil && scheduledAt > routine.process.validUntil) return { error: "Não há próxima ocorrência dentro da validade do processo e da rotina." };
+    const scheduledAt = routineScheduledAt(routine, routine.executions[0], now, automatic);
+    if (!scheduledAt) return { error: "Não há próxima ocorrência dentro da validade do processo e da rotina." };
     if (automatic && scheduledAt.getTime() > now.getTime() + routine.generationLeadTime * 60000) return { error: "Fora da janela de geração antecipada." };
     const isNowOrPast = scheduledAt <= now;
     const initialStatus = resolveExecutionInitialStatus(scheduledAt, now);

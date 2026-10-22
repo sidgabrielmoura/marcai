@@ -21,15 +21,15 @@ export default async function ManagementTasksPage() {
   const [tasks, locations, teams] = await Promise.all([
     prisma.task.findMany({
       where: whereClause,
-      include: {
-        location: true,
-        team: true,
+      select: {
+        id: true, title: true, description: true, origin: true, status: true, priority: true,
+        criticality: true, required: true, deadlineAt: true, taskType: true, slaExceededAt: true, slaDueAt: true,
+        location: { select: { name: true } },
+        team: { select: { name: true } },
         assignments: {
           where: { type: "PRIMARY", removedAt: null },
-          include: {
-            member: {
-              include: { user: true },
-            },
+          select: {
+            member: { select: { user: { select: { name: true } } } },
           },
         },
       },

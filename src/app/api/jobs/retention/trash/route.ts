@@ -1,5 +1,6 @@
 import { validateCronRequest } from "@/infrastructure/security/cron-auth";
 import { purgeTrashedTasks } from "@/application/jobs/retention-purge";
+import { runScheduledJob } from "@/application/jobs/scheduled-job";
 
 export const maxDuration = 120;
 
@@ -12,12 +13,13 @@ async function handleTrashCron(request: Request) {
   const url = new URL(request.url, "http://localhost");
   const organizationId = url.searchParams.get("organizationId") || undefined;
 
-  const result = await purgeTrashedTasks(organizationId);
+  const run = await runScheduledJob("retention", 360_000, async () => ({ ...await purgeTrashedTasks(organizationId), job: "RETENTION_TRASH_PURGE" }));
+  if (run.skipped) return Response.json({ success: true, ...run });
+  const result = run.result;
 
   return Response.json(
     {
       success: result.failures.length === 0,
-      job: "RETENTION_TRASH_PURGE",
       timestamp: new Date().toISOString(),
       ...result,
     },

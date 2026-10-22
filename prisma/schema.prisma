@@ -335,6 +335,8 @@ model ProcessExecution {
 
   @@index([organizationId, status])
   @@index([processId, scheduledAt])
+  @@index([routineId, scheduledAt(sort: Desc)], map: "process_executions_routine_latest_idx")
+  @@index([status, availableAt, id], map: "process_executions_due_idx")
   @@map("process_executions")
 }
 
@@ -400,6 +402,7 @@ model Task {
   @@index([teamId])
   @@index([locationId])
   @@index([executionId])
+  @@index([status, slaDueAt, id], map: "tasks_sla_work_idx")
   @@map("tasks")
 }
 
@@ -555,6 +558,7 @@ model Notification {
   organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([userId, readAt])
+  @@index([organizationId, userId, readAt, createdAt(sort: Desc), id(sort: Desc)], map: "notifications_inbox_idx")
   @@index([organizationId, createdAt])
   @@map("notifications")
 }
@@ -572,6 +576,8 @@ model ActivityLog {
 
   @@index([organizationId, createdAt])
   @@index([organizationId, entityType, entityId])
+  @@index([action, entityId], map: "activity_logs_action_entity_idx")
+  @@index([organizationId, entityType, entityId, createdAt(sort: Desc), id(sort: Desc)], map: "activity_logs_entity_latest_idx")
   @@map("activity_logs")
 }
 
@@ -1016,6 +1022,8 @@ model NativeEvent {
  kind String
  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
  @@index([organizationId,transactionId],map:"mobile_events_replay")
+ @@index([organizationId,transactionId,id],map:"mobile_events_replay_cursor_idx")
+ @@index([createdAt,id],map:"mobile_events_retention_idx")
  @@map("mobile_events")
 }
 model NativePushOutbox {
@@ -1101,4 +1109,21 @@ model WebPasskeyChallenge {
  consumedAt DateTime? @map("consumed_at") @db.Timestamptz
  @@index([expiresAt],map:"web_passkey_challenges_expiry_idx")
  @@map("web_passkey_challenges")
+}
+
+model ScheduledJobState {
+  name            String    @id
+  leaseToken      String?
+  leaseUntil      DateTime? @db.Timestamptz(6)
+  lastStartedAt   DateTime? @db.Timestamptz(6)
+  lastCompletedAt DateTime? @db.Timestamptz(6)
+  lastSuccessAt   DateTime? @db.Timestamptz(6)
+  nextAttemptAt   DateTime? @db.Timestamptz(6)
+  failures        Int       @default(0)
+  cursor          String?
+  lastResult      Json?
+  updatedAt       DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@index([nextAttemptAt])
+  @@map("scheduled_job_states")
 }

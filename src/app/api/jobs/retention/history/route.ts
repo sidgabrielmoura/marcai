@@ -1,5 +1,6 @@
 import { validateCronRequest } from "@/infrastructure/security/cron-auth";
 import { purgeOperationalHistory } from "@/application/jobs/retention-purge";
+import { runScheduledJob } from "@/application/jobs/scheduled-job";
 
 export const maxDuration = 120;
 
@@ -12,12 +13,13 @@ async function handleHistoryCron(request: Request) {
   const url = new URL(request.url, "http://localhost");
   const organizationId = url.searchParams.get("organizationId") || undefined;
 
-  const result = await purgeOperationalHistory(organizationId);
+  const run = await runScheduledJob("retention", 360_000, async () => ({ ...await purgeOperationalHistory(organizationId), job: "RETENTION_HISTORY_PURGE" }));
+  if (run.skipped) return Response.json({ success: true, ...run });
+  const result = run.result;
 
   return Response.json(
     {
       success: result.failures.length === 0,
-      job: "RETENTION_HISTORY_PURGE",
       timestamp: new Date().toISOString(),
       ...result,
     },

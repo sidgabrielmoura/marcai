@@ -1,0 +1,5093 @@
+{
+  "generatedAt": "2026-10-22T03:20:00.461Z",
+  "scope": "Static inventory; dynamic spreads/helpers/raw tagged templates require manual review, and a missing take is not itself a defect.",
+  "routes": [
+    "src/app/api/ably/token/route.ts",
+    "src/app/api/events/route.ts",
+    "src/app/api/evidence/[id]/route.ts",
+    "src/app/api/jobs/mobile-maintenance/route.ts",
+    "src/app/api/jobs/mobile/route.ts",
+    "src/app/api/jobs/operational/route.ts",
+    "src/app/api/jobs/retention/history/route.ts",
+    "src/app/api/jobs/retention/route.ts",
+    "src/app/api/jobs/retention/trash/route.ts",
+    "src/app/api/mobile/v1/[...path]/route.ts",
+    "src/app/api/tasks/[id]/form-file/[key]/route.ts",
+    "src/app/api/uploads/search/route.ts",
+    "src/app/api/uploads/sign/route.ts"
+  ],
+  "calls": [
+    {
+      "file": "src/app/(auth)/select-org/page.tsx",
+      "line": 20,
+      "method": "findUnique",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(auth)/setup-biometrics/page.tsx",
+      "line": 33,
+      "method": "findUnique",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(auth)/verify-access/page.tsx",
+      "line": 13,
+      "method": "findUnique",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(employee)/account/page.tsx",
+      "line": 23,
+      "method": "findUnique",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(employee)/history/page.tsx",
+      "line": 36,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": true,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(employee)/history/page.tsx",
+      "line": 43,
+      "method": "count",
+      "receiver": "prisma.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/(employee)/notifications/page.tsx",
+      "line": 42,
+      "method": "findMany",
+      "receiver": "prisma.notification",
+      "bounded": true,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/(employee)/notifications/page.tsx",
+      "line": 48,
+      "method": "count",
+      "receiver": "prisma.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/(employee)/notifications/page.tsx",
+      "line": 49,
+      "method": "count",
+      "receiver": "prisma.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/(management)/management/approvals/page.tsx",
+      "line": 22,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(management)/management/approvals/page.tsx",
+      "line": 74,
+      "method": "findMany",
+      "receiver": "prisma.location",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(management)/management/approvals/page.tsx",
+      "line": 86,
+      "method": "findMany",
+      "receiver": "prisma.team",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(management)/management/archived/page.tsx",
+      "line": 17,
+      "method": "findMany",
+      "receiver": "prisma.process",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(management)/management/archived/page.tsx",
+      "line": 37,
+      "method": "findMany",
+      "receiver": "prisma.routine",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(management)/management/archived/page.tsx",
+      "line": 54,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(management)/management/executions/page.tsx",
+      "line": 45,
+      "method": "findMany",
+      "receiver": "prisma.processExecution",
+      "bounded": true,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(management)/management/executions/page.tsx",
+      "line": 82,
+      "method": "findMany",
+      "receiver": "prisma.location",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(management)/management/executions/page.tsx",
+      "line": 94,
+      "method": "findMany",
+      "receiver": "prisma.process",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(management)/management/locations/page.tsx",
+      "line": 21,
+      "method": "findMany",
+      "receiver": "prisma.location",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(management)/management/locations/page.tsx",
+      "line": 43,
+      "method": "findMany",
+      "receiver": "prisma.team",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(management)/management/more/page.tsx",
+      "line": 29,
+      "method": "findUnique",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(management)/management/notifications/page.tsx",
+      "line": 42,
+      "method": "findMany",
+      "receiver": "prisma.notification",
+      "bounded": true,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/(management)/management/notifications/page.tsx",
+      "line": 48,
+      "method": "count",
+      "receiver": "prisma.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/(management)/management/notifications/page.tsx",
+      "line": 49,
+      "method": "count",
+      "receiver": "prisma.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/(management)/management/people/page.tsx",
+      "line": 15,
+      "method": "findMany",
+      "receiver": "prisma.organizationMember",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(management)/management/people/page.tsx",
+      "line": 28,
+      "method": "findMany",
+      "receiver": "prisma.location",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(management)/management/people/page.tsx",
+      "line": 36,
+      "method": "findMany",
+      "receiver": "prisma.team",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(management)/management/people/page.tsx",
+      "line": 44,
+      "method": "findUnique",
+      "receiver": "prisma.organization",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(management)/management/processes/page.tsx",
+      "line": 30,
+      "method": "findMany",
+      "receiver": "prisma.process",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(management)/management/processes/[id]/edit/page.tsx",
+      "line": 12,
+      "method": "findFirst",
+      "receiver": "prisma.process",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(management)/management/processes/[id]/page.tsx",
+      "line": 19,
+      "method": "findFirst",
+      "receiver": "prisma.process",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(management)/management/processes/[id]/page.tsx",
+      "line": 58,
+      "method": "findMany",
+      "receiver": "prisma.team",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(management)/management/processes/[id]/page.tsx",
+      "line": 62,
+      "method": "findMany",
+      "receiver": "prisma.organizationMember",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(management)/management/settings/page.tsx",
+      "line": 10,
+      "method": "findUnique",
+      "receiver": "prisma.organization",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/(management)/management/tasks/new/page.tsx",
+      "line": 17,
+      "method": "findMany",
+      "receiver": "prisma.location",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(management)/management/tasks/new/page.tsx",
+      "line": 27,
+      "method": "findMany",
+      "receiver": "prisma.team",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(management)/management/tasks/new/page.tsx",
+      "line": 37,
+      "method": "findMany",
+      "receiver": "prisma.organizationMember",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(management)/management/tasks/page.tsx",
+      "line": 22,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(management)/management/tasks/page.tsx",
+      "line": 38,
+      "method": "findMany",
+      "receiver": "prisma.location",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(management)/management/tasks/page.tsx",
+      "line": 48,
+      "method": "findMany",
+      "receiver": "prisma.team",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(management)/management/tasks/trash/page.tsx",
+      "line": 11,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(management)/management/tasks/[id]/page.tsx",
+      "line": 21,
+      "method": "findFirst",
+      "receiver": "prisma.task",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(management)/management/tasks/[id]/page.tsx",
+      "line": 67,
+      "method": "findMany",
+      "receiver": "(prisma as any).taskDependency",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(management)/management/tasks/[id]/page.tsx",
+      "line": 98,
+      "method": "findMany",
+      "receiver": "prisma.organizationMember",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(management)/management/tasks/[id]/page.tsx",
+      "line": 131,
+      "method": "findMany",
+      "receiver": "prisma.activityLog",
+      "bounded": false,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/(management)/management/tasks/[id]/page.tsx",
+      "line": 140,
+      "method": "findMany",
+      "receiver": "prisma.organizationMember",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(management)/management/tasks/[id]/page.tsx",
+      "line": 152,
+      "method": "findMany",
+      "receiver": "prisma.teamMember",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(management)/management/teams/page.tsx",
+      "line": 30,
+      "method": "findMany",
+      "receiver": "prisma.team",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(management)/management/teams/page.tsx",
+      "line": 68,
+      "method": "findMany",
+      "receiver": "prisma.organizationMember",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(management)/management/teams/page.tsx",
+      "line": 76,
+      "method": "findMany",
+      "receiver": "prisma.location",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(management)/management/teams/page.tsx",
+      "line": 86,
+      "method": "findMany",
+      "receiver": "prisma.organizationMember",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(management)/overview/page.tsx",
+      "line": 30,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(management)/overview/page.tsx",
+      "line": 51,
+      "method": "findMany",
+      "receiver": "prisma.location",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(management)/overview/page.tsx",
+      "line": 61,
+      "method": "findMany",
+      "receiver": "prisma.team",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(management)/overview/page.tsx",
+      "line": 71,
+      "method": "findMany",
+      "receiver": "prisma.process",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/page.tsx",
+      "line": 40,
+      "method": "findUnique",
+      "receiver": "prisma.organization",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/page.tsx",
+      "line": 58,
+      "method": "count",
+      "receiver": "prisma.organization",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/page.tsx",
+      "line": 58,
+      "method": "count",
+      "receiver": "prisma.organization",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/page.tsx",
+      "line": 58,
+      "method": "count",
+      "receiver": "prisma.organization",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/page.tsx",
+      "line": 59,
+      "method": "count",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/page.tsx",
+      "line": 59,
+      "method": "count",
+      "receiver": "prisma.process",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/page.tsx",
+      "line": 59,
+      "method": "count",
+      "receiver": "prisma.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/page.tsx",
+      "line": 60,
+      "method": "count",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/page.tsx",
+      "line": 60,
+      "method": "count",
+      "receiver": "prisma.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/page.tsx",
+      "line": 60,
+      "method": "count",
+      "receiver": "prisma.organization",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/page.tsx",
+      "line": 70,
+      "method": "findMany",
+      "receiver": "prisma.user",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/page.tsx",
+      "line": 73,
+      "method": "findMany",
+      "receiver": "prisma.activityLog",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/page.tsx",
+      "line": 77,
+      "method": "findMany",
+      "receiver": "prisma.user",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/page.tsx",
+      "line": 78,
+      "method": "findMany",
+      "receiver": "prisma.organizationMember",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/page.tsx",
+      "line": 89,
+      "method": "findMany",
+      "receiver": "prisma.organization",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/page.tsx",
+      "line": 123,
+      "method": "findMany",
+      "receiver": "prisma.organization",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/page.tsx",
+      "line": 131,
+      "method": "findMany",
+      "receiver": "prisma.organization",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/page.tsx",
+      "line": 159,
+      "method": "findMany",
+      "receiver": "prisma.platformPlan",
+      "bounded": false,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/page.tsx",
+      "line": 165,
+      "method": "create",
+      "receiver": "prisma.platformPlan",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/page.tsx",
+      "line": 167,
+      "method": "findMany",
+      "receiver": "prisma.platformPlan",
+      "bounded": false,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/page.tsx",
+      "line": 192,
+      "method": "findMany",
+      "receiver": "prisma.organization",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/templates/new/page.tsx",
+      "line": 29,
+      "method": "findUnique",
+      "receiver": "prisma.platformBusinessSegment",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/templates/new/page.tsx",
+      "line": 36,
+      "method": "findFirst",
+      "receiver": "prisma.platformBusinessSegment",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/(superadmin)/superadmin/templates/[id]/edit/page.tsx",
+      "line": 22,
+      "method": "findUnique",
+      "receiver": "prisma.platformTemplate",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/app/api/evidence/[id]/route.ts",
+      "line": 14,
+      "method": "findFirst",
+      "receiver": "prisma.evidenceSubmission",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/api/mobile/v1/[...path]/route.ts",
+      "line": 135,
+      "method": "findMany",
+      "receiver": "prisma.organizationMember",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/api/mobile/v1/[...path]/route.ts",
+      "line": 419,
+      "method": "create",
+      "receiver": "prisma.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/api/mobile/v1/[...path]/route.ts",
+      "line": 448,
+      "method": "findFirst",
+      "receiver": "prisma.evidenceSubmission",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/api/mobile/v1/[...path]/route.ts",
+      "line": 478,
+      "method": "findFirst",
+      "receiver": "prisma.task",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/api/tasks/[id]/form-file/[key]/route.ts",
+      "line": 19,
+      "method": "findFirst",
+      "receiver": "prisma.task",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/app/api/uploads/search/route.ts",
+      "line": 53,
+      "method": "count",
+      "receiver": "prisma.evidenceSubmission",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/app/api/uploads/search/route.ts",
+      "line": 54,
+      "method": "findMany",
+      "receiver": "prisma.evidenceSubmission",
+      "bounded": true,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 50,
+      "method": "findMany",
+      "receiver": "prisma.reusableProcessTemplate",
+      "bounded": true,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 79,
+      "method": "updateMany",
+      "receiver": "prisma.process",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 91,
+      "method": "update",
+      "receiver": "prisma.reusableProcessTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 98,
+      "method": "delete",
+      "receiver": "prisma.reusableProcessTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 127,
+      "method": "findMany",
+      "receiver": "prisma.organization",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 131,
+      "method": "findMany",
+      "receiver": "prisma.organization",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 156,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": true,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 190,
+      "method": "deleteMany",
+      "receiver": "prisma.taskDependency",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 199,
+      "method": "delete",
+      "receiver": "prisma.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 212,
+      "method": "deleteMany",
+      "receiver": "prisma.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 225,
+      "method": "findMany",
+      "receiver": "prisma.evidenceSubmission",
+      "bounded": true,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 247,
+      "method": "update",
+      "receiver": "prisma.evidenceSubmission",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 263,
+      "method": "create",
+      "receiver": "prisma.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 311,
+      "method": "findMany",
+      "receiver": "prisma.organization",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 315,
+      "method": "findMany",
+      "receiver": "prisma.organization",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 344,
+      "method": "findMany",
+      "receiver": "prisma.processExecution",
+      "bounded": true,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 392,
+      "method": "deleteMany",
+      "receiver": "prisma.taskDependency",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 401,
+      "method": "delete",
+      "receiver": "prisma.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 406,
+      "method": "delete",
+      "receiver": "prisma.processExecution",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 420,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": true,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 463,
+      "method": "deleteMany",
+      "receiver": "prisma.taskDependency",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 472,
+      "method": "delete",
+      "receiver": "prisma.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/jobs/retention-purge.ts",
+      "line": 490,
+      "method": "create",
+      "receiver": "prisma.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/jobs/scheduled-job.ts",
+      "line": 17,
+      "method": "updateMany",
+      "receiver": "prisma.scheduledJobState",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/jobs/scheduled-job.ts",
+      "line": 24,
+      "method": "updateMany",
+      "receiver": "prisma.scheduledJobState",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/jobs/scheduled-job.ts",
+      "line": 38,
+      "method": "findMany",
+      "receiver": "prisma.scheduledJobState",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/jobs/scheduled-job.ts",
+      "line": 43,
+      "method": "deleteMany",
+      "receiver": "prisma.scheduledJobState",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/data.ts",
+      "line": 303,
+      "method": "findFirst",
+      "receiver": "prisma.activityLog",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/mobile/data.ts",
+      "line": 321,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/mobile/data.ts",
+      "line": 481,
+      "method": "findMany",
+      "receiver": "prisma.activityLog",
+      "bounded": true,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/mobile/data.ts",
+      "line": 510,
+      "method": "findFirst",
+      "receiver": "prisma.task",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/mobile/data.ts",
+      "line": 559,
+      "method": "$queryRaw",
+      "receiver": "prisma",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/data.ts",
+      "line": 653,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": true,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/data.ts",
+      "line": 696,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": true,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/data.ts",
+      "line": 733,
+      "method": "findFirst",
+      "receiver": "prisma.processExecution",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/mobile/data.ts",
+      "line": 755,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": false,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/data.ts",
+      "line": 825,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/mobile/data.ts",
+      "line": 836,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/mobile/data.ts",
+      "line": 894,
+      "method": "findMany",
+      "receiver": "prisma.processExecution",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/mobile/data.ts",
+      "line": 950,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": true,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/deadline-alerts.ts",
+      "line": 12,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": true,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/mobile/deadline-alerts.ts",
+      "line": 16,
+      "method": "findUnique",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/mobile/deadline-alerts.ts",
+      "line": 33,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/destinations.ts",
+      "line": 8,
+      "method": "findMany",
+      "receiver": "prisma.organizationMember",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/mobile/destinations.ts",
+      "line": 11,
+      "method": "findFirst",
+      "receiver": "prisma.task",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/mobile/destinations.ts",
+      "line": 11,
+      "method": "findFirst",
+      "receiver": "prisma.processExecution",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/mobile/execution-operations.ts",
+      "line": 20,
+      "method": "findFirst",
+      "receiver": "tx.processExecution",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/mobile/notifications.ts",
+      "line": 15,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/mobile/notifications.ts",
+      "line": 16,
+      "method": "findMany",
+      "receiver": "prisma.processExecution",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/mobile/notifications.ts",
+      "line": 30,
+      "method": "findMany",
+      "receiver": "prisma.notification",
+      "bounded": true,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/notifications.ts",
+      "line": 30,
+      "method": "count",
+      "receiver": "prisma.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/notifications.ts",
+      "line": 35,
+      "method": "updateMany",
+      "receiver": "prisma.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/notifications.ts",
+      "line": 36,
+      "method": "count",
+      "receiver": "prisma.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/notifications.ts",
+      "line": 70,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/mobile/notifications.ts",
+      "line": 71,
+      "method": "findMany",
+      "receiver": "prisma.processExecution",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/mobile/notifications.ts",
+      "line": 85,
+      "method": "findFirst",
+      "receiver": "prisma.notification",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/mobile/operations.ts",
+      "line": 30,
+      "method": "findFirst",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/mobile/operations.ts",
+      "line": 62,
+      "method": "findFirst",
+      "receiver": "tx.taskAssignment",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/mobile/operations.ts",
+      "line": 76,
+      "method": "create",
+      "receiver": "tx.taskAssignment",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/operations.ts",
+      "line": 96,
+      "method": "update",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/operations.ts",
+      "line": 111,
+      "method": "create",
+      "receiver": "tx.taskExecutionSession",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/operations.ts",
+      "line": 146,
+      "method": "updateMany",
+      "receiver": "tx.taskExecutionSession",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/operations.ts",
+      "line": 150,
+      "method": "updateMany",
+      "receiver": "tx.taskPause",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/operations.ts",
+      "line": 154,
+      "method": "create",
+      "receiver": "tx.taskOccurrence",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/operations.ts",
+      "line": 164,
+      "method": "update",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/operations.ts",
+      "line": 177,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/passkeys.ts",
+      "line": 28,
+      "method": "findUnique",
+      "receiver": "tx.passkeyAuthenticator",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/mobile/passkeys.ts",
+      "line": 35,
+      "method": "update",
+      "receiver": "tx.passkeyAuthenticator",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/passkeys.ts",
+      "line": 62,
+      "method": "create",
+      "receiver": "tx.passkeyAuthenticator",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/push-worker.ts",
+      "line": 13,
+      "method": "findFirst",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/mobile/push-worker.ts",
+      "line": 16,
+      "method": "findFirst",
+      "receiver": "prisma.processExecution",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/mobile/push-worker.ts",
+      "line": 17,
+      "method": "findFirst",
+      "receiver": "prisma.task",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/mobile/push-worker.ts",
+      "line": 39,
+      "method": "findUnique",
+      "receiver": "prisma.notification",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/mobile/push-worker.ts",
+      "line": 45,
+      "method": "findMany",
+      "receiver": "prisma.userDeviceToken",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/mobile/push-worker.ts",
+      "line": 72,
+      "method": "deleteMany",
+      "receiver": "prisma.userDeviceToken",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/security.ts",
+      "line": 32,
+      "method": "findFirst",
+      "receiver": "db.organizationMember",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/mobile/security.ts",
+      "line": 48,
+      "method": "findFirst",
+      "receiver": "db.organizationMember",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/mobile/security.ts",
+      "line": 63,
+      "method": "findMany",
+      "receiver": "prisma.organizationMember",
+      "bounded": true,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/mobile/security.ts",
+      "line": 68,
+      "method": "findUnique",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/mobile/security.ts",
+      "line": 76,
+      "method": "findUnique",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/mobile/security.ts",
+      "line": 90,
+      "method": "findFirst",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/mobile/security.ts",
+      "line": 105,
+      "method": "update",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/security.ts",
+      "line": 110,
+      "method": "update",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/security.ts",
+      "line": 115,
+      "method": "update",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/security.ts",
+      "line": 183,
+      "method": "findFirst",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/mobile/task-access.ts",
+      "line": 15,
+      "method": "findFirst",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/mobile/task-submission.ts",
+      "line": 103,
+      "method": "findFirst",
+      "receiver": "tx.taskEvidenceRequirement",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/mobile/task-submission.ts",
+      "line": 236,
+      "method": "update",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/task-submission.ts",
+      "line": 240,
+      "method": "create",
+      "receiver": "tx.evidenceSubmission",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/task-submission.ts",
+      "line": 269,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/task-submission.ts",
+      "line": 286,
+      "method": "create",
+      "receiver": "tx.taskOccurrence",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/task-submission.ts",
+      "line": 345,
+      "method": "findFirst",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/mobile/task-submission.ts",
+      "line": 462,
+      "method": "create",
+      "receiver": "tx.taskOccurrence",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/task-submission.ts",
+      "line": 477,
+      "method": "update",
+      "receiver": "tx.approvalWorkflow",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/task-submission.ts",
+      "line": 481,
+      "method": "updateMany",
+      "receiver": "tx.approvalStep",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/task-submission.ts",
+      "line": 488,
+      "method": "updateMany",
+      "receiver": "tx.taskExecutionSession",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/task-submission.ts",
+      "line": 521,
+      "method": "update",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/task-submission.ts",
+      "line": 534,
+      "method": "findFirst",
+      "receiver": "tx.taskOccurrence",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/task-submission.ts",
+      "line": 542,
+      "method": "create",
+      "receiver": "tx.taskOccurrence",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/task-submission.ts",
+      "line": 554,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/task-submission.ts",
+      "line": 657,
+      "method": "findFirst",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/mobile/task-submission.ts",
+      "line": 758,
+      "method": "create",
+      "receiver": "tx.taskOccurrence",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/task-submission.ts",
+      "line": 771,
+      "method": "update",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/task-submission.ts",
+      "line": 779,
+      "method": "create",
+      "receiver": "tx.taskExecutionSession",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/task-submission.ts",
+      "line": 782,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/mobile/task-views.ts",
+      "line": 21,
+      "method": "findFirst",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/mobile/task-views.ts",
+      "line": 38,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/processes/editor-options.ts",
+      "line": 5,
+      "method": "findMany",
+      "receiver": "prisma.location",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/processes/editor-options.ts",
+      "line": 6,
+      "method": "findMany",
+      "receiver": "prisma.team",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/processes/editor-options.ts",
+      "line": 7,
+      "method": "findMany",
+      "receiver": "prisma.organizationMember",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/processes/execution-lifecycle.ts",
+      "line": 9,
+      "method": "findFirst",
+      "receiver": "tx.processExecution",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/processes/execution-lifecycle.ts",
+      "line": 21,
+      "method": "updateMany",
+      "receiver": "tx.taskPause",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/execution-lifecycle.ts",
+      "line": 22,
+      "method": "updateMany",
+      "receiver": "tx.taskExecutionSession",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/execution-lifecycle.ts",
+      "line": 23,
+      "method": "update",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/execution-lifecycle.ts",
+      "line": 25,
+      "method": "updateMany",
+      "receiver": "tx.approvalWorkflow",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/execution-lifecycle.ts",
+      "line": 26,
+      "method": "updateMany",
+      "receiver": "tx.approvalStep",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/execution-lifecycle.ts",
+      "line": 28,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/execution-lifecycle.ts",
+      "line": 30,
+      "method": "create",
+      "receiver": "tx.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/execution-lifecycle.ts",
+      "line": 33,
+      "method": "update",
+      "receiver": "tx.processExecution",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/execution-lifecycle.ts",
+      "line": 34,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/generate-execution.ts",
+      "line": 26,
+      "method": "findFirst",
+      "receiver": "tx.routine",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/processes/generate-execution.ts",
+      "line": 51,
+      "method": "create",
+      "receiver": "tx.processExecution",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/generate-execution.ts",
+      "line": 58,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/materialize-tasks.ts",
+      "line": 17,
+      "method": "findFirst",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/materialize-tasks.ts",
+      "line": 21,
+      "method": "create",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/materialize-tasks.ts",
+      "line": 34,
+      "method": "create",
+      "receiver": "tx.taskAssignment",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/materialize-tasks.ts",
+      "line": 35,
+      "method": "create",
+      "receiver": "tx.taskExecutionSession",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/materialize-tasks.ts",
+      "line": 40,
+      "method": "create",
+      "receiver": "tx.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/materialize-tasks.ts",
+      "line": 45,
+      "method": "create",
+      "receiver": "tx.taskDependency",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 22,
+      "method": "findMany",
+      "receiver": "prisma.routine",
+      "bounded": true,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 50,
+      "method": "findMany",
+      "receiver": "prisma.processExecution",
+      "bounded": true,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 58,
+      "method": "updateMany",
+      "receiver": "tx.processExecution",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 61,
+      "method": "findMany",
+      "receiver": "tx.task",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 69,
+      "method": "update",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 79,
+      "method": "create",
+      "receiver": "tx.taskExecutionSession",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 82,
+      "method": "update",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 91,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 107,
+      "method": "findUnique",
+      "receiver": "prisma.scheduledJobState",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 108,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": true,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 139,
+      "method": "upsert",
+      "receiver": "prisma.scheduledJobState",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 147,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": true,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 150,
+      "method": "findMany",
+      "receiver": "prisma.taskOccurrence",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 163,
+      "method": "findFirst",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 166,
+      "method": "findMany",
+      "receiver": "tx.taskOccurrence",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 182,
+      "method": "create",
+      "receiver": "tx.taskOccurrence",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 192,
+      "method": "update",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 199,
+      "method": "findMany",
+      "receiver": "tx.taskAssignment",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 206,
+      "method": "create",
+      "receiver": "tx.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 234,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 263,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": true,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 277,
+      "method": "findMany",
+      "receiver": "prisma.activityLog",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 287,
+      "method": "findFirst",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 299,
+      "method": "findFirst",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 306,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 316,
+      "method": "findMany",
+      "receiver": "tx.taskAssignment",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 323,
+      "method": "create",
+      "receiver": "tx.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 377,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": true,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 402,
+      "method": "findFirst",
+      "receiver": "tx.taskOccurrence",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 407,
+      "method": "create",
+      "receiver": "tx.taskOccurrence",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 442,
+      "method": "findMany",
+      "receiver": "prisma.approvalStep",
+      "bounded": true,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 468,
+      "method": "findFirst",
+      "receiver": "tx.approvalStep",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 470,
+      "method": "findFirst",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 478,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 494,
+      "method": "findFirst",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 499,
+      "method": "create",
+      "receiver": "tx.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 552,
+      "method": "findMany",
+      "receiver": "prisma.scheduledReport",
+      "bounded": true,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 566,
+      "method": "update",
+      "receiver": "prisma.scheduledReport",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 574,
+      "method": "create",
+      "receiver": "prisma.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/operational-tick.ts",
+      "line": 595,
+      "method": "findUnique",
+      "receiver": "prisma.organization",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/processes/save-process.ts",
+      "line": 19,
+      "method": "findFirst",
+      "receiver": "tx.process",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/save-process.ts",
+      "line": 22,
+      "method": "findFirst",
+      "receiver": "tx.process",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/processes/save-process.ts",
+      "line": 25,
+      "method": "findFirst",
+      "receiver": "tx.location",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/save-process.ts",
+      "line": 27,
+      "method": "findMany",
+      "receiver": "tx.team",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/processes/save-process.ts",
+      "line": 32,
+      "method": "findFirst",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/save-process.ts",
+      "line": 37,
+      "method": "findFirst",
+      "receiver": "tx.reusableProcessTemplateVersion",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/processes/save-process.ts",
+      "line": 42,
+      "method": "create",
+      "receiver": "tx.processTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/save-process.ts",
+      "line": 46,
+      "method": "findFirst",
+      "receiver": "tx.processTemplateVersion",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/save-process.ts",
+      "line": 47,
+      "method": "create",
+      "receiver": "tx.processTemplateVersion",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/save-process.ts",
+      "line": 50,
+      "method": "update",
+      "receiver": "tx.process",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/save-process.ts",
+      "line": 50,
+      "method": "create",
+      "receiver": "tx.process",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/save-process.ts",
+      "line": 56,
+      "method": "findFirst",
+      "receiver": "tx.routine",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/save-process.ts",
+      "line": 59,
+      "method": "update",
+      "receiver": "tx.routine",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/save-process.ts",
+      "line": 59,
+      "method": "create",
+      "receiver": "tx.routine",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/save-process.ts",
+      "line": 61,
+      "method": "updateMany",
+      "receiver": "tx.routine",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/save-process.ts",
+      "line": 64,
+      "method": "create",
+      "receiver": "tx.processExecution",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/save-process.ts",
+      "line": 67,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/save-process.ts",
+      "line": 69,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/processes/save-process.ts",
+      "line": 70,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/security/auth-context.ts",
+      "line": 74,
+      "method": "findFirst",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/security/auth-context.ts",
+      "line": 123,
+      "method": "findFirst",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/security/operational-scope.ts",
+      "line": 34,
+      "method": "findFirst",
+      "receiver": "db.organizationMember",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/security/update-member-access.ts",
+      "line": 10,
+      "method": "findFirst",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/security/update-member-access.ts",
+      "line": 12,
+      "method": "count",
+      "receiver": "tx.team",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/security/update-member-access.ts",
+      "line": 13,
+      "method": "count",
+      "receiver": "tx.location",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/security/update-member-access.ts",
+      "line": 16,
+      "method": "update",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/security/update-member-access.ts",
+      "line": 17,
+      "method": "deleteMany",
+      "receiver": "tx.teamMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/security/update-member-access.ts",
+      "line": 18,
+      "method": "upsert",
+      "receiver": "tx.teamMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/security/update-member-access.ts",
+      "line": 19,
+      "method": "deleteMany",
+      "receiver": "tx.memberLocationAccess",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/security/update-member-access.ts",
+      "line": 22,
+      "method": "upsert",
+      "receiver": "tx.memberLocationAccess",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/security/update-member-access.ts",
+      "line": 24,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/superadmin/business-segment-service.ts",
+      "line": 105,
+      "method": "count",
+      "receiver": "prisma.platformBusinessSegment",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/superadmin/business-segment-service.ts",
+      "line": 109,
+      "method": "upsert",
+      "receiver": "prisma.platformBusinessSegment",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/superadmin/business-segment-service.ts",
+      "line": 128,
+      "method": "create",
+      "receiver": "prisma.platformTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/superadmin/business-segment-service.ts",
+      "line": 148,
+      "method": "findMany",
+      "receiver": "prisma.platformBusinessSegment",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/superadmin/business-segment-service.ts",
+      "line": 180,
+      "method": "findMany",
+      "receiver": "prisma.platformTemplate",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/tasks/evidence-round.ts",
+      "line": 6,
+      "method": "findFirst",
+      "receiver": "db.activityLog",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/tasks/notify-managers.ts",
+      "line": 27,
+      "method": "findMany",
+      "receiver": "tx.organizationMember",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/tasks/notify-managers.ts",
+      "line": 68,
+      "method": "createMany",
+      "receiver": "tx.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/tasks/notify-managers.ts",
+      "line": 108,
+      "method": "findMany",
+      "receiver": "tx.taskAssignment",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/tasks/notify-managers.ts",
+      "line": 137,
+      "method": "createMany",
+      "receiver": "tx.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/tasks/notify-managers.ts",
+      "line": 187,
+      "method": "findFirst",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/tasks/notify-managers.ts",
+      "line": 201,
+      "method": "findMany",
+      "receiver": "tx.teamMember",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/tasks/notify-managers.ts",
+      "line": 245,
+      "method": "createMany",
+      "receiver": "tx.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/tasks/synchronize-execution.ts",
+      "line": 30,
+      "method": "findMany",
+      "receiver": "tx.task",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/tasks/synchronize-execution.ts",
+      "line": 89,
+      "method": "updateMany",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/tasks/synchronize-execution.ts",
+      "line": 104,
+      "method": "create",
+      "receiver": "tx.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/tasks/synchronize-execution.ts",
+      "line": 120,
+      "method": "findFirst",
+      "receiver": "tx.processExecution",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/tasks/synchronize-execution.ts",
+      "line": 133,
+      "method": "update",
+      "receiver": "tx.processExecution",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/tasks/synchronize-execution.ts",
+      "line": 145,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/tasks/synchronize-execution.ts",
+      "line": 157,
+      "method": "findMany",
+      "receiver": "tx.organizationMember",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/tasks/synchronize-execution.ts",
+      "line": 199,
+      "method": "findMany",
+      "receiver": "tx.taskAssignment",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/tasks/synchronize-execution.ts",
+      "line": 224,
+      "method": "createMany",
+      "receiver": "tx.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/tasks/synchronize-execution.ts",
+      "line": 238,
+      "method": "createMany",
+      "receiver": "tx.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/tasks/task-lock.ts",
+      "line": 6,
+      "method": "findFirst",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 25,
+      "method": "findUnique",
+      "receiver": "prisma.organization",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 29,
+      "method": "findMany",
+      "receiver": "prisma.reusableProcessTemplate",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 49,
+      "method": "findMany",
+      "receiver": "prisma.platformTemplate",
+      "bounded": false,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 82,
+      "method": "findFirst",
+      "receiver": "prisma.platformTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 101,
+      "method": "findFirst",
+      "receiver": "db.reusableProcessTemplateVersion",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 115,
+      "method": "findFirst",
+      "receiver": "prisma.reusableProcessTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 138,
+      "method": "findFirst",
+      "receiver": "tx.reusableProcessTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 143,
+      "method": "update",
+      "receiver": "tx.reusableProcessTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 144,
+      "method": "create",
+      "receiver": "tx.reusableProcessTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 146,
+      "method": "findFirst",
+      "receiver": "tx.reusableProcessTemplateVersion",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 147,
+      "method": "create",
+      "receiver": "tx.reusableProcessTemplateVersion",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 150,
+      "method": "update",
+      "receiver": "tx.reusableProcessTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 152,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 163,
+      "method": "findFirst",
+      "receiver": "tx.reusableProcessTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 167,
+      "method": "create",
+      "receiver": "tx.reusableProcessTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 170,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 180,
+      "method": "findFirst",
+      "receiver": "tx.reusableProcessTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 182,
+      "method": "update",
+      "receiver": "tx.reusableProcessTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 185,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 193,
+      "method": "findFirst",
+      "receiver": "prisma.process",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 205,
+      "method": "findFirst",
+      "receiver": "tx.process",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 212,
+      "method": "findMany",
+      "receiver": "tx.team",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 214,
+      "method": "create",
+      "receiver": "tx.reusableProcessTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/application/templates/template-library.ts",
+      "line": 217,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/domain/rules/subscription-limits.ts",
+      "line": 129,
+      "method": "findUnique",
+      "receiver": "tx.organization",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/domain/rules/subscription-limits.ts",
+      "line": 139,
+      "method": "count",
+      "receiver": "tx.location",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/domain/rules/subscription-limits.ts",
+      "line": 157,
+      "method": "findUnique",
+      "receiver": "tx.organization",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/domain/rules/subscription-limits.ts",
+      "line": 167,
+      "method": "count",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/infrastructure/notifications/notification-service.ts",
+      "line": 90,
+      "method": "findMany",
+      "receiver": "prisma.userDeviceToken",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/infrastructure/notifications/notification-service.ts",
+      "line": 131,
+      "method": "deleteMany",
+      "receiver": "prisma.userDeviceToken",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/infrastructure/notifications/notification-service.ts",
+      "line": 150,
+      "method": "findMany",
+      "receiver": "prisma.user",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/infrastructure/notifications/notification-service.ts",
+      "line": 160,
+      "method": "findUnique",
+      "receiver": "prisma.organization",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/infrastructure/notifications/notification-service.ts",
+      "line": 207,
+      "method": "create",
+      "receiver": "prisma.notification",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/infrastructure/notifications/notification-service.ts",
+      "line": 245,
+      "method": "findMany",
+      "receiver": "prisma.userDeviceToken",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/infrastructure/notifications/notification-service.ts",
+      "line": 283,
+      "method": "deleteMany",
+      "receiver": "prisma.userDeviceToken",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/infrastructure/notifications/notification-service.ts",
+      "line": 295,
+      "method": "update",
+      "receiver": "prisma.notificationDelivery",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/infrastructure/notifications/notification-service.ts",
+      "line": 306,
+      "method": "update",
+      "receiver": "prisma.notificationDelivery",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/infrastructure/notifications/notification-service.ts",
+      "line": 323,
+      "method": "findUnique",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/infrastructure/notifications/notification-service.ts",
+      "line": 329,
+      "method": "findUnique",
+      "receiver": "prisma.organization",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/infrastructure/notifications/notification-service.ts",
+      "line": 348,
+      "method": "update",
+      "receiver": "prisma.notificationDelivery",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/infrastructure/notifications/notification-service.ts",
+      "line": 357,
+      "method": "update",
+      "receiver": "prisma.notificationDelivery",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/infrastructure/security/login-challenge.ts",
+      "line": 11,
+      "method": "findFirst",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/infrastructure/security/session.ts",
+      "line": 30,
+      "method": "findUnique",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/infrastructure/security/session.ts",
+      "line": 31,
+      "method": "findFirst",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/infrastructure/whatsapp/waha-service.ts",
+      "line": 280,
+      "method": "findUnique",
+      "receiver": "prisma.organization",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/auth-actions.ts",
+      "line": 58,
+      "method": "findUnique",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/auth-actions.ts",
+      "line": 157,
+      "method": "findUnique",
+      "receiver": "prisma.organization",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/auth-actions.ts",
+      "line": 166,
+      "method": "findMany",
+      "receiver": "prisma.organizationMember",
+      "bounded": true,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/auth-actions.ts",
+      "line": 226,
+      "method": "findUnique",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/auth-actions.ts",
+      "line": 277,
+      "method": "findUnique",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/auth-actions.ts",
+      "line": 280,
+      "method": "findMany",
+      "receiver": "prisma.organizationMember",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/auth-actions.ts",
+      "line": 323,
+      "method": "findUnique",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 152,
+      "method": "findFirst",
+      "receiver": "prisma.location",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 163,
+      "method": "findFirst",
+      "receiver": "prisma.team",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 195,
+      "method": "create",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 223,
+      "method": "create",
+      "receiver": "tx.taskAssignment",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 232,
+      "method": "create",
+      "receiver": "tx.taskExecutionSession",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 240,
+      "method": "findFirst",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 245,
+      "method": "create",
+      "receiver": "tx.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 273,
+      "method": "create",
+      "receiver": "tx.taskEvidenceRequirement",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 286,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 343,
+      "method": "findFirst",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 385,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 401,
+      "method": "updateMany",
+      "receiver": "tx.taskPause",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 405,
+      "method": "updateMany",
+      "receiver": "tx.taskExecutionSession",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 435,
+      "method": "update",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 479,
+      "method": "findFirst",
+      "receiver": "tx.processExecution",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 491,
+      "method": "update",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 580,
+      "method": "updateMany",
+      "receiver": "tx.taskAssignment",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 584,
+      "method": "create",
+      "receiver": "tx.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 606,
+      "method": "updateMany",
+      "receiver": "tx.taskAssignment",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 610,
+      "method": "create",
+      "receiver": "tx.taskAssignment",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 638,
+      "method": "update",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 661,
+      "method": "findFirst",
+      "receiver": "tx.taskExecutionSession",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 665,
+      "method": "create",
+      "receiver": "tx.taskExecutionSession",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 689,
+      "method": "create",
+      "receiver": "tx.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 756,
+      "method": "findFirst",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 792,
+      "method": "create",
+      "receiver": "tx.taskAssignment",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 800,
+      "method": "update",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 812,
+      "method": "create",
+      "receiver": "tx.taskExecutionSession",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 883,
+      "method": "create",
+      "receiver": "tx.taskOccurrence",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 893,
+      "method": "update",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 922,
+      "method": "update",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 954,
+      "method": "update",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 971,
+      "method": "update",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 992,
+      "method": "delete",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 1019,
+      "method": "findFirst",
+      "receiver": "prisma.approvalStep",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 1036,
+      "method": "findFirst",
+      "receiver": "tx.teamMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 1059,
+      "method": "create",
+      "receiver": "tx.approvalDecision",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 1067,
+      "method": "update",
+      "receiver": "tx.approvalStep",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 1074,
+      "method": "update",
+      "receiver": "tx.approvalWorkflow",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 1086,
+      "method": "update",
+      "receiver": "tx.task",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 1095,
+      "method": "create",
+      "receiver": "tx.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 1172,
+      "method": "findFirst",
+      "receiver": "prisma.task",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 1183,
+      "method": "findMany",
+      "receiver": "prisma.organizationMember",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 1346,
+      "method": "findFirst",
+      "receiver": "prisma.task",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 1377,
+      "method": "findMany",
+      "receiver": "(prisma as any).taskDependency",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 1388,
+      "method": "findMany",
+      "receiver": "prisma.activityLog",
+      "bounded": false,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 1420,
+      "method": "findMany",
+      "receiver": "prisma.organizationMember",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/management-task-actions.ts",
+      "line": 1425,
+      "method": "findMany",
+      "receiver": "prisma.teamMember",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/mobile-auth-actions.ts",
+      "line": 9,
+      "method": "create",
+      "receiver": "prisma.mobileAuthSession",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/notification-actions.ts",
+      "line": 43,
+      "method": "updateMany",
+      "receiver": "prisma.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/notification-actions.ts",
+      "line": 63,
+      "method": "findFirst",
+      "receiver": "prisma.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/notification-actions.ts",
+      "line": 67,
+      "method": "updateMany",
+      "receiver": "prisma.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/notification-actions.ts",
+      "line": 80,
+      "method": "updateMany",
+      "receiver": "prisma.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/notification-actions.ts",
+      "line": 100,
+      "method": "updateMany",
+      "receiver": "prisma.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/notification-actions.ts",
+      "line": 122,
+      "method": "deleteMany",
+      "receiver": "prisma.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/notification-actions.ts",
+      "line": 141,
+      "method": "deleteMany",
+      "receiver": "prisma.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/notification-actions.ts",
+      "line": 156,
+      "method": "count",
+      "receiver": "prisma.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/notification-actions.ts",
+      "line": 175,
+      "method": "count",
+      "receiver": "prisma.notification",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 66,
+      "method": "findFirst",
+      "receiver": "prisma.location",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 67,
+      "method": "findFirst",
+      "receiver": "prisma.team",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 68,
+      "method": "findFirst",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 69,
+      "method": "findUnique",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 72,
+      "method": "findUnique",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 81,
+      "method": "findUnique",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 83,
+      "method": "create",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 94,
+      "method": "findUnique",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 108,
+      "method": "create",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 121,
+      "method": "create",
+      "receiver": "tx.memberLocationAccess",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 133,
+      "method": "create",
+      "receiver": "tx.teamMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 143,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 180,
+      "method": "findFirst",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 198,
+      "method": "update",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 203,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 252,
+      "method": "findFirst",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 262,
+      "method": "update",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 267,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 319,
+      "method": "findFirst",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 378,
+      "method": "findUnique",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 389,
+      "method": "findFirst",
+      "receiver": "prisma.location",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 396,
+      "method": "findFirst",
+      "receiver": "prisma.team",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 418,
+      "method": "update",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 434,
+      "method": "update",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 443,
+      "method": "deleteMany",
+      "receiver": "tx.teamMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 446,
+      "method": "upsert",
+      "receiver": "tx.teamMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 463,
+      "method": "deleteMany",
+      "receiver": "tx.teamMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 473,
+      "method": "deleteMany",
+      "receiver": "tx.memberLocationAccess",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 476,
+      "method": "upsert",
+      "receiver": "tx.memberLocationAccess",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 494,
+      "method": "deleteMany",
+      "receiver": "tx.memberLocationAccess",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 501,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 537,
+      "method": "findFirst",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 557,
+      "method": "delete",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 563,
+      "method": "delete",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 569,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 615,
+      "method": "findFirst",
+      "receiver": "prisma.location",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 634,
+      "method": "update",
+      "receiver": "tx.location",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 635,
+      "method": "create",
+      "receiver": "tx.location",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 639,
+      "method": "deleteMany",
+      "receiver": "tx.teamLocation",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 641,
+      "method": "createMany",
+      "receiver": "tx.teamLocation",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 651,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 692,
+      "method": "findFirst",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 695,
+      "method": "findFirst",
+      "receiver": "prisma.team",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 704,
+      "method": "update",
+      "receiver": "tx.team",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 704,
+      "method": "create",
+      "receiver": "tx.team",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 708,
+      "method": "deleteMany",
+      "receiver": "tx.teamLocation",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 710,
+      "method": "createMany",
+      "receiver": "tx.teamLocation",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 723,
+      "method": "deleteMany",
+      "receiver": "tx.teamMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 727,
+      "method": "findMany",
+      "receiver": "tx.organizationMember",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 732,
+      "method": "upsert",
+      "receiver": "tx.teamMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 741,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 771,
+      "method": "findFirst",
+      "receiver": "prisma.team",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 782,
+      "method": "findFirst",
+      "receiver": "prisma.team",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 788,
+      "method": "findMany",
+      "receiver": "prisma.organizationMember",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 796,
+      "method": "deleteMany",
+      "receiver": "tx.teamMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 800,
+      "method": "upsert",
+      "receiver": "tx.teamMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 807,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 836,
+      "method": "findFirst",
+      "receiver": "prisma.team",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 847,
+      "method": "findFirst",
+      "receiver": "prisma.team",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 853,
+      "method": "findMany",
+      "receiver": "prisma.location",
+      "bounded": false,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 861,
+      "method": "deleteMany",
+      "receiver": "tx.teamLocation",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 865,
+      "method": "createMany",
+      "receiver": "tx.teamLocation",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 874,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 971,
+      "method": "update",
+      "receiver": "tx.organization",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 972,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/org-management-actions.ts",
+      "line": 991,
+      "method": "create",
+      "receiver": "prisma.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/process-actions.ts",
+      "line": 101,
+      "method": "findFirst",
+      "receiver": "prisma.process",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/process-actions.ts",
+      "line": 123,
+      "method": "update",
+      "receiver": "tx.process",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/process-actions.ts",
+      "line": 127,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/process-actions.ts",
+      "line": 156,
+      "method": "findFirst",
+      "receiver": "prisma.process",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/process-actions.ts",
+      "line": 175,
+      "method": "findFirst",
+      "receiver": "prisma.routine",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/process-actions.ts",
+      "line": 189,
+      "method": "update",
+      "receiver": "tx.routine",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/process-actions.ts",
+      "line": 190,
+      "method": "create",
+      "receiver": "tx.routine",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/process-actions.ts",
+      "line": 191,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/process-actions.ts",
+      "line": 209,
+      "method": "findFirst",
+      "receiver": "prisma.routine",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/process-actions.ts",
+      "line": 222,
+      "method": "update",
+      "receiver": "tx.routine",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/process-actions.ts",
+      "line": 226,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/process-actions.ts",
+      "line": 330,
+      "method": "findFirst",
+      "receiver": "tx.processTemplateVersion",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/process-actions.ts",
+      "line": 383,
+      "method": "findFirst",
+      "receiver": "tx.process",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/process-actions.ts",
+      "line": 388,
+      "method": "findFirst",
+      "receiver": "tx.processTemplateVersion",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/process-actions.ts",
+      "line": 534,
+      "method": "findFirst",
+      "receiver": "prisma.processExecution",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/push-notification-actions.ts",
+      "line": 26,
+      "method": "findFirst",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/push-notification-actions.ts",
+      "line": 40,
+      "method": "upsert",
+      "receiver": "prisma.userDeviceToken",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/push-notification-actions.ts",
+      "line": 72,
+      "method": "deleteMany",
+      "receiver": "prisma.userDeviceToken",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/recovery-actions.ts",
+      "line": 29,
+      "method": "findUnique",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/recovery-actions.ts",
+      "line": 35,
+      "method": "create",
+      "receiver": "prisma.passwordResetToken",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/recovery-actions.ts",
+      "line": 55,
+      "method": "findFirst",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/recovery-actions.ts",
+      "line": 60,
+      "method": "create",
+      "receiver": "prisma.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/recovery-actions.ts",
+      "line": 91,
+      "method": "findUnique",
+      "receiver": "prisma.passwordResetToken",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/recovery-actions.ts",
+      "line": 103,
+      "method": "update",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/recovery-actions.ts",
+      "line": 108,
+      "method": "update",
+      "receiver": "tx.passwordResetToken",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/recovery-actions.ts",
+      "line": 142,
+      "method": "create",
+      "receiver": "prisma.memberInvite",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/recovery-actions.ts",
+      "line": 153,
+      "method": "create",
+      "receiver": "prisma.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/recovery-actions.ts",
+      "line": 194,
+      "method": "findUnique",
+      "receiver": "prisma.memberInvite",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/recovery-actions.ts",
+      "line": 225,
+      "method": "findUnique",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/recovery-actions.ts",
+      "line": 227,
+      "method": "create",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/recovery-actions.ts",
+      "line": 236,
+      "method": "update",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/recovery-actions.ts",
+      "line": 243,
+      "method": "findUnique",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/recovery-actions.ts",
+      "line": 254,
+      "method": "create",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/recovery-actions.ts",
+      "line": 267,
+      "method": "update",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/recovery-actions.ts",
+      "line": 273,
+      "method": "update",
+      "receiver": "tx.memberInvite",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/report-actions.ts",
+      "line": 50,
+      "method": "create",
+      "receiver": "prisma.scheduledReport",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/report-actions.ts",
+      "line": 62,
+      "method": "create",
+      "receiver": "prisma.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/report-actions.ts",
+      "line": 85,
+      "method": "findFirst",
+      "receiver": "prisma.scheduledReport",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/report-actions.ts",
+      "line": 91,
+      "method": "update",
+      "receiver": "prisma.scheduledReport",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/report-actions.ts",
+      "line": 96,
+      "method": "create",
+      "receiver": "prisma.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/search-actions.ts",
+      "line": 29,
+      "method": "findMany",
+      "receiver": "prisma.organization",
+      "bounded": true,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/search-actions.ts",
+      "line": 30,
+      "method": "findMany",
+      "receiver": "prisma.user",
+      "bounded": true,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/search-actions.ts",
+      "line": 40,
+      "method": "findMany",
+      "receiver": "prisma.task",
+      "bounded": true,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/search-actions.ts",
+      "line": 44,
+      "method": "findMany",
+      "receiver": "prisma.process",
+      "bounded": true,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/search-actions.ts",
+      "line": 45,
+      "method": "findMany",
+      "receiver": "prisma.location",
+      "bounded": true,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/search-actions.ts",
+      "line": 46,
+      "method": "findMany",
+      "receiver": "prisma.team",
+      "bounded": true,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/search-actions.ts",
+      "line": 47,
+      "method": "findMany",
+      "receiver": "prisma.organizationMember",
+      "bounded": true,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/search-actions.ts",
+      "line": 48,
+      "method": "findMany",
+      "receiver": "prisma.evidenceSubmission",
+      "bounded": true,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 72,
+      "method": "findUnique",
+      "receiver": "prisma.organization",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 82,
+      "method": "create",
+      "receiver": "tx.organization",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 99,
+      "method": "create",
+      "receiver": "tx.location",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 113,
+      "method": "findUnique",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 118,
+      "method": "create",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 128,
+      "method": "update",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 134,
+      "method": "findUnique",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 144,
+      "method": "create",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 156,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 209,
+      "method": "findUnique",
+      "receiver": "tx.organization",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 216,
+      "method": "findUnique",
+      "receiver": "tx.organization",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 225,
+      "method": "update",
+      "receiver": "tx.organization",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 235,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 286,
+      "method": "findUnique",
+      "receiver": "prisma.organization",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 303,
+      "method": "delete",
+      "receiver": "tx.organization",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 327,
+      "method": "findUnique",
+      "receiver": "tx.organization",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 330,
+      "method": "update",
+      "receiver": "tx.organization",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 331,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 391,
+      "method": "findUnique",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 403,
+      "method": "create",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 414,
+      "method": "findUnique",
+      "receiver": "tx.organization",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 423,
+      "method": "findFirst",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 431,
+      "method": "create",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 442,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 497,
+      "method": "findUnique",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 507,
+      "method": "findUnique",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 518,
+      "method": "count",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 529,
+      "method": "count",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 557,
+      "method": "update",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 564,
+      "method": "createMany",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 620,
+      "method": "findUnique",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 646,
+      "method": "count",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 665,
+      "method": "createMany",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 677,
+      "method": "delete",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 697,
+      "method": "findUnique",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 703,
+      "method": "count",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 708,
+      "method": "update",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 709,
+      "method": "createMany",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 754,
+      "method": "findUnique",
+      "receiver": "prisma.organization",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 757,
+      "method": "findUnique",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 760,
+      "method": "findUnique",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 768,
+      "method": "findFirst",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 782,
+      "method": "create",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 793,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 836,
+      "method": "findUnique",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 847,
+      "method": "count",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 863,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 874,
+      "method": "delete",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 912,
+      "method": "findUnique",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 927,
+      "method": "count",
+      "receiver": "prisma.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 943,
+      "method": "update",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 948,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 994,
+      "method": "findUnique",
+      "receiver": "tx.organization",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1007,
+      "method": "update",
+      "receiver": "tx.organization",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1011,
+      "method": "create",
+      "receiver": "tx.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1041,
+      "method": "create",
+      "receiver": "prisma.platformPlan",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1054,
+      "method": "findFirst",
+      "receiver": "prisma.organization",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1056,
+      "method": "create",
+      "receiver": "prisma.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1088,
+      "method": "findUnique",
+      "receiver": "prisma.platformPlan",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1091,
+      "method": "update",
+      "receiver": "prisma.platformPlan",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1105,
+      "method": "findFirst",
+      "receiver": "prisma.organization",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1107,
+      "method": "create",
+      "receiver": "prisma.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1134,
+      "method": "findUnique",
+      "receiver": "prisma.platformPlan",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1137,
+      "method": "delete",
+      "receiver": "prisma.platformPlan",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1139,
+      "method": "findFirst",
+      "receiver": "prisma.organization",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1141,
+      "method": "create",
+      "receiver": "prisma.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1166,
+      "method": "findFirst",
+      "receiver": "prisma.platformPlan",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1168,
+      "method": "create",
+      "receiver": "prisma.platformPlan",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1183,
+      "method": "findUnique",
+      "receiver": "prisma.organization",
+      "bounded": null,
+      "projection": "select"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1185,
+      "method": "create",
+      "receiver": "prisma.activityLog",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1228,
+      "method": "findFirst",
+      "receiver": "prisma.platformBusinessSegment",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1235,
+      "method": "create",
+      "receiver": "prisma.platformBusinessSegment",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1276,
+      "method": "findUnique",
+      "receiver": "prisma.platformBusinessSegment",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1279,
+      "method": "update",
+      "receiver": "prisma.platformBusinessSegment",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1303,
+      "method": "findUnique",
+      "receiver": "prisma.platformBusinessSegment",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1311,
+      "method": "update",
+      "receiver": "prisma.platformBusinessSegment",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1319,
+      "method": "delete",
+      "receiver": "prisma.platformBusinessSegment",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1394,
+      "method": "findUnique",
+      "receiver": "prisma.platformBusinessSegment",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1437,
+      "method": "create",
+      "receiver": "prisma.platformTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1521,
+      "method": "findUnique",
+      "receiver": "prisma.platformTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1562,
+      "method": "update",
+      "receiver": "prisma.platformTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1588,
+      "method": "delete",
+      "receiver": "prisma.platformTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1618,
+      "method": "findUnique",
+      "receiver": "prisma.platformBusinessSegment",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1634,
+      "method": "findUnique",
+      "receiver": "prisma.platformTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1637,
+      "method": "update",
+      "receiver": "prisma.platformTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/superadmin-actions.ts",
+      "line": 1653,
+      "method": "create",
+      "receiver": "prisma.platformTemplate",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/two-factor-actions.ts",
+      "line": 28,
+      "method": "findUnique",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/two-factor-actions.ts",
+      "line": 38,
+      "method": "findFirst",
+      "receiver": "tx.organizationMember",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/two-factor-actions.ts",
+      "line": 52,
+      "method": "update",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/two-factor-actions.ts",
+      "line": 66,
+      "method": "update",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/two-factor-actions.ts",
+      "line": 86,
+      "method": "update",
+      "receiver": "tx.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/two-factor-actions.ts",
+      "line": 94,
+      "method": "count",
+      "receiver": "prisma.passkeyAuthenticator",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/two-factor-actions.ts",
+      "line": 104,
+      "method": "findMany",
+      "receiver": "prisma.organizationMember",
+      "bounded": false,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/webauthn-actions.ts",
+      "line": 38,
+      "method": "findUnique",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/webauthn-actions.ts",
+      "line": 76,
+      "method": "findUnique",
+      "receiver": "prisma.user",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/webauthn-actions.ts",
+      "line": 110,
+      "method": "create",
+      "receiver": "tx.passkeyAuthenticator",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/webauthn-actions.ts",
+      "line": 159,
+      "method": "findUnique",
+      "receiver": "prisma.passkeyAuthenticator",
+      "bounded": null,
+      "projection": "include"
+    },
+    {
+      "file": "src/presentation/actions/webauthn-actions.ts",
+      "line": 205,
+      "method": "updateMany",
+      "receiver": "tx.passkeyAuthenticator",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    },
+    {
+      "file": "src/presentation/actions/webauthn-actions.ts",
+      "line": 227,
+      "method": "updateMany",
+      "receiver": "prisma.mobileAuthSession",
+      "bounded": null,
+      "projection": "scalar/indirect"
+    }
+  ]
+}

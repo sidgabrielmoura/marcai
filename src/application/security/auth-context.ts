@@ -4,6 +4,32 @@ import { ManagerScope, Role } from "@/domain/types";
 import { redirect } from "next/navigation";
 import { hasSecondFactorProof } from "@/infrastructure/security/totp";
 import { readManualSubscription, type ManualSubscription } from "@/application/superadmin/manual-subscription";
+import { cache } from "react";
+import type { Prisma } from "@prisma/client";
+import { requestRead } from "@/infrastructure/database/request-memo";
+
+export const authenticatedMemberSelect = {
+  id: true, userId: true, organizationId: true, status: true, role: true, employeeCode: true, pinHash: true,
+  user: { select: { id: true, name: true, email: true, status: true, platformRole: true, passwordHash: true, twoFactorEnabled: true, twoFactorSecret: true } },
+  organization: { select: { id: true, name: true, slug: true, status: true, settings: true } },
+  locationAccesses: { select: { locationId: true, startsAt: true, expiresAt: true, location: { select: { organizationId: true, status: true } } } },
+  teamMemberships: { select: { teamId: true, team: { select: { organizationId: true, status: true } } } },
+} as const satisfies Prisma.OrganizationMemberSelect;
+
+export type AuthenticatedMember = Prisma.OrganizationMemberGetPayload<{ select: typeof authenticatedMemberSelect }>;
+
+export function contextFromMember(member: AuthenticatedMember, now = new Date()): AuthenticatedContext {
+  const scope = member.role === "MANAGER" || member.role === "EMPLOYEE" ? {
+    locationIds: member.locationAccesses.filter(a => a.location.organizationId === member.organizationId && a.location.status === "ACTIVE" && (!a.startsAt || a.startsAt <= now) && (!a.expiresAt || a.expiresAt > now)).map(a => a.locationId),
+    teamIds: member.teamMemberships.filter(a => a.team.organizationId === member.organizationId && a.team.status === "ACTIVE").map(a => a.teamId),
+  } : undefined;
+  return {
+    userId: member.user.id, userName: member.user.name, userEmail: member.user.email,
+    organizationId: member.organization.id, organizationName: member.organization.name, organizationSlug: member.organization.slug,
+    memberId: member.id, role: member.role as Role, employeeCode: member.employeeCode, scope,
+    subscription: readManualSubscription(member.organization.settings),
+  };
+}
 
 export interface AuthenticatedContext {
   userId: string;
@@ -37,15 +63,10 @@ export class ForbiddenError extends Error {
  * Pipeline Server-Side: Resolve e valida a identidade, organização ativa,
  * vínculo, papel e escopo operacional de forma intransigente no servidor.
  */
-export async function getAuthenticatedContext(
-  redirectOnFailure: boolean = true
-): Promise<AuthenticatedContext | null> {
+async function loadAuthenticatedContext(): Promise<AuthenticatedContext | null> {
   const session = await getSession();
 
   if (!session) {
-    if (redirectOnFailure) {
-      redirect("/login");
-    }
     return null;
   }
 
@@ -57,55 +78,25 @@ export async function getAuthenticatedContext(
       userId: session.userId,
       status: "ACTIVE",
     },
-    include: {
-      organization: true,
-      user: true,
-      locationAccesses: {
-        where: {
-          location: { organizationId: session.activeOrgId, status: "ACTIVE" },
-          AND: [
-            { OR: [{ startsAt: null }, { startsAt: { lte: new Date() } }] },
-            { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
-          ],
-        },
-      },
-      teamMemberships: { where: { team: { organizationId: session.activeOrgId, status: "ACTIVE" } } },
-    },
+    select: authenticatedMemberSelect,
   });
 
   if (!member || member.organization.status !== "ACTIVE" || member.user.status !== "ACTIVE") {
-    if (redirectOnFailure) {
-      redirect("/login");
-    }
     return null;
   }
   if (!hasSecondFactorProof(member.user, session.secondFactorProof)) {
-    if (redirectOnFailure) redirect("/login");
     return null;
   }
 
-  let scope: ManagerScope | undefined = undefined;
+  return contextFromMember(member);
+}
 
-  if (member.role === "MANAGER" || member.role === "EMPLOYEE") {
-    scope = {
-      locationIds: member.locationAccesses.map((la) => la.locationId),
-      teamIds: member.teamMemberships.map((tm) => tm.teamId),
-    };
-  }
+const getRenderContext = cache(loadAuthenticatedContext);
 
-  return {
-    userId: member.user.id,
-    userName: member.user.name,
-    userEmail: member.user.email,
-    organizationId: member.organization.id,
-    organizationName: member.organization.name,
-    organizationSlug: member.organization.slug,
-    memberId: member.id,
-    role: member.role as Role,
-    employeeCode: member.employeeCode,
-    scope,
-    subscription: readManualSubscription(member.organization.settings),
-  };
+export async function getAuthenticatedContext(redirectOnFailure = true): Promise<AuthenticatedContext | null> {
+  const context = await requestRead("authenticated-context", getRenderContext);
+  if (!context && redirectOnFailure) redirect("/login");
+  return context;
 }
 
 export async function getManagementContext() {
@@ -135,6 +126,7 @@ export async function getSuperadminContext(
       platformRole: "SUPERADMIN",
       status: "ACTIVE",
     },
+    select: { id: true, name: true, email: true, platformRole: true, twoFactorEnabled: true, twoFactorSecret: true },
   });
 
   if (!user) {

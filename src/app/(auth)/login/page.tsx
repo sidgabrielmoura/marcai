@@ -62,6 +62,8 @@ export default function LoginPage() {
   const [qrToken, setQrToken] = useState<string | null>(null);
   const [qrUrl, setQrUrl] = useState<string>("");
   const [isQrLoading, setIsQrLoading] = useState(false);
+  const [qrExpiresAt, setQrExpiresAt] = useState(0);
+  const [qrExpired, setQrExpired] = useState(false);
 
   const [passwordState, passwordFormAction, isPasswordPending] = useActionState<
     AuthState,
@@ -120,7 +122,10 @@ export default function LoginPage() {
 
   // Handle QR code token generation and polling on desktop when applicable
   useEffect(() => {
-    let intervalId: NodeJS.Timeout;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
+    let inFlight = false;
+    let attempts = 0;
 
     const shouldShowQR =
       tab === "biometrics" &&
@@ -132,25 +137,32 @@ export default function LoginPage() {
         setIsQrLoading(true);
         try {
           const res = await generateMobileAuthTokenAction();
-          if (res?.token) {
+          if (!cancelled && res?.token) {
             setQrToken(res.token);
+            setQrExpiresAt(Date.parse(res.expiresAt));
+            setQrExpired(false);
             setQrUrl(`${window.location.origin}/login/qr/${res.token}`);
           }
         } catch (err) {
           console.error(err);
         } finally {
-          setIsQrLoading(false);
+          if (!cancelled) setIsQrLoading(false);
         }
       };
       initQR();
     }
 
-    if (qrToken && shouldShowQR) {
-      intervalId = setInterval(async () => {
+    async function checkQR() {
+      if (cancelled || document.hidden || inFlight || !qrToken || !shouldShowQR || qrExpired) return;
+      if (Date.now() >= qrExpiresAt) { setQrExpired(true); return; }
+      inFlight = true;
+      let continuePolling = true;
         try {
           const status = await checkMobileAuthTokenAction(qrToken);
+          if (cancelled) return;
+          if (status === "INVALID") { continuePolling = false; setQrExpired(true); return; }
           if (status === "APPROVED") {
-            clearInterval(intervalId);
+            continuePolling = false;
             // Execute login
             const result = await loginWithMobileSessionAction(qrToken);
             if (result?.error) {
@@ -167,14 +179,22 @@ export default function LoginPage() {
           if (!e?.digest?.startsWith("NEXT_REDIRECT") && e?.message !== "NEXT_REDIRECT") {
             console.error(e);
           }
+        } finally {
+          inFlight = false;
+          if (continuePolling && !cancelled && !document.hidden) timer = setTimeout(checkQR, Math.min(10000, 2000 + ++attempts * 500));
         }
-      }, 2000);
     }
 
+    const onVisibility = () => { if (timer) clearTimeout(timer); if (!document.hidden) void checkQR(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    if (qrToken && shouldShowQR && !qrExpired) timer = setTimeout(checkQR, 2000);
+
     return () => {
-      if (intervalId) clearInterval(intervalId);
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [tab, isMobile, qrToken, isPlatformBiometricAvailable, showQrOnDesktop]);
+  }, [tab, isMobile, qrToken, qrExpiresAt, qrExpired, isPlatformBiometricAvailable, showQrOnDesktop]);
 
   const handleBiometricsLogin = async () => {
     setIsBiometricsPending(true);
@@ -590,7 +610,9 @@ export default function LoginPage() {
                       </div>
 
                       <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-center min-h-[200px]">
-                        {isQrLoading || !qrUrl ? (
+                        {qrExpired ? (
+                          <div className="flex flex-col items-center gap-3"><p className="text-sm text-gray-500">Este código expirou.</p><Button type="button" onClick={() => { setQrExpired(false); setQrToken(null); setQrUrl(""); }}>Gerar novo código</Button></div>
+                        ) : isQrLoading || !qrUrl ? (
                           <div className="flex flex-col items-center gap-2">
                             <Spinner />
                             <span className="text-sm text-gray-500">Gerando QR Code...</span>
@@ -623,7 +645,9 @@ export default function LoginPage() {
                   </div>
 
                   <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-center min-h-[200px]">
-                    {isQrLoading || !qrUrl ? (
+                    {qrExpired ? (
+                      <div className="flex flex-col items-center gap-3"><p className="text-sm text-gray-500">Este código expirou.</p><Button type="button" onClick={() => { setQrExpired(false); setQrToken(null); setQrUrl(""); }}>Gerar novo código</Button></div>
+                    ) : isQrLoading || !qrUrl ? (
                       <div className="flex flex-col items-center gap-2">
                         <Spinner />
                         <span className="text-sm text-gray-500">Gerando QR Code...</span>

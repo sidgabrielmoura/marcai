@@ -1,4 +1,4 @@
-import { projectNotice } from "@/application/mobile/notifications";
+import { projectNotices } from "@/application/mobile/notifications";
 import Link from "next/link";
 import { getManagementContext } from "@/application/security/auth-context";
 import { prisma } from "@/infrastructure/database/prisma";
@@ -25,7 +25,7 @@ export default async function ManagementNotificationsPage({
   if (!c) redirect("/tasks");
 
   const p = await searchParams;
-  const page = Math.max(1, Number(p.page) || 1);
+  const page = Math.min(1000, Math.max(1, Math.trunc(Number(p.page) || 1)));
   const status = ["unread", "read"].includes(p.status ?? "") ? p.status! : "all";
 
   const where = {
@@ -41,7 +41,7 @@ export default async function ManagementNotificationsPage({
   const [rawNotifications, count, unread] = await Promise.all([
     prisma.notification.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       skip: (page - 1) * 20,
       take: 20,
     }),
@@ -55,12 +55,7 @@ export default async function ManagementNotificationsPage({
     }),
   ]);
 
-  const notifications = await Promise.all(
-    rawNotifications.map(async (n) => ({
-      ...(await projectNotice(c, n)),
-      createdAt: n.createdAt,
-    })),
-  );
+  const notifications = (await projectNotices(c, rawNotifications)).map((n,i) => ({ ...n, createdAt: rawNotifications[i]!.createdAt }));
 
   return (
     <ManagementShell

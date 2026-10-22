@@ -102,6 +102,7 @@ export async function markNotificationUnreadAction(id: string) {
       id,
       organizationId: c.organizationId,
       userId: c.userId,
+      readAt: { not: null },
     },
     data: { readAt: null },
   });
