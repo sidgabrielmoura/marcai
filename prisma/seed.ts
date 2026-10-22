@@ -335,7 +335,7 @@ async function main() {
       deadlineAt: twoHoursAhead,
       slaDurationMinutes: 60,
       slaDueAt: twoHoursAhead,
-      estimatedDuration: 15,
+      // estimatedDuration: 15,
       assignments: {
         create: { memberId: memberEmployeeAlpha.id, type: "PRIMARY" },
       },

@@ -23,6 +23,8 @@ import {
   Layers,
   Check,
   Clock,
+  MapPin,
+  FileText,
 } from "lucide-react";
 import { taskClock, formatClock } from "@/domain/rules/employee-task-clock";
 import { ClaimTaskButton } from "./claim-task-button";
@@ -78,33 +80,33 @@ export interface EmployeeTask {
 
 export type KanbanBoardItem =
   | {
-      type: "TASK";
-      id: string;
-      task: EmployeeTask;
-    }
+    type: "TASK";
+    id: string;
+    task: EmployeeTask;
+  }
   | {
-      type: "PROCESS";
-      id: string;
-      executionId: string;
-      processName: string;
-      tasks: EmployeeTask[];
-      totalTasks: number;
-      completedTasks: number;
-      progressPercent: number;
-      progressLabel: string;
-      locationName: string | null;
-      teamName: string | null;
-      timezone: string;
-      scheduledDate: string | null;
-      deadlineAt: string | null;
-      priority: Priority;
-      hasImpediment: boolean;
-      allUnassigned: boolean;
-      anyOverdue: boolean;
-      attention: boolean;
-      allCompleted: boolean;
-      isScheduled: boolean;
-    };
+    type: "PROCESS";
+    id: string;
+    executionId: string;
+    processName: string;
+    tasks: EmployeeTask[];
+    totalTasks: number;
+    completedTasks: number;
+    progressPercent: number;
+    progressLabel: string;
+    locationName: string | null;
+    teamName: string | null;
+    timezone: string;
+    scheduledDate: string | null;
+    deadlineAt: string | null;
+    priority: Priority;
+    hasImpediment: boolean;
+    allUnassigned: boolean;
+    anyOverdue: boolean;
+    attention: boolean;
+    allCompleted: boolean;
+    isScheduled: boolean;
+  };
 
 export function buildKanbanItems(
   tasks: EmployeeTask[],
@@ -200,6 +202,7 @@ import {
   type DeadlineStatus,
   getTaskDeadlineStatus,
 } from "@/domain/rules/task-metrics";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export { type DeadlineStatus, getTaskDeadlineStatus };
 
@@ -224,9 +227,9 @@ const COLUMNS: ColumnDef[] = [
     title: "A Fazer (Hoje)",
     shortTitle: "A Fazer",
     icon: CheckSquare,
-    accentColor: "bg-blue-600",
-    pillBadgeClass: "bg-blue-100 text-blue-800",
-    borderTopClass: "border-t-blue-500",
+    accentColor: "bg-[var(--brand-900)] text-white",
+    pillBadgeClass: "bg-emerald-50 text-emerald-800 border-emerald-200/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800",
+    borderTopClass: "border-t-[var(--brand-900)]",
     description: "Tarefas para realizar hoje",
     emptyText: "Nenhuma tarefa pendente para hoje.",
   },
@@ -235,9 +238,9 @@ const COLUMNS: ColumnDef[] = [
     title: "Atrasadas",
     shortTitle: "Atrasadas",
     icon: AlertTriangle,
-    accentColor: "bg-red-500",
-    pillBadgeClass: "bg-red-100 text-red-800",
-    borderTopClass: "border-t-red-500",
+    accentColor: "bg-rose-600 text-white",
+    pillBadgeClass: "bg-rose-50 text-rose-800 border-rose-200/70 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800",
+    borderTopClass: "border-t-rose-500",
     description: "Prazo expirado — Ação prioritária",
     emptyText: "Nenhuma tarefa em atraso. Tudo em dia!",
   },
@@ -246,9 +249,9 @@ const COLUMNS: ColumnDef[] = [
     title: "Para Assumir",
     shortTitle: "Para Assumir",
     icon: Users,
-    accentColor: "bg-purple-600",
-    pillBadgeClass: "bg-purple-100 text-purple-800",
-    borderTopClass: "border-t-purple-500",
+    accentColor: "bg-slate-700 text-white dark:bg-slate-800",
+    pillBadgeClass: "bg-slate-100 text-slate-700 border-slate-200/70 dark:bg-muted dark:text-slate-300 dark:border-border",
+    borderTopClass: "border-t-slate-600",
     description: "Disponíveis na sua equipe e unidade",
     emptyText: "Nenhuma tarefa disponível para assumir.",
   },
@@ -257,9 +260,9 @@ const COLUMNS: ColumnDef[] = [
     title: "Concluídas Hoje",
     shortTitle: "Concluídas",
     icon: CheckCircle2,
-    accentColor: "bg-emerald-600",
-    pillBadgeClass: "bg-emerald-100 text-emerald-800",
-    borderTopClass: "border-t-emerald-500",
+    accentColor: "bg-emerald-700 text-white",
+    pillBadgeClass: "bg-emerald-50 text-emerald-800 border-emerald-200/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800",
+    borderTopClass: "border-t-emerald-600",
     description: "Entregas finalizadas no seu turno",
     emptyText: "Nenhuma tarefa concluída hoje ainda.",
   },
@@ -268,8 +271,8 @@ const COLUMNS: ColumnDef[] = [
     title: "Próximos Dias",
     shortTitle: "Próximas",
     icon: Calendar,
-    accentColor: "bg-slate-500",
-    pillBadgeClass: "bg-slate-100 text-slate-800",
+    accentColor: "bg-slate-500 text-white",
+    pillBadgeClass: "bg-slate-100 text-slate-700 border-slate-200/70 dark:bg-muted dark:text-slate-300 dark:border-border",
     borderTopClass: "border-t-slate-400",
     description: "Programadas para amanhã em diante",
     emptyText: "Sem tarefas programadas para os próximos dias.",
@@ -286,10 +289,10 @@ const typeFilterItems: Array<{
   label: string;
   value: "ALL" | "STANDARD" | "FORM";
 }> = [
-  { label: "Todos", value: "ALL" },
-  { label: "Tarefas", value: "STANDARD" },
-  { label: "Com Perguntas", value: "FORM" },
-];
+    { label: "Todos", value: "ALL" },
+    { label: "Tarefas", value: "STANDARD" },
+    { label: "Com Perguntas", value: "FORM" },
+  ];
 
 export function EmployeeKanbanBoard({
   tasks,
@@ -517,74 +520,96 @@ export function EmployeeKanbanBoard({
     }
   }, [initialColumn]);
 
+  const typeFilterLabels = {
+    ALL: "Todos",
+    STANDARD: "Tarefas",
+    FORM: "Com perguntas",
+  } as const;
+
   return (
     <div className="flex flex-col gap-3.5 w-full">
-      {/* Barra de Busca Rápida */}
-      <div className="relative">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-[var(--brand-700)]/60" />
-        <Input
-          type="text"
-          aria-label="Buscar tarefas"
-          placeholder="Buscar tarefas por título, unidade ou processo..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full h-11 pl-10 pr-9 bg-[var(--surface)] border-[var(--border-subtle)] rounded-xl text-sm"
-        />
-        {searchQuery && (
-          <button
-            type="button"
-            aria-label="Limpar busca"
-            onClick={() => setSearchQuery("")}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
-          >
-            <X className="size-4" />
-          </button>
-        )}
-      </div>
-
-      {/* Alternador Rápido: Todos / Tarefas / Tarefas com Perguntas */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none -mx-1 px-1">
-        {typeFilterItems.map((item) => {
-          const active = filterType === item.value;
-          const count =
-            item.value === "ALL"
-              ? allKanbanItems.length
-              : item.value === "FORM"
-                ? allKanbanItems.filter((it) =>
-                    it.type === "TASK"
-                      ? it.task.taskType === "FORM"
-                      : it.tasks.some((t) => t.taskType === "FORM"),
-                  ).length
-                : allKanbanItems.filter((it) =>
-                    it.type === "TASK"
-                      ? it.task.taskType !== "FORM"
-                      : it.tasks.some((t) => t.taskType !== "FORM"),
-                  ).length;
-          return (
+      <section className="flex items-center gap-1 sm:gap-2">
+        <div className="relative flex-1 min-w-0">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-[var(--brand-700)]/60" />
+          <Input
+            type="text"
+            aria-label="Buscar tarefas"
+            placeholder="Buscar tarefas por título, unidade ou processo..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full h-11 pl-10 pr-9 bg-surface border-(--border-subtle) rounded-xl text-xs!"
+          />
+          {searchQuery && (
             <button
-              key={item.value}
               type="button"
-              onClick={() => setFilterType(item.value)}
-              className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border cursor-pointer ${
-                active
-                  ? "bg-[var(--brand-900)] text-white border-[var(--brand-900)] shadow-xs"
-                  : "bg-[var(--surface)] text-[var(--brand-900)] border-[var(--border-subtle)] hover:bg-[var(--canvas)]"
-              }`}
+              aria-label="Limpar busca"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
             >
-              <span>{item.label}</span>
-              <span
-                className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
-                  active
-                    ? "bg-white/20 text-white"
-                    : "bg-slate-100 text-slate-600 dark:bg-muted/40 dark:text-slate-400"
-                }`}
-              >
-                {count}
-              </span>
+              <X className="size-4" />
             </button>
-          );
-        })}
-      </div>
+          )}
+        </div>
+
+        <Select
+          value={filterType}
+          onValueChange={(value) => {
+            if (value !== null) {
+              setFilterType(value);
+            }
+          }}
+        >
+          <SelectTrigger
+            className="h-10 w-full max-sm:text-xs! flex-1 sm:w-55 rounded-xl border-border bg-background
+      text-sm shadow-none transition-colors
+      hover:bg-muted/40 focus:ring-2 focus:ring-ring/20"
+          >
+            <SelectValue placeholder="Filtrar por tipo">
+              {typeFilterLabels[filterType]}
+            </SelectValue>
+          </SelectTrigger>
+
+          <SelectContent
+            align="start"
+            className="min-w-55 rounded-xl p-1 shadow-lg"
+          >
+            {typeFilterItems.map((item) => {
+              const count =
+                item.value === "ALL"
+                  ? allKanbanItems.length
+                  : allKanbanItems.filter((it) =>
+                    item.value === "FORM"
+                      ? it.type === "TASK"
+                        ? it.task.taskType === "FORM"
+                        : it.tasks.some((t) => t.taskType === "FORM")
+                      : it.type === "TASK"
+                        ? it.task.taskType !== "FORM"
+                        : it.tasks.some((t) => t.taskType !== "FORM"),
+                  ).length;
+
+              return (
+                <SelectItem
+                  key={item.value}
+                  value={item.value}
+                  className="min-h-10 cursor-pointer rounded-lg py-2 pl-3 pr-3
+            focus:bg-accent focus:text-accent-foreground"
+                >
+                  <span className="flex w-full min-w-0 items-center gap-6">
+                    <span className="flex-1 text-sm font-medium">
+                      {typeFilterLabels[item.value]}
+                    </span>
+
+                    <span className="min-w-7 rounded-md bg-muted px-2 mr-4 py-0.5 text-center
+              text-xs font-semibold tabular-nums text-muted-foreground">
+                      {count}
+                    </span>
+                  </span>
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+      </section>
 
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-none -mx-1 px-1">
         {COLUMNS.map((col) => {
@@ -598,24 +623,22 @@ export function EmployeeKanbanBoard({
               key={col.id}
               type="button"
               onClick={() => scrollToColumn(col.id)}
-              className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${
-                isActive
-                  ? "bg-[var(--brand-900)] text-white border-[var(--brand-900)] shadow-xs scale-102"
-                  : isOverdueCol
-                    ? "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
-                    : "bg-[var(--surface)] text-[var(--brand-900)] border-[var(--border-subtle)] hover:bg-[var(--canvas)]"
-              }`}
+              className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${isActive
+                ? "bg-[var(--brand-900)] text-white border-[var(--brand-900)] shadow-xs scale-102"
+                : isOverdueCol
+                  ? "bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100"
+                  : "bg-[var(--surface)] text-[var(--brand-900)] border-[var(--border-subtle)] hover:bg-[var(--canvas)]"
+                }`}
             >
               <Icon className="size-3.5 shrink-0" />
               <span>{col.shortTitle}</span>
               <span
-                className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
-                  isActive
-                    ? "bg-white/20 text-white"
-                    : isOverdueCol
-                      ? "bg-red-200 text-red-900"
-                      : "bg-slate-100 text-slate-700"
-                }`}
+                className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${isActive
+                  ? "bg-white/20 text-white"
+                  : isOverdueCol
+                    ? "bg-rose-200 text-rose-900"
+                    : "bg-slate-100 text-slate-700"
+                  }`}
               >
                 {count}
               </span>
@@ -633,11 +656,10 @@ export function EmployeeKanbanBoard({
               type="button"
               onClick={() => scrollToColumn(col.id)}
               aria-label={`Ir para ${col.title}`}
-              className={`transition-all duration-300 rounded-full ${
-                isActive
-                  ? "w-6 h-1.5 bg-[var(--brand-900)]"
-                  : "w-1.5 h-1.5 bg-slate-300 hover:bg-slate-400"
-              }`}
+              className={`transition-all duration-300 rounded-full ${isActive
+                ? "w-6 h-1.5 bg-[var(--brand-900)]"
+                : "w-1.5 h-1.5 bg-slate-300 hover:bg-slate-400"
+                }`}
             />
           );
         })}
@@ -661,17 +683,17 @@ export function EmployeeKanbanBoard({
                 columnRefs.current[col.id] = el;
               }}
               data-column-id={col.id}
-              className="trello-kanban-column flex flex-col rounded-2xl bg-slate-100/80 dark:bg-muted/40 border border-[var(--border-subtle)] p-3 shadow-xs"
+              className="trello-kanban-column flex flex-col rounded-2xl bg-slate-50/80 dark:bg-muted/20 border border-slate-200/70 dark:border-border/60 p-3 sm:p-3.5 shadow-none"
             >
-              <div className="flex items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-slate-200/80 dark:border-border">
+              <div className="flex items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-slate-200/70 dark:border-border/50">
                 <div className="flex items-center gap-2 min-w-0">
                   <div
-                    className={`size-7 rounded-lg ${col.accentColor} text-white flex items-center justify-center shrink-0 shadow-xs`}
+                    className={`size-7 rounded-lg ${col.accentColor} flex items-center justify-center shrink-0 shadow-none`}
                   >
                     <Icon className="size-4" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="font-bold text-sm text-[var(--brand-900)] dark:text-foreground truncate">
+                    <h3 className="font-semibold text-sm text-[var(--brand-900)] dark:text-foreground truncate">
                       {col.title}
                     </h3>
                     <p className="text-[11px] text-[var(--text-secondary)] truncate">
@@ -681,7 +703,7 @@ export function EmployeeKanbanBoard({
                 </div>
                 <Badge
                   variant="outline"
-                  className={`text-xs font-bold px-2 py-0.5 rounded-full shrink-0 ${col.pillBadgeClass}`}
+                  className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${col.pillBadgeClass}`}
                 >
                   {tasksInCol.length}
                 </Badge>
@@ -757,16 +779,18 @@ function TaskCard({
   const isScheduled = clock.isScheduled;
   const permission = operationPermission(task, now, !task.isUnassigned);
   const deadlineInfo = getTaskDeadlineStatus(task, now);
+
   const state = isScheduled
-    ? `Programada para às ${new Date(task.scheduledDate!).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: task.timezone })}`
+    ? null
     : (
-        {
-          PAUSED: "Pausada",
-          NEEDS_CORRECTION: "Correção solicitada",
-          BLOCKED: "Aguardando etapa anterior",
-          SUBMITTED: "Aguardando aprovação",
-        } as Record<string, string>
-      )[task.status];
+      {
+        PAUSED: "Pausada",
+        NEEDS_CORRECTION: "Correção solicitada",
+        BLOCKED: "Aguardando etapa anterior",
+        SUBMITTED: "Aguardando aprovação",
+      } as Record<string, string>
+    )[task.status];
+
   const action = completed
     ? "Ver entrega"
     : isScheduled
@@ -781,104 +805,122 @@ function TaskCard({
               : "Continuar tarefa"
             : "Abrir tarefa";
 
+  const deadlineClass = isScheduled
+    ? "bg-slate-100 text-slate-600 border-slate-200/80 dark:bg-muted dark:text-slate-300 dark:border-border"
+    : deadlineInfo.status === "OVERDUE"
+      ? "bg-rose-50 text-rose-800 border-rose-200/70 dark:bg-rose-950/30 dark:text-rose-300 dark:border-rose-800/40"
+      : deadlineInfo.status === "TOLERANCE"
+        ? "bg-amber-50 text-amber-800 border-amber-200/60 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800/40"
+        : "bg-emerald-50/70 text-emerald-800 border-emerald-200/60 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800/40";
+
+  const scheduledTimeStr = task.scheduledDate
+    ? new Date(task.scheduledDate).toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: task.timezone,
+    })
+    : null;
+
   return (
     <Card
-      className={`employee-task-card shrink-0 h-fit gap-2.5 ring-0 rounded-xl border p-3.5 shadow-none flex flex-col transition-all ${isScheduled ? "grayscale contrast-90 opacity-85 border-slate-300 dark:border-slate-700 bg-slate-50/90 dark:bg-muted/20 select-none" : "border-[var(--border-subtle)] bg-[var(--surface)]"}`}
+      className={`employee-task-card shrink-0 h-fit ring-0 rounded-2xl border p-3.5 sm:p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex flex-col gap-2.5 transition-all ${isScheduled
+        ? "opacity-80 bg-slate-50/70 dark:bg-muted/15 border-slate-200 dark:border-border select-none"
+        : "bg-[var(--surface)] border-slate-200/80 dark:border-border/80 hover:border-slate-300 dark:hover:border-slate-700"
+        }`}
     >
-      {/* Badge de prazo/tolerância acima do título */}
-      <div className="flex items-center justify-between gap-1.5 flex-wrap">
+      {/* Top Meta Row (Status & Characteristics) */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          {task.taskType === "FORM" && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-muted px-2 py-0.5 rounded-md">
+              <FileText className="size-3 text-slate-400" />
+              <span>Perguntas</span>
+            </span>
+          )}
+          {task.priority === "CRITICAL" && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-700 bg-rose-50 border border-rose-200/70 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800 px-1.5 py-0.5 rounded-md">
+              <span className="size-1.5 rounded-full bg-rose-500 animate-pulse" />
+              Urgente
+            </span>
+          )}
+        </div>
+
         <Badge
           variant="outline"
-          className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${isScheduled ? "bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700" : deadlineInfo.badgeClass}`}
+          className={`text-[11px] font-medium px-2 py-0.5 rounded-full border shrink-0 ${deadlineClass}`}
         >
-          {isScheduled ? "Aguardando horário" : deadlineInfo.label}
+          {isScheduled ? "Agendada" : deadlineInfo.label}
         </Badge>
-        {task.priority === "CRITICAL" && (
-          <Badge
-            variant="outline"
-            className={`text-[10px] font-bold px-1.5 py-0.2 rounded-md ${isScheduled ? "bg-slate-200 text-slate-700 border-slate-300" : "bg-red-100 text-red-800 border-red-200"}`}
-          >
-            Urgente
-          </Badge>
-        )}
       </div>
 
+      {/* Task Title */}
       <button
         type="button"
         onClick={() => onOpenTask(task.id)}
-        className="text-left rounded-sm text-sm font-semibold leading-snug text-[var(--text-primary)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--brand-700)] cursor-pointer"
+        className="text-left font-semibold text-[14px] leading-snug text-slate-900 dark:text-slate-100 hover:text-[var(--brand-900)] dark:hover:text-emerald-400 transition-colors line-clamp-2 cursor-pointer"
       >
-        <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wide bg-[var(--canvas)] border border-[var(--border-subtle)] px-2 py-0.5 rounded-full mr-2 align-middle inline-block mb-1">
-          {task.origin === "PROCESS"
-            ? "Processo"
-            : task.taskType === "FORM"
-              ? "Tarefa com Perguntas"
-              : "Tarefa Avulsa"}
-        </span>
-        <br />
         {task.title}
       </button>
 
-      {showLocation && task.locationName && (
-        <p className="text-xs text-[var(--text-secondary)]">
-          {task.locationName}
-        </p>
+      {/* Location and/or Operational State */}
+      {((showLocation && task.locationName) || state) && (
+        <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+          {showLocation && task.locationName && (
+            <span className="inline-flex items-center gap-1 truncate">
+              <MapPin className="size-3 text-slate-400 shrink-0" />
+              <span className="truncate">{task.locationName}</span>
+            </span>
+          )}
+          {state && (
+            <span className="inline-flex items-center gap-1 font-medium text-amber-700 dark:text-amber-400">
+              <span className="size-1.5 rounded-full bg-amber-500 shrink-0" />
+              {state}
+            </span>
+          )}
+        </div>
       )}
 
-      {state && (
-        <p className="text-xs font-medium text-[var(--text-secondary)]">
-          {state}
-        </p>
-      )}
-
-      {/* Somente tempo decorrido da tarefa ou status de agendamento */}
+      {/* Clock / Elapsed Time or Scheduled Info */}
       {isScheduled ? (
-        <div className="min-w-0 pt-0.5">
-          <p className="text-[11px] text-[var(--text-secondary)]">
-            Liberação automática
-          </p>
-          <span className="text-xs font-semibold text-[var(--text-primary)]">
-            Disponível às{" "}
-            {new Date(task.scheduledDate!).toLocaleTimeString("pt-BR", {
-              hour: "2-digit",
-              minute: "2-digit",
-              timeZone: task.timezone,
-            })}
-          </span>
+        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+          <Clock className="size-3.5 text-slate-400 shrink-0" />
+          <span>Inicia às {scheduledTimeStr}</span>
         </div>
       ) : (
         <div
-          className="min-w-0 pt-0.5"
+          className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400"
           role="timer"
           aria-live="off"
           aria-label="Tempo decorrido"
         >
-          <p className="text-[11px] text-[var(--text-secondary)]">
+          <span className="inline-flex items-center gap-1.5">
+            <Clock
+              className={`size-3.5 shrink-0 ${clock.running
+                ? "text-emerald-600 dark:text-emerald-400 animate-pulse"
+                : "text-slate-400"
+                }`}
+            />
+            <span className="font-mono text-xs font-semibold tabular-nums text-slate-700 dark:text-slate-300">
+              {formatClock(clock.elapsed ?? 0)}
+            </span>
+          </span>
+          <span className="text-[11px] text-slate-400">
             {completed
-              ? "Tempo total"
+              ? "total"
               : clock.toleranceExceeded
-                ? "Tempo decorrido (encerrado na tolerância)"
-                : "Tempo decorrido"}
-          </p>
-          <span className="font-mono text-sm font-bold tabular-nums text-[var(--text-primary)]">
-            {formatClock(clock.elapsed ?? 0)}
+                ? "tolerância esgotada"
+                : "decorrido"}
           </span>
         </div>
       )}
 
-      <div className="mt-1">
+      {/* Bottom Action Footer */}
+      <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 mt-0.5">
         {isScheduled ? (
-          <div className="h-10 w-full flex items-center justify-between px-3 text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-muted/40 rounded-xl border border-slate-200 dark:border-border cursor-not-allowed select-none">
-            <span className="flex items-center gap-1.5">
-              <Clock className="size-3.5 text-slate-400" />
-              <span>Aguardando horário</span>
-            </span>
-            <span className="text-[11px] font-mono text-slate-500">
-              {new Date(task.scheduledDate!).toLocaleTimeString("pt-BR", {
-                hour: "2-digit",
-                minute: "2-digit",
-                timeZone: task.timezone,
-              })}
+          <div className="flex items-center justify-between text-xs text-slate-400 select-none py-0.5">
+            <span>Aguardando liberação</span>
+            <span className="font-mono text-[11px] font-medium text-slate-500">
+              {scheduledTimeStr}
             </span>
           </div>
         ) : task.isUnassigned &&
@@ -892,9 +934,9 @@ function TaskCard({
             type="button"
             variant="outline"
             onClick={() => onOpenTask(task.id)}
-            className="h-10 w-full justify-between px-3 text-xs font-semibold text-red-700 bg-red-50/50 border-red-200 hover:bg-red-100/60 cursor-pointer"
+            className="h-9 w-full justify-between px-3 text-xs font-semibold text-rose-700 bg-rose-50/70 border-rose-200 hover:bg-rose-100/80 rounded-xl cursor-pointer"
           >
-            <span>Bloqueada (Tolerância esgotada)</span>
+            <span>Bloqueada (Tolerância)</span>
             <ArrowRight className="size-3.5" aria-hidden="true" />
           </Button>
         ) : permission.allowed &&
@@ -909,7 +951,7 @@ function TaskCard({
               roundId={task.roundId}
               taskTitle={task.title}
               requiresApproval={task.requiresApproval}
-              className="flex-1 h-10! bg-[var(--brand-900)]! shadow-none!"
+              className="flex-1 h-9! text-xs! font-medium! bg-[var(--brand-900)]! hover:bg-[var(--brand-700)]! rounded-xl! shadow-none!"
             />
             <Button
               type="button"
@@ -917,21 +959,20 @@ function TaskCard({
               size="icon"
               onClick={() => onOpenTask(task.id)}
               aria-label="Ver detalhes da tarefa"
-              className="h-10 w-10 shrink-0 cursor-pointer"
+              className="h-9 w-9 rounded-xl shrink-0 cursor-pointer text-slate-600 hover:text-slate-900"
             >
               <ArrowRight className="size-3.5" aria-hidden="true" />
             </Button>
           </div>
         ) : (
-          <Button
+          <button
             type="button"
-            variant="ghost"
             onClick={() => onOpenTask(task.id)}
-            className="h-10 w-full justify-between px-0 text-xs font-semibold text-[var(--brand-900)] hover:bg-transparent hover:underline cursor-pointer"
+            className="w-full flex items-center justify-between text-xs font-medium text-[var(--brand-900)] dark:text-emerald-400 hover:text-[var(--brand-700)] transition-colors py-0.5 cursor-pointer group"
           >
-            {action}
-            <ArrowRight className="size-3.5" aria-hidden="true" />
-          </Button>
+            <span>{action}</span>
+            <ArrowRight className="size-3.5 text-slate-400 group-hover:translate-x-0.5 group-hover:text-[var(--brand-900)] dark:group-hover:text-emerald-400 transition-all" />
+          </button>
         )}
       </div>
     </Card>
@@ -955,220 +996,151 @@ function ProcessCard({
   const isScheduled = item.isScheduled;
   const badge = processBadge(boardState(item.tasks, now));
 
+  // Determine active/next pending step
+  const activeTask = item.tasks.find(
+    (t) => !["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(t.status),
+  );
+
+  const statusBadge = isCompleted ? (
+    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-800 bg-emerald-50/80 border border-emerald-200/60 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800/40 px-2 py-0.5 rounded-full">
+      <Check className="size-3 text-emerald-600" />
+      <span>Concluído</span>
+    </span>
+  ) : isOverdue ? (
+    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-800 bg-rose-50 border border-rose-200/70 dark:bg-rose-950/30 dark:text-rose-300 dark:border-rose-800/40 px-2 py-0.5 rounded-full">
+      <AlertTriangle className="size-3 text-rose-600" />
+      <span>Atrasado</span>
+    </span>
+  ) : attention || item.hasImpediment ? (
+    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-800 bg-amber-50 border border-amber-200/60 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800/40 px-2 py-0.5 rounded-full">
+      <AlertTriangle className="size-3 text-amber-600" />
+      <span>Atenção</span>
+    </span>
+  ) : isScheduled ? (
+    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 bg-slate-100 border border-slate-200/70 dark:bg-muted dark:text-slate-300 dark:border-border px-2 py-0.5 rounded-full">
+      <Clock className="size-3 text-slate-400" />
+      <span>Agendado</span>
+    </span>
+  ) : (
+    <span className="inline-flex items-center text-[11px] font-medium text-slate-600 bg-slate-50 border border-slate-200/60 dark:bg-muted/40 dark:text-slate-300 dark:border-border px-2 py-0.5 rounded-full">
+      {badge.label}
+    </span>
+  );
+
+  const scheduledTimeStr = item.scheduledDate
+    ? new Date(item.scheduledDate).toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: item.timezone,
+    })
+    : null;
+
   return (
     <Card
-      className={`employee-process-card shrink-0 h-fit gap-3 ring-0 rounded-xl border p-3.5 shadow-none flex flex-col transition-all ${
-        isScheduled
-          ? "grayscale contrast-90 opacity-85 border-slate-300 dark:border-slate-700 bg-slate-50/90 dark:bg-muted/20 select-none"
-          : isOverdue
-            ? "border-red-300 dark:border-red-800/70 bg-[var(--surface)] hover:border-red-400"
-            : attention
-              ? "border-amber-300 dark:border-amber-800/60 bg-[var(--surface)] hover:border-amber-400"
-              : "border-[var(--border-subtle)] bg-[var(--surface)] hover:border-[var(--brand-700)]/40"
-      }`}
+      className={`employee-process-card shrink-0 h-fit ring-0 rounded-2xl border p-3.5 sm:p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex flex-col gap-2.5 transition-all ${isScheduled
+        ? "opacity-80 bg-slate-50/70 dark:bg-muted/15 border-slate-200 dark:border-border select-none"
+        : isOverdue
+          ? "border-rose-200 dark:border-rose-900/40 bg-[var(--surface)] hover:border-rose-300"
+          : attention
+            ? "border-amber-200 dark:border-amber-900/40 bg-[var(--surface)] hover:border-amber-300"
+            : "border-slate-200/80 dark:border-border/80 bg-[var(--surface)] hover:border-slate-300 dark:hover:border-slate-700"
+        }`}
     >
-      {/* Top Badges */}
-      <div className="flex items-center justify-between gap-1.5 flex-wrap">
-        <div className="flex items-center gap-1.5">
-          <Badge
-            variant="outline"
-            className="text-[11px] font-semibold px-2 py-0.5 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800 flex items-center gap-1"
-          >
-            <Layers className="size-3" aria-hidden="true" />
+      {/* Top Meta Row (Process Badge + Status) */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-900 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-800/40 px-2 py-0.5 rounded-md">
+            <Layers className="size-3 text-emerald-700 dark:text-emerald-400" />
             <span>Processo</span>
-          </Badge>
+          </span>
 
-          {isCompleted ? (
-            <Badge
-              variant="outline"
-              className="text-[11px] font-semibold px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800 flex items-center gap-1"
-            >
-              <Check className="size-3" aria-hidden="true" />
-              <span>Concluído</span>
-            </Badge>
-          ) : attention ? (
-            <Badge
-              variant="outline"
-              className="text-[11px] font-semibold px-2 py-0.5 rounded-full border bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
-            >
-              Atenção
-            </Badge>
-          ) : isOverdue ? (
-            <Badge
-              variant="outline"
-              className="text-[11px] font-semibold px-2 py-0.5 rounded-full border bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800 flex items-center gap-1"
-            >
-              <AlertTriangle className="size-3" aria-hidden="true" />
-              <span>Atrasado</span>
-            </Badge>
-          ) : isScheduled ? (
-            <Badge
-              variant="outline"
-              className="text-[11px] font-semibold px-2 py-0.5 rounded-full border bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700 flex items-center gap-1"
-            >
-              <Clock className="size-3 text-slate-500" />
-              <span>Aguardando horário</span>
-            </Badge>
-          ) : item.hasImpediment ? (
-            <Badge
-              variant="outline"
-              className="text-[11px] font-semibold px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800 flex items-center gap-1"
-            >
-              <AlertTriangle className="size-3" />
-              <span>Com impedimento</span>
-            </Badge>
-          ) : (
-            <Badge
-              variant="outline"
-              className="text-[11px] font-semibold px-2 py-0.5 rounded-full border bg-slate-50 text-slate-700 border-slate-200 dark:bg-muted/40 dark:text-slate-300 dark:border-border"
-            >
-              {badge.label}
-            </Badge>
+          {item.priority === "CRITICAL" && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-700 bg-rose-50 border border-rose-200/70 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800 px-1.5 py-0.5 rounded-md">
+              <span className="size-1.5 rounded-full bg-rose-500 animate-pulse" />
+              Urgente
+            </span>
           )}
         </div>
 
-        {item.priority === "CRITICAL" && (
-          <Badge
-            variant="outline"
-            className={`text-[10px] font-bold px-1.5 py-0.2 rounded-md ${isScheduled ? "bg-slate-200 text-slate-700 border-slate-300" : "bg-red-100 text-red-800 border-red-200"}`}
-          >
-            Urgente
-          </Badge>
-        )}
+        {statusBadge}
       </div>
 
       {/* Process Title */}
       <button
         type="button"
         onClick={() => onOpenProcess(item.executionId)}
-        className="text-left rounded-sm text-sm font-semibold leading-snug text-[var(--text-primary)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--brand-700)] cursor-pointer"
+        className="text-left font-semibold text-[14px] leading-snug text-slate-900 dark:text-slate-100 hover:text-[var(--brand-900)] dark:hover:text-emerald-400 transition-colors line-clamp-2 cursor-pointer"
       >
         {item.processName}
       </button>
 
+      {/* Location */}
       {showLocation && item.locationName && (
-        <p className="text-xs text-[var(--text-secondary)] -mt-1">
-          {item.locationName}
-        </p>
+        <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+          <MapPin className="size-3 text-slate-400 shrink-0" />
+          <span className="truncate">{item.locationName}</span>
+        </div>
       )}
 
-      {/* Progress Section */}
-      <div className="flex flex-col gap-1.5 pt-1">
-        <div className="flex items-center justify-between text-xs text-[var(--text-secondary)]">
-          <span className="font-medium">{item.progressLabel}</span>
-          <span className="font-semibold tabular-nums text-[var(--text-primary)]">
+      {/* Clean Progress Section */}
+      <div className="flex flex-col gap-1.5 pt-0.5">
+        <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+          <span className="font-medium text-slate-700 dark:text-slate-300">
+            {item.completedTasks} de {item.totalTasks} etapas
+          </span>
+          <span className="font-mono text-xs font-semibold tabular-nums text-slate-600 dark:text-slate-400">
             {item.progressPercent}%
           </span>
         </div>
-        <div className="h-2 w-full bg-slate-100 dark:bg-muted/50 rounded-full overflow-hidden border border-slate-200/50 dark:border-border/50">
+
+        <div className="h-1.5 w-full bg-slate-100 dark:bg-muted rounded-full overflow-hidden">
           <div
-            className={`h-full transition-all duration-300 rounded-full ${
-              isCompleted
-                ? "bg-emerald-600 dark:bg-emerald-500"
-                : isOverdue
-                  ? "bg-red-500 dark:bg-red-600"
-                  : isScheduled
-                    ? "bg-slate-400 dark:bg-slate-500"
-                    : "bg-[var(--brand-900)] dark:bg-[var(--brand-700)]"
-            }`}
+            className={`h-full rounded-full transition-all duration-300 ${isCompleted
+              ? "bg-emerald-600"
+              : isOverdue
+                ? "bg-rose-500"
+                : isScheduled
+                  ? "bg-slate-400"
+                  : "bg-[var(--brand-900)] dark:bg-[var(--brand-700)]"
+              }`}
             style={{ width: `${item.progressPercent}%` }}
           />
         </div>
 
-        {/* Mini Step indicators preview */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pt-1 scrollbar-none">
-          {item.tasks.map((task, idx) => {
-            const isDone = task.status === "COMPLETED";
-            const taskTiming = deadline(task, now);
-            const isTaskOverdue =
-              !isDone &&
-              (columnFor(task, now) === "overdue" ||
-                taskTiming.phase === "EXCEEDED" ||
-                task.status === "NOT_COMPLETED" ||
-                (taskTiming.dueAt !== null && now > taskTiming.dueAt));
-            const isTaskBlocked =
-              !isDone &&
-              !isTaskOverdue &&
-              (dependencyBlocked(task) ||
-                task.status === "BLOCKED" ||
-                task.managementBlocked);
-            return (
-              <div
-                key={task.id}
-                title={`${idx + 1}. ${task.title} (${isDone ? "Concluída" : isTaskOverdue ? "Atrasada" : isTaskBlocked ? "Bloqueada" : "Pendente"})`}
-                className={`flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md border shrink-0 ${
-                  isDone
-                    ? "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300"
-                    : isTaskOverdue
-                      ? "bg-red-50 border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800 dark:text-red-300"
-                      : isTaskBlocked
-                        ? "bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-300"
-                        : isScheduled
-                          ? "bg-slate-100 border-slate-200 text-slate-500 dark:bg-muted/30 dark:border-border dark:text-slate-400"
-                          : "bg-slate-50 border-slate-200 text-slate-600 dark:bg-muted/30 dark:border-border dark:text-slate-400"
-                }`}
-              >
-                {isDone ? (
-                  <Check className="size-2.5 text-emerald-600 dark:text-emerald-400 stroke-[3]" />
-                ) : isTaskOverdue ? (
-                  <AlertTriangle className="size-2.5 text-red-600 dark:text-red-400" />
-                ) : (
-                  <span className="font-mono">{idx + 1}</span>
-                )}
-                <span className="max-w-[80px] truncate">{task.title}</span>
-              </div>
-            );
-          })}
-        </div>
+        {activeTask && !isCompleted && (
+          <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 truncate pt-0.5">
+            <span className="text-[11px] text-slate-400 shrink-0">Etapa atual:</span>
+            <span className="font-medium text-slate-700 dark:text-slate-300 truncate text-[11px]">
+              {activeTask.title}
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* Bottom Action */}
-      <div className="mt-1 border-t border-[var(--border-subtle)]/70 pt-2">
+      {/* Bottom Action Footer */}
+      <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 mt-0.5">
         {isScheduled ? (
-          <div className="h-9 w-full flex items-center justify-between px-3 text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-muted/40 rounded-xl border border-slate-200 dark:border-border cursor-not-allowed select-none">
-            <span className="flex items-center gap-1.5">
-              <Clock className="size-3.5 text-slate-400" />
-              <span>Aguardando horário</span>
+          <div className="flex items-center justify-between text-xs text-slate-400 select-none py-0.5">
+            <span>Aguardando liberação</span>
+            <span className="font-mono text-[11px] font-medium text-slate-500">
+              {scheduledTimeStr ? `Inicia às ${scheduledTimeStr}` : ""}
             </span>
-            {item.scheduledDate && (
-              <span className="text-[11px] font-mono text-slate-500">
-                Inicia às{" "}
-                {new Date(item.scheduledDate).toLocaleTimeString("pt-BR", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  timeZone: item.timezone,
-                })}
-              </span>
-            )}
           </div>
         ) : (
-          <Button
+          <button
             type="button"
-            variant="ghost"
             onClick={() => onOpenProcess(item.executionId)}
-            className={
-              attention
-                ? "h-9 w-full justify-between px-3 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-300 hover:bg-amber-100 cursor-pointer"
-                : isOverdue
-                  ? "h-9 w-full justify-between px-3 text-xs font-semibold text-red-700 bg-red-50/70 border border-red-200 hover:bg-red-100/80 cursor-pointer"
-                  : "h-9 w-full justify-between px-0 text-xs font-semibold text-[var(--brand-900)] hover:bg-transparent hover:underline cursor-pointer"
-            }
+            className="w-full flex items-center justify-between text-xs font-medium text-[var(--brand-900)] dark:text-emerald-400 hover:text-[var(--brand-700)] transition-colors py-0.5 cursor-pointer group"
           >
             <span>
-              {attention
-                ? "Atenção"
-                : isOverdue
-                  ? item.completedTasks > 0
-                    ? "Ver etapas atrasadas"
-                    : "Processo em atraso"
-                  : isCompleted
-                    ? "Ver processo concluído"
-                    : item.completedTasks > 0
-                      ? "Continuar processo"
-                      : "Abrir processo"}
+              {isCompleted
+                ? "Ver processo concluído"
+                : item.completedTasks > 0
+                  ? "Continuar processo"
+                  : "Abrir processo"}
             </span>
-            <ArrowRight className="size-3.5" aria-hidden="true" />
-          </Button>
+            <ArrowRight className="size-3.5 text-slate-400 group-hover:translate-x-0.5 group-hover:text-[var(--brand-900)] dark:group-hover:text-emerald-400 transition-all" />
+          </button>
         )}
       </div>
     </Card>

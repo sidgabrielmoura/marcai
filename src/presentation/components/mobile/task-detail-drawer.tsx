@@ -1147,8 +1147,9 @@ export function EmployeeTaskDetailDrawer({
         open={open}
         onOpenChange={onOpenChange}
         showSwipeHandle={true}
+        swipeDirection="down"
       >
-        <DrawerContent className="fixed inset-x-0 bottom-0 w-full h-[92dvh] max-h-[92dvh] sm:max-w-2xl! sm:mx-auto border-t border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--text-primary)] rounded-t-[24px] shadow-2xl flex flex-col focus:outline-none overflow-hidden p-0">
+        <DrawerContent className="fixed inset-x-0 bottom-0 top-auto w-full h-[92dvh] max-h-[92dvh] sm:max-w-2xl! sm:mx-auto border-t border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--text-primary)] rounded-t-[24px] shadow-2xl flex flex-col focus:outline-none overflow-hidden p-0">
           <DrawerHeader className="p-4 sm:p-5 border-b border-(--border-subtle) bg-[var(--surface)] shrink-0">
             <div className="flex items-center justify-between gap-3 mb-2">
               <div className="flex items-center gap-2 flex-wrap">
