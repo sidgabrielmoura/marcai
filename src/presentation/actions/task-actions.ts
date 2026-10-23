@@ -44,7 +44,7 @@ import {
   storeEvidence,
   removeEvidence,
 } from "@/infrastructure/storage/evidence-storage";
-import { revalidatePath } from "next/cache";
+import { revalidatePath } from "@/infrastructure/realtime/revalidate";
 export type ActionResult = {
   success?: boolean;
   error?: string;

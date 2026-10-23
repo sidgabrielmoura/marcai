@@ -1,5 +1,5 @@
 import { getAuthenticatedContext } from "@/application/security/auth-context";
-import { getAblyRest } from "@/infrastructure/realtime/ably";
+import { realtimeToken } from "@/infrastructure/realtime/sync";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -18,29 +18,13 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
 
-    const client = getAblyRest();
-    if (!client) {
+    const tokenRequest = await realtimeToken(context);
+    if (!tokenRequest) {
       return NextResponse.json(
         { error: "Serviço de tempo real não configurado." },
         { status: 503 }
       );
     }
-
-    // Regra de Menor Privilégio e Isolamento de Tenants:
-    // O usuário só pode se inscrever (subscribe) em seu canal individual e no canal de sua organização ativa
-    const userChannel = `user:${context.userId}:notifications`;
-    const orgChannel = `org:${context.organizationId}:notifications`;
-
-    const capability: Record<string, string[]> = {
-      [userChannel]: ["subscribe"],
-      [orgChannel]: ["subscribe"],
-    };
-
-    const tokenRequest = await client.auth.createTokenRequest({
-      clientId: context.userId,
-      capability: JSON.stringify(capability),
-      ttl: 60 * 60 * 1000, // 1 hora de validade
-    });
 
     return NextResponse.json(tokenRequest, {
       headers: {

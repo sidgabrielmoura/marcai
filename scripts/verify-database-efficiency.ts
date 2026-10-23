@@ -184,6 +184,17 @@ async function main() {
     assert.ok(second.nextAttemptAt!.getTime()>Date.now()+100000);
     await clearWorkFailure(key); assert.equal((await retryStates([key])).size,0);
   });
+  await check("job cadence excludes immediate retries after success and permits the next scheduled run",async()=>{
+    const name='cadence:'+randomUUID(); stateNames.push(name); let calls=0;
+    const work=async()=>({calls:++calls});
+    assert.equal((await runScheduledJob(name,60000,work,{minIntervalMs:60000})).skipped,false);
+    assert.equal((await runScheduledJob(name,60000,work,{minIntervalMs:60000})).skipped,true);
+    assert.equal(calls,1);
+    await prisma.scheduledJobState.update({where:{name},data:{lastStartedAt:new Date(0)}});
+    assert.equal((await runScheduledJob(name,60000,work,{minIntervalMs:60000})).skipped,false);
+    assert.equal(calls,2);
+    await assert.rejects(()=>runScheduledJob(name,60000,work,{minIntervalMs:-1}));
+  });
   await check("all retention entry points share a lease and reject unauthorized calls before database work",async()=>{
     const start=statements.length;
     for(const route of [fullRetention,historyRetention,trashRetention]) assert.equal((await route(new Request('http://localhost/api/jobs/retention'))).status,401);
@@ -235,6 +246,11 @@ async function main() {
     const uncachedStart=statements.length; const uncached=await listTasks(pageFixture.context,first.nextCursor,'','all',now); const uncachedQueries=statements.length-uncachedStart;
     assert.equal(second.items.length,5); assert.equal(new Set([...first.items,...second.items].map(t=>t.id)).size,105); assert.deepEqual(second,uncached); assert.ok(cachedQueries<uncachedQueries);
     metrics.secondBoardPageQueries={cached:cachedQueries,uncached:uncachedQueries};
+    const mobileStart=statements.length;
+    const mobile=await listTasks(pageFixture.context,first.nextCursor,'','all',now,undefined,{includeCounts:false});
+    metrics.mobileSecondBoardPageQueries=statements.length-mobileStart;
+    assert.deepEqual(mobile.items,uncached.items);assert.equal(mobile.counts,undefined);
+    assert.ok(Number(metrics.mobileSecondBoardPageQueries)<uncachedQueries);
   });
   await check("routine latest index reduces page access; future generation avoids transaction",async()=>{
     const owner=await fixture('OWNER');

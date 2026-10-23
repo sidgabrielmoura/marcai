@@ -2,15 +2,19 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "@/infrastructure/database/prisma";
 import type { Prisma } from "@prisma/client";
 
-export async function runScheduledJob<T extends object>(name: string, leaseMs: number, work: () => Promise<T>) {
+export async function runScheduledJob<T extends object>(name: string, leaseMs: number, work: () => Promise<T>, options: { minIntervalMs?: number } = {}) {
+  const interval = options.minIntervalMs ?? 0;
+  if (!Number.isInteger(interval) || interval < 0) throw new Error("Invalid job minimum interval");
   const token = randomUUID();
   const claimed = await prisma.$queryRaw<Array<{ name: string }>>`
     INSERT INTO scheduled_job_states(name,"leaseToken","leaseUntil","lastStartedAt","updatedAt")
     VALUES(${name},${token},now()+${leaseMs}*interval '1 millisecond',now(),now())
     ON CONFLICT(name) DO UPDATE SET "leaseToken"=excluded."leaseToken","leaseUntil"=excluded."leaseUntil","lastStartedAt"=now(),"updatedAt"=now()
-    WHERE scheduled_job_states."leaseUntil" IS NULL OR scheduled_job_states."leaseUntil"<now()
+    WHERE (scheduled_job_states."leaseUntil" IS NULL OR scheduled_job_states."leaseUntil"<now())
+      AND (${interval}=0 OR scheduled_job_states."lastStartedAt" IS NULL
+        OR scheduled_job_states."lastStartedAt"<=now()-${interval}*interval '1 millisecond')
     RETURNING name`;
-  if (!claimed.length) return { skipped: true as const, reason: "ALREADY_RUNNING" };
+  if (!claimed.length) return { skipped: true as const, reason: interval ? "RUNNING_OR_THROTTLED" : "ALREADY_RUNNING" };
   try {
     const result = await work();
     const successful = !("failures" in result && Array.isArray(result.failures) && result.failures.length);

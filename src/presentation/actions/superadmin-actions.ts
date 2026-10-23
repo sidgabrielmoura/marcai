@@ -15,7 +15,7 @@ import {
   createDefaultTrialSubscription,
   assertCanAddMember,
 } from "@/domain/rules/subscription-limits";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateOrganization } from "@/infrastructure/realtime/revalidate";
 import { reusableTemplateDraftSchema } from "@/domain/rules/reusable-template-definition";
 
 export type ActionResult = {
@@ -251,7 +251,8 @@ export async function updateOrganizationAction(input: {
     });
 
     if (result.success) {
-      revalidatePath("/superadmin");
+      revalidateOrganization(organizationId);
+    revalidatePath("/superadmin");
     }
     return result;
   } catch (err: any) {
@@ -305,6 +306,7 @@ export async function deleteOrganizationAction(input: {
       });
     });
 
+    revalidateOrganization(organizationId);
     revalidatePath("/superadmin");
     return { success: true };
   } catch (err: any) {
@@ -340,7 +342,8 @@ export async function toggleOrganizationStatusAction(
     });
     return { success: true };
   });
-  revalidatePath("/superadmin");
+  revalidateOrganization(targetOrgId);
+    revalidatePath("/superadmin");
   return result;
 }
 
@@ -802,6 +805,7 @@ export async function addOrganizationMemberAction(input: {
       });
     });
 
+    revalidateOrganization(organizationId);
     revalidatePath("/superadmin");
     return { success: true };
   } catch (err: any) {
@@ -876,6 +880,7 @@ export async function removeOrganizationMemberAction(input: {
       });
     });
 
+    revalidateOrganization(organizationId);
     revalidatePath("/superadmin");
     return { success: true };
   } catch (err: any) {
@@ -957,6 +962,7 @@ export async function updateOrganizationMemberRoleAction(input: {
       });
     });
 
+    revalidateOrganization(organizationId);
     revalidatePath("/superadmin");
     return { success: true };
   } catch (err: any) {
@@ -1024,7 +1030,8 @@ export async function saveManualSubscriptionAction(
     });
     return { success: true };
   });
-  revalidatePath("/superadmin");
+  revalidateOrganization(organizationId);
+    revalidatePath("/superadmin");
   return result;
 }
 

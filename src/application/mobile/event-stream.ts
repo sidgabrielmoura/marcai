@@ -50,7 +50,9 @@ export function eventStream(options: {
             send(mobile ? "sync" : "SYNC_REQUIRED", mobile ? result : { type: "SYNC_REQUIRED", payload: { cursor, scopeVersion, requiresSnapshot: result.requiresSnapshot } });
             idleCycles = 0;
           } else {
-            send("checkpoint", { cursor, scopeVersion });
+            // Keep the legacy native reader compatible: older app versions
+            // parsed every data frame as a replay response, including checkpoints.
+            send("checkpoint", mobile ? result : { cursor, scopeVersion });
             idleCycles++;
           }
           const delay = idleCycles === 0 ? 2_000 : idleCycles === 1 ? 5_000 : 10_000;

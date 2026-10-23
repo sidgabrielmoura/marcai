@@ -579,6 +579,7 @@ export async function listTasks(
   type = "all",
   now = new Date(),
   boardCache?: { value?: Awaited<ReturnType<typeof boardCounts>> },
+  options: { includeCounts?: boolean } = {},
 ) {
   const cohort: Prisma.TaskWhereInput = {
     AND: [
@@ -672,7 +673,11 @@ export async function listTasks(
     c,
     now,
   );
-  const board = boardCache?.value ?? await boardCounts(c, cohort, now);
+  const includeCounts = options.includeCounts !== false;
+  // Later mobile pages need summaries only for the executions on that page.
+  // Global totals remain attached to page one in the infinite-query cache.
+  const summaryIds = includeCounts ? undefined : [...new Set(page.flatMap(task => task.executionId ? [task.executionId] : []))];
+  const board = boardCache?.value ?? await boardCounts(c, cohort, now, summaryIds);
   if (boardCache) boardCache.value = board;
   return {
     items: projected.map((t) =>
@@ -683,7 +688,7 @@ export async function listTasks(
           }
         : t,
     ),
-    counts: board.counts,
+    counts: includeCounts ? board.counts : undefined,
     nextCursor: rows.length > 100 ? encodeCursor(page.at(-1)!) : null,
   };
 }
@@ -789,7 +794,9 @@ async function boardCounts(
   c: AuthenticatedContext,
   where: Prisma.TaskWhereInput,
   now: Date,
+  executionIds?: string[],
 ) {
+  if (executionIds && executionIds.length === 0) return { counts: { today: 0, overdue: 0, unassigned: 0, completed: 0, upcoming: 0 }, summaries: {} as Record<string, ReturnType<typeof boardState>> };
   const select = {
     id: true,
     origin: true,
@@ -823,7 +830,7 @@ async function boardCounts(
     assignments: { where: { removedAt: null }, select: { type: true } },
   } as const;
   let rows = await prisma.task.findMany({
-    where,
+    where: executionIds ? { AND: [where, { executionId: { in: executionIds } }] } : where,
     select,
     orderBy: { id: "asc" },
   });

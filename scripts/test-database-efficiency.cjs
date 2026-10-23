@@ -10,8 +10,12 @@ const env = Object.fromEntries(safeKeys.filter(key=>process.env[key]).map(key=>[
 Object.assign(env, { DATABASE_URL: database, DIRECT_URL: database, AUTH_SECRET: 'isolated-tarefai-cost-audit-secret-32-characters', CRON_SECRET: 'isolated-cron-secret', NEXT_PUBLIC_APP_URL: 'http://127.0.0.1:31175', NEXT_TELEMETRY_DISABLED: '1', NODE_OPTIONS: '--max-old-space-size=4096', DATABASE_EFFICIENCY_ISOLATED: '1' });
 fs.mkdirSync(workspace, { recursive: true });
 if (fs.readdirSync(workspace).some(name=>name==='.env'||name.startsWith('.env.'))) throw new Error('The isolated workspace must not contain .env files.');
-for (const directory of ['src','scripts','prisma','public']) fs.cpSync(path.join(root,directory),path.join(workspace,directory),{recursive:true});
-for (const file of ['package.json','tsconfig.json','next.config.ts','postcss.config.mjs','prisma.config.ts']) fs.copyFileSync(path.join(root,file),path.join(workspace,file));
+const changedFile = (source, destination) => !fs.statSync(source).isFile() || !fs.existsSync(destination) || !fs.readFileSync(source).equals(fs.readFileSync(destination));
+for (const directory of ['src','scripts','prisma','public']) fs.cpSync(path.join(root,directory),path.join(workspace,directory),{recursive:true,filter:changedFile});
+for (const file of ['package.json','tsconfig.json','next.config.ts','postcss.config.mjs','prisma.config.ts']) {
+  const source=path.join(root,file),destination=path.join(workspace,file);
+  if(changedFile(source,destination))fs.copyFileSync(source,destination);
+}
 if (!fs.existsSync(path.join(workspace,'node_modules'))) fs.symlinkSync(path.join(root,'node_modules'),path.join(workspace,'node_modules'),'junction');
 const report = { startedAt: new Date().toISOString(), database: 'disposable PostgreSQL 18 on 127.0.0.1:56433', externalCredentialsAvailable: false, checks: [] };
 function run(label, args, options={}) {
@@ -47,7 +51,7 @@ async function main() {
   run('generate',[cli,'generate']);
   run('types',[path.join(root,'node_modules/typescript/bin/tsc'),'--noEmit','--incremental','--tsBuildInfoFile','../isolated.tsbuildinfo']);
   if (process.argv.includes('--build')) {
-    run('build',[path.join(root,'node_modules/next/dist/bin/next'),'build'],{timeout:600000});
+    run('build',[path.join(root,'node_modules/next/dist/bin/next'),'build',...(process.argv.includes('--webpack')?['--webpack']:[])],{timeout:1200000});
     return;
   }
   for (const script of ['verify-domain-rules.ts','verify-operational-rules.ts','verify-workflow-regressions.ts','verify-task-history.ts','verify-database-efficiency.ts']) {

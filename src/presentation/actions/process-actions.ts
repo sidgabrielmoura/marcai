@@ -26,7 +26,7 @@ import { readable } from "@/application/mobile/data";
 import { taskScope } from "@/application/security/operational-scope";
 import { evaluateTaskDependencies } from "@/domain/rules/dependency-rules";
 import { resolveExecutionStatus } from "@/domain/rules/execution-state";
-import { revalidatePath } from "next/cache";
+import { revalidatePath } from "@/infrastructure/realtime/revalidate";
 export type ActionResult = {
   success?: boolean;
   error?: string;

@@ -9,9 +9,11 @@ import { notifyManagers } from "@/application/tasks/notify-managers";
 import { dispatchNotificationAsync } from "@/infrastructure/notifications/notification-service";
 import { synchronizeExecution } from "@/application/tasks/synchronize-execution";
 import { sendScheduledReportEmail } from "@/infrastructure/email";
+import { publishSyncRequired } from "@/infrastructure/realtime/sync";
 // Called by a protected scheduler, never as a side effect of viewing a page.
 export async function operationalTick(now = new Date()) {
     const stopAt = Date.now() + 45_000;
+    const changedOrganizations = new Set<string>();
     let generated = 0, releasedCount = 0, alerts = 0, escalationsCount = 0, reportsCount = 0, purgedOrgsCount = 0;
     const failures: {
         kind: string;
@@ -33,8 +35,10 @@ export async function operationalTick(now = new Date()) {
             if (!scheduledAt || scheduledAt.getTime()>now.getTime()+routine.generationLeadTime*60000) continue;
             try {
                 const result = await generateRoutineExecution(routine.id, { userId: "", userName: "Agendador", userEmail: null, memberId: "", role: "OWNER", organizationId: routine.process.organizationId, organizationName: routine.process.organization.name, organizationSlug: routine.process.organization.slug }, now, true);
-                if (result.success && result.generated)
+                if (result.success && result.generated) {
+                    changedOrganizations.add(routine.process.organizationId);
                     generated++;
+                }
                 if (result.error) { failures.push({kind:'routine',id:routine.id}); await recordWorkFailure(key); }
                 else if (retries.has(key)) await clearWorkFailure(key);
             }
@@ -92,8 +96,10 @@ export async function operationalTick(now = new Date()) {
                     await synchronizeExecution(tx, execution.organizationId, execution.id, now);
                     return true;
                 });
-                if (released)
+                if (released) {
+                    changedOrganizations.add(execution.organizationId);
                     releasedCount++;
+                }
             }
             catch {
                 failures.push({ kind: "execution", id: execution.id });
@@ -132,6 +138,7 @@ export async function operationalTick(now = new Date()) {
                 await prisma.$transaction(async (tx) => {
                     await synchronizeExecution(tx, item.organizationId, item.executionId, now);
                 });
+                changedOrganizations.add(item.organizationId);
             } catch {
                 failures.push({ kind: "synchronize_execution", id: item.executionId });
             }
@@ -246,6 +253,7 @@ export async function operationalTick(now = new Date()) {
                     return count;
                 });
                 alerts += newAlerts;
+                if (newAlerts) changedOrganizations.add(candidate.organizationId);
                 if (taskRetries.has('sla:'+candidate.id)) await clearWorkFailure('sla:'+candidate.id);
             }
             catch {
@@ -359,6 +367,7 @@ export async function operationalTick(now = new Date()) {
 
                     alerts++;
                 });
+                changedOrganizations.add(candidate.organizationId);
                 if (warningRetries.has('warning:'+candidate.id)) await clearWorkFailure('warning:'+candidate.id);
             } catch {
                 failures.push({ kind: "task_expiring", id: candidate.id });
@@ -417,6 +426,7 @@ export async function operationalTick(now = new Date()) {
                     await notifyManagers(tx, task, "Tarefa sem responsável", `A tarefa “${task.title}” aguarda atribuição na unidade.`);
                     alerts++;
                 });
+                changedOrganizations.add(task.organizationId);
                 if (assignmentRetries.has('unassigned:'+task.id)) await clearWorkFailure('unassigned:'+task.id);
             } catch {
                 failures.push({ kind: "unassigned", id: task.id });
@@ -532,6 +542,7 @@ export async function operationalTick(now = new Date()) {
 
                     escalationsCount++;
                 });
+                changedOrganizations.add(task.organizationId);
                 await clearWorkFailure('approval:'+step.id);
             } catch {
                 failures.push({ kind: "approval_escalation", id: step.id });
@@ -629,6 +640,9 @@ export async function operationalTick(now = new Date()) {
     // O expurgo de retenção e lixeira agora é gerenciado por rotas dedicadas de cron-job:
     // /api/jobs/retention/history (de 6 em 6 meses) e /api/jobs/retention/trash (mensal).
 
+    // All interactive transactions have committed before subscribers are told
+    // to recover. No-op ticks publish nothing and never create refresh loops.
+    await Promise.allSettled([...changedOrganizations].map(organizationId => publishSyncRequired(organizationId)));
     return {
         generated,
         released: releasedCount,

@@ -3,7 +3,7 @@ import {projectNotice} from "@/application/mobile/notifications";
 
 import { getAuthenticatedContext } from "@/application/security/auth-context";
 import { prisma } from "@/infrastructure/database/prisma";
-import { revalidatePath } from "next/cache";
+import { revalidatePath } from "@/infrastructure/realtime/revalidate";
 import { redirect } from "next/navigation";
 import { getSubscriptionNotice, type SubscriptionNotice } from "@/application/superadmin/manual-subscription";
 

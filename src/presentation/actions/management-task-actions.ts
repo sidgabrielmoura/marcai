@@ -46,7 +46,7 @@ import {
   EvidenceType,
   Role,
 } from "@/domain/types";
-import { revalidatePath } from "next/cache";
+import { revalidatePath } from "@/infrastructure/realtime/revalidate";
 
 export type ActionResult = {
   success?: boolean;

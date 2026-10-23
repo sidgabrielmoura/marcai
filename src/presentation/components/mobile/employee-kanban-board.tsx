@@ -991,10 +991,13 @@ function ProcessCard({
   onOpenProcess: (executionId: string) => void;
 }) {
   const isCompleted = item.allCompleted;
-  const isOverdue = item.anyOverdue;
-  const attention = item.attention;
+  const summary = item.tasks.find(task => task.processSummary)?.processSummary ?? boardState(item.tasks, now);
+  // An independent late step may require attention while the process still
+  // has work available. Its card must agree with the board's global summary.
+  const isOverdue = summary.column === "overdue";
+  const attention = summary.attention;
   const isScheduled = item.isScheduled;
-  const badge = processBadge(boardState(item.tasks, now));
+  const badge = processBadge(summary);
 
   // Determine active/next pending step
   const activeTask = item.tasks.find(

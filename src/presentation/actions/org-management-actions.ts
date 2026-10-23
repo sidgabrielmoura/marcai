@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/infrastructure/database/prisma";
 import { getAuthenticatedContext } from "@/application/security/auth-context";
 import { Role, MemberStatus, LocationAccessType } from "@prisma/client";
-import { revalidatePath } from "next/cache";
+import { revalidatePath } from "@/infrastructure/realtime/revalidate";
 import { updateMemberAccess } from "@/application/security/update-member-access";
 import { canManageMember } from "@/domain/rules/member-access";
 import { executeRetentionPurge } from "@/application/jobs/retention-purge";

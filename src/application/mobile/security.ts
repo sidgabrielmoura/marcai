@@ -10,6 +10,7 @@ import { securityKey,hasSecondFactorProof,secondFactorProof,openTotp,sealTotp,ve
 import { MobileError,fail } from './http';
 import type { SessionData } from '@/infrastructure/security/session';
 import type { Prisma } from '@prisma/client';
+import { publishSyncRequired, mobileMutationKinds } from '@/infrastructure/realtime/sync';
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
 const accessKey=()=>createHash('sha256').update('marcai:mobile:'+Buffer.from(securityKey()).toString('hex')).digest();
 export const uuid=z.string().uuid();
@@ -166,7 +167,12 @@ export async function withAuth<T>(req:Request,work:(auth:Awaited<ReturnType<type
  // Reuse its projection only within this invocation, never across requests/ticks.
  const context=contextFromMember(auth.member);
  if(employee&&context.role!=='EMPLOYEE')fail(403,'ROLE_UNSUPPORTED','Este aplicativo é exclusivo para funcionários. Use a gestão no navegador.');
- return work(auth,context);
+ const result=await work(auth,context);
+ // Authenticated writes have finished (including interactive transactions).
+ // GET/replay/token reads must never publish: that would create refresh loops.
+ const kinds=mobileMutationKinds(req);
+ if(kinds.length&&(!(result instanceof Response)||result.ok))await publishSyncRequired(context.organizationId,kinds,kinds.every(kind=>kind==='NOTIFICATIONS_CHANGED')?context.userId:undefined);
+ return result;
  });
 }
 export async function validInstallationSession(id:string){

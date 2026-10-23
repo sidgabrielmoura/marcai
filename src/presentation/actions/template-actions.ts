@@ -1,5 +1,5 @@
 "use server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath } from "@/infrastructure/realtime/revalidate";
 import { getAuthenticatedContext } from "@/application/security/auth-context";
 import {
   changeTemplateArchive, duplicateReusableTemplate, listTemplateLibrary, processTemplateSourceOptions,

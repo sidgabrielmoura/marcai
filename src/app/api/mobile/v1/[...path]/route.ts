@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { recordTaskView } from "@/application/mobile/task-views";
 import { eventStream } from "@/application/mobile/event-stream";
+import { realtimeToken } from "@/infrastructure/realtime/sync";
 import { resolveDestination } from "@/application/mobile/destinations";
 import { prisma } from "@/infrastructure/database/prisma";
 import { json, failure, fail, MobileError } from "@/application/mobile/http";
@@ -127,6 +128,16 @@ async function handle(req: Request, ctx: Context) {
       async (auth, c) => {
         if (method === "GET" && route === "session")
           return json(identity(auth.member));
+        if (method === "GET" && route === "realtime/token") {
+          const token = await realtimeToken(c);
+          if (!token) fail(503, "REALTIME_UNAVAILABLE", "Tempo real temporariamente indisponível.");
+          return json(token);
+        }
+        if (method === "GET" && route === "notifications/unread-count") {
+          return json({ unreadCount: await prisma.notification.count({ where: {
+            organizationId: c.organizationId, userId: c.userId, readAt: null,
+          } }) });
+        }
         if (method === "POST" && route === "logout") {
           await logout(auth.session);
           return json({ success: true });
@@ -184,6 +195,9 @@ async function handle(req: Request, ctx: Context) {
               z
                 .enum(["all", "standard", "form"])
                 .parse(url.searchParams.get("type") ?? "all"),
+              new Date(),
+              undefined,
+              { includeCounts: !url.searchParams.get("cursor") },
             ),
           );
         if (method === "GET" && route === "search")

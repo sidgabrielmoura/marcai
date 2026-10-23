@@ -50,6 +50,7 @@ export function useRealtimeEvents(onEvent?: RealtimeEventHandler, enabled = true
     let cursor: string | null = null;
     let scopeVersion: string | null = null;
     let sseFailures = 0;
+    let sseOpenedAt: number | null = null;
     let unauthorized = false;
     const seen = new Set<string>();
 
@@ -118,7 +119,8 @@ export function useRealtimeEvents(onEvent?: RealtimeEventHandler, enabled = true
           if (clientId) {
             const organizationChannels = Object.keys(capability).filter(name => name.startsWith("org:") && name.endsWith(":notifications"));
             const organizationIds = new Set(organizationChannels.map(name => name.slice(4, -14)));
-            for (const name of [`user:${clientId}:notifications`, ...organizationChannels]) {
+            const syncChannels = Object.keys(capability).filter(name => name.startsWith("org:") && name.endsWith(":sync"));
+            for (const name of [`user:${clientId}:notifications`, ...organizationChannels, ...syncChannels]) {
               if (subscribed.has(name)) continue;
               subscribed.add(name);
               void client.channels.get(name).subscribe(message => {
@@ -159,10 +161,14 @@ export function useRealtimeEvents(onEvent?: RealtimeEventHandler, enabled = true
         const params = new URLSearchParams();
         if (cursor) params.set("cursor", cursor);
         if (scopeVersion) params.set("scopeVersion", scopeVersion);
-        sseSource = new EventSource(`/api/events?${params}`);
-        sseSource.onopen = () => { sseFailures = 0; };
+        sseOpenedAt = null;
+        const source = new EventSource(`/api/events?${params}`);
+        sseSource = source;
+        // Opening HTTP is not recovery. Short, repeatedly failing streams must
+        // retain their backoff and eventually stop until online/visibility reset.
+        source.onopen = () => { if (sseSource === source) sseOpenedAt = Date.now(); };
         sseSource.addEventListener("checkpoint", ((e: MessageEvent) => {
-          try { checkpoint(JSON.parse(e.data)); } catch { /* Invalid checkpoint. */ }
+          try { checkpoint(JSON.parse(e.data)); if (sseOpenedAt !== null && Date.now() - sseOpenedAt >= 10_000) sseFailures = 0; } catch { /* Invalid checkpoint. */ }
         }) as EventListener);
         sseSource.addEventListener("revoked", () => {
           unauthorized = true;
@@ -197,6 +203,8 @@ export function useRealtimeEvents(onEvent?: RealtimeEventHandler, enabled = true
         }
 
         sseSource.onerror = () => {
+          if (sseSource !== source) return;
+          if (sseOpenedAt !== null && Date.now() - sseOpenedAt >= 20_000) sseFailures = 0;
           if (sseSource) {
             sseSource.close();
             sseSource = null;
