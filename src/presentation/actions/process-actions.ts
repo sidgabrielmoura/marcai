@@ -124,6 +124,45 @@ export async function toggleProcessStatusAction(
       where: { id: process.id, organizationId: context.organizationId },
       data: { status: target },
     });
+    if (target === "ARCHIVED") {
+      const now = new Date();
+      await tx.routine.updateMany({
+        where: {
+          processId: process.id,
+          process: { organizationId: context.organizationId },
+          status: "ACTIVE",
+        },
+        data: { status: "PAUSED" },
+      });
+      await tx.processExecution.updateMany({
+        where: {
+          processId: process.id,
+          organizationId: context.organizationId,
+          status: { notIn: ["COMPLETED", "CANCELLED"] },
+        },
+        data: {
+          status: "CANCELLED",
+          cancelledAt: now,
+          cancellationReason: "Processo arquivado pela gestão",
+        },
+      });
+      await tx.task.updateMany({
+        where: {
+          organizationId: context.organizationId,
+          OR: [
+            { processId: process.id },
+            { execution: { processId: process.id } },
+          ],
+          status: { notIn: ["COMPLETED", "CANCELLED"] },
+          deletedAt: null,
+        },
+        data: {
+          status: "CANCELLED",
+          cancelledAt: now,
+          cancellationReason: "Processo arquivado pela gestão",
+        },
+      });
+    }
     await tx.activityLog.create({
       data: {
         organizationId: context.organizationId,
@@ -488,7 +527,11 @@ export async function getEmployeeProcessExecutionAction(
     try {
       const dto = await employeeExecution(context, executionId);
       const record = await prisma.processExecution.findFirstOrThrow({
-        where: { id: executionId, organizationId: context.organizationId },
+        where: {
+          id: executionId,
+          organizationId: context.organizationId,
+          process: { status: { not: "ARCHIVED" } },
+        },
         include: {
           process: { select: { description: true } },
           location: { select: { name: true } },
@@ -535,6 +578,7 @@ export async function getEmployeeProcessExecutionAction(
     where: {
       id: executionId,
       organizationId: context.organizationId,
+      process: { status: { not: "ARCHIVED" } },
       tasks: { some: taskScope(context) },
     },
     include: {

@@ -51,7 +51,7 @@ export async function operationalTick(now = new Date()) {
     }
     let executionCursor = "";
     while (Date.now() < stopAt) {
-        const due = await prisma.processExecution.findMany({ where: { id: { gt: executionCursor }, status: "SCHEDULED", availableAt: { lte: now }, organization: { status: "ACTIVE" } }, select: { id: true, organizationId: true, availableAt: true }, take: 500, orderBy: { id: "asc" } });
+        const due = await prisma.processExecution.findMany({ where: { id: { gt: executionCursor }, status: "SCHEDULED", availableAt: { lte: now }, organization: { status: "ACTIVE" }, process: { status: "ACTIVE" } }, select: { id: true, organizationId: true, availableAt: true }, take: 500, orderBy: { id: "asc" } });
         if (!due.length)
             break;
         for (const execution of due) {

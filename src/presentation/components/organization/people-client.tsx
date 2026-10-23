@@ -166,6 +166,7 @@ export function PeopleClient({
   const [editMember, setEditMember] = useState<MemberItem | null>(null);
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
+  const [editEmployeeCode, setEditEmployeeCode] = useState("");
   const [editPassword, setEditPassword] = useState("");
   const [editRole, setEditRole] = useState("EMPLOYEE");
   const [editPin, setEditPin] = useState("");
@@ -196,6 +197,7 @@ export function PeopleClient({
     setEditMember(member);
     setEditName(member.name);
     setEditEmail(member.email || "");
+    setEditEmployeeCode(member.employeeCode || "");
     setEditPassword("");
     setEditRole(member.role);
     setEditPin("");
@@ -254,6 +256,17 @@ export function PeopleClient({
     }
     if (!formData.get("teamId") && selectedTeamId) {
       formData.set("teamId", selectedTeamId);
+    }
+    const pin = (formData.get("pin") as string)?.trim();
+    const employeeCode = (formData.get("employeeCode") as string)?.trim();
+    if (pin && !employeeCode) {
+      toast.add({
+        title: "Matrícula obrigatória",
+        description: "Informe a matrícula do colaborador para permitir o acesso por PIN.",
+        type: "error",
+      });
+      setLoading(false);
+      return;
     }
     try {
       const res = await inviteMemberAction(formData);
@@ -348,6 +361,7 @@ export function PeopleClient({
         email: editEmail ? editEmail.trim() : null,
         password: isSensitive && editPassword.trim() ? editPassword.trim() : null,
         role: isSensitive ? (editRole as any) : undefined,
+        employeeCode: isSensitive ? (editEmployeeCode.trim() || null) : undefined,
         pin: isSensitive && editPin.trim() ? editPin.trim() : null,
         locationId: isSensitive ? (editLocationId || null) : undefined,
         teamId: editTeamId || null,
@@ -808,18 +822,40 @@ export function PeopleClient({
                 />
               </Field>
 
-              <Field>
-                <FieldLabel className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]">
-                  E-mail corporativo
-                </FieldLabel>
-                <Input
-                  type="email"
-                  value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                  placeholder="email@empresa.com"
-                  className="bg-[var(--canvas)] border-[var(--border-subtle)] text-[length:var(--type-label)] h-10"
-                />
-              </Field>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field>
+                  <FieldLabel className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]">
+                    E-mail corporativo
+                  </FieldLabel>
+                  <Input
+                    type="email"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    placeholder="email@empresa.com"
+                    className="bg-[var(--canvas)] border-[var(--border-subtle)] text-[length:var(--type-label)] h-10"
+                  />
+                </Field>
+
+                <Field>
+                  <FieldLabel className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]">
+                    Matrícula / Código
+                  </FieldLabel>
+                  <Input
+                    type="text"
+                    value={editEmployeeCode}
+                    disabled={!canEditSensitiveGlobal}
+                    onChange={(e) => setEditEmployeeCode(e.target.value)}
+                    placeholder="Ex: 1001"
+                    maxLength={50}
+                    className="bg-[var(--canvas)] border-[var(--border-subtle)] text-[length:var(--type-label)] h-10 font-mono disabled:opacity-60"
+                  />
+                  {!canEditSensitiveGlobal && (
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Edição de matrícula restrita a administradores.
+                    </p>
+                  )}
+                </Field>
+              </div>
 
               <Field>
                 <FieldLabel className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]">
@@ -1031,25 +1067,56 @@ export function PeopleClient({
                 placeholder="juliana@empresa.com"
                 className="bg-[var(--canvas)] border-[var(--border-subtle)] text-[length:var(--type-label)] h-10"
               />
-            </Field>
-
-            <Field>
-              <FieldLabel htmlFor="initial-password">
-                Senha inicial (opcional, mínimo 12 caracteres)
-              </FieldLabel>
-              <Input
-                id="initial-password"
-                name="password"
-                type="password"
-                autoComplete="new-password"
-                minLength={12}
-              />
-              <p className="text-caption text-muted-foreground">
-                Defina um PIN ou uma senha. Pessoas com e-mail já cadastrado mantêm a senha atual.
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Necessário para login por e-mail e senha. Opcional para acesso por matrícula e PIN.
               </p>
             </Field>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <Field>
+                <FieldLabel
+                  htmlFor="invite-employee-code"
+                  className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]"
+                >
+                  Matrícula / Código
+                </FieldLabel>
+                <Input
+                  id="invite-employee-code"
+                  aria-label="Matrícula"
+                  type="text"
+                  name="employeeCode"
+                  maxLength={50}
+                  placeholder="Ex: 1001"
+                  className="bg-[var(--canvas)] border-[var(--border-subtle)] text-[length:var(--type-label)] h-10 font-mono"
+                />
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Identificador para login do colaborador via PIN.
+                </p>
+              </Field>
+
+              <Field>
+                <FieldLabel
+                  htmlFor="invite-pin"
+                  className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]"
+                >
+                  PIN de acesso (6 dígitos)
+                </FieldLabel>
+                <Input
+                  id="invite-pin"
+                  aria-label="PIN (6 dígitos)"
+                  type="password"
+                  name="pin"
+                  maxLength={6}
+                  placeholder="Ex: 123456"
+                  className="bg-[var(--canvas)] border-[var(--border-subtle)] text-[length:var(--type-label)] h-10 font-mono"
+                />
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  PIN numérico para login rápido / terminal.
+                </p>
+              </Field>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <Field>
                 <FieldLabel className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]">
                   Permissão de acesso *
@@ -1083,17 +1150,21 @@ export function PeopleClient({
               </Field>
 
               <Field>
-                <FieldLabel className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]">
-                  PIN (6 dígitos)
+                <FieldLabel htmlFor="initial-password" className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]">
+                  Senha inicial (opcional)
                 </FieldLabel>
                 <Input
-                  aria-label="PIN (6 dígitos)"
+                  id="initial-password"
+                  name="password"
                   type="password"
-                  name="pin"
-                  maxLength={6}
-                  placeholder="Ex: 123456"
-                  className="bg-[var(--canvas)] border-[var(--border-subtle)] text-[length:var(--type-label)] h-10 font-mono"
+                  autoComplete="new-password"
+                  minLength={12}
+                  placeholder="Mínimo 12 caracteres"
+                  className="bg-[var(--canvas)] border-[var(--border-subtle)] text-[length:var(--type-label)] h-10"
                 />
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Mínimo 12 caracteres (exige e-mail).
+                </p>
               </Field>
             </div>
 

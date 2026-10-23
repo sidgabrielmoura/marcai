@@ -17,6 +17,7 @@ import {
 } from "@/domain/rules/subscription-limits";
 import { revalidatePath, revalidateOrganization } from "@/infrastructure/realtime/revalidate";
 import { reusableTemplateDraftSchema } from "@/domain/rules/reusable-template-definition";
+import { purgeOrganization } from "@/application/superadmin/purge-organization";
 
 export type ActionResult = {
   success?: boolean;
@@ -299,12 +300,11 @@ export async function deleteOrganizationAction(input: {
       };
     }
 
-    await prisma.$transaction(async (tx) => {
-      // Exclui a organização (Prisma Schema possui onDelete: Cascade em todas as relações filhas)
-      await tx.organization.delete({
-        where: { id: organizationId },
-      });
+    const purgeSummary = await prisma.$transaction(async (tx) => {
+      return purgeOrganization(tx, organizationId, actor.userId);
     });
+
+    console.info("[deleteOrganizationAction] Organização expurgada com sucesso:", purgeSummary);
 
     revalidateOrganization(organizationId);
     revalidatePath("/superadmin");

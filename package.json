@@ -16,6 +16,8 @@
     "test:templates:ui": "tsx scripts/verify-template-ui.ts",
     "test:superadmin:ui": "tsx scripts/verify-superadmin-ui.ts",
     "test:superadmin:async": "tsx scripts/verify-superadmin-async.ts",
+    "test:purge": "tsx scripts/verify-purge-organization.ts",
+    "test:process:archive": "tsx scripts/verify-archived-process-isolation.ts",
     "db:templates": "prisma db execute --file prisma/templates-library.sql"
   },
   "dependencies": {

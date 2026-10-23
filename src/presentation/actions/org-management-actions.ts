@@ -62,10 +62,12 @@ export async function inviteMemberAction(formData: FormData): Promise<ActionResu
   if (role === "ADMIN" && context.role !== "OWNER") return { error: "Somente o proprietário pode conceder acesso de administrador." };
   if (email && !z.email().safeParse(email).success) return { error: "E-mail inválido." };
   if (pin && !/^\d{6}$/.test(pin)) return { error: "O PIN deve conter seis dígitos." };
+  if (pin && !employeeCode) return { error: "Informe a matrícula do colaborador para permitir o acesso por PIN." };
+  if (employeeCode && employeeCode.length > 50) return { error: "A matrícula deve ter no máximo 50 caracteres." };
   if (password && password.length < 12) return { error: "A senha inicial deve ter pelo menos 12 caracteres." };
   if (primaryLocationId && !await prisma.location.findFirst({ where: { id: primaryLocationId, organizationId: context.organizationId } })) return { error: "Unidade inválida." };
   if (teamId && !await prisma.team.findFirst({ where: { id: teamId, organizationId: context.organizationId } })) return { error: "Equipe inválida." };
-  if (employeeCode && await prisma.organizationMember.findFirst({ where: { organizationId: context.organizationId, employeeCode } })) return { error: "Esta matrícula já está em uso." };
+  if (employeeCode && await prisma.organizationMember.findFirst({ where: { organizationId: context.organizationId, employeeCode } })) return { error: `A matrícula "${employeeCode}" já está em uso nesta organização.` };
   const previousUser = email ? await prisma.user.findUnique({ where: { email }, select: { id: true, passwordHash: true } }) : null;
   if (!pinHash && !password && !previousUser?.passwordHash) return { error: "Defina um PIN ou uma senha inicial para permitir o acesso." };
   if (password && !email) return { error: "Informe um e-mail para acesso por senha." };
@@ -111,7 +113,7 @@ export async function inviteMemberAction(formData: FormData): Promise<ActionResu
           userId: user.id,
           role,
           status: MemberStatus.ACTIVE,
-          employeeCode: employeeCode || `EMP-${Date.now().toString().slice(-4)}`,
+          employeeCode: employeeCode || null,
           pinHash,
         },
       });
@@ -285,6 +287,7 @@ const updateMemberDetailsSchema = z.object({
   email: z.string().email("E-mail inválido").nullable().optional().or(z.literal("")),
   password: z.string().min(12, "A senha deve ter no mínimo 12 caracteres").nullable().optional().or(z.literal("")),
   role: z.enum(["EMPLOYEE", "MANAGER", "ADMIN"]).optional(),
+  employeeCode: z.string().trim().max(50, "A matrícula deve ter no máximo 50 caracteres").nullable().optional().or(z.literal("")),
   pin: z.string().regex(/^\d{6}$/, "O PIN deve conter exatamente 6 dígitos numéricos").nullable().optional().or(z.literal("")),
   locationId: z.string().nullable().optional().or(z.literal("")),
   teamId: z.string().nullable().optional().or(z.literal("")),
@@ -327,6 +330,8 @@ export async function updateMemberDetailsAction(input: UpdateMemberDetailsInput)
 
   if (!target) return { error: "Colaborador não encontrado nesta organização." };
 
+  const cleanEmployeeCode = data.employeeCode && data.employeeCode.trim() ? data.employeeCode.trim() : null;
+
   // Regras de Gestor (MANAGER)
   if (context.role === "MANAGER") {
     if (target.role !== "EMPLOYEE") {
@@ -338,6 +343,7 @@ export async function updateMemberDetailsAction(input: UpdateMemberDetailsInput)
       (data.password && data.password.trim().length > 0) ||
       (data.pin && data.pin.trim().length > 0) ||
       (data.role && data.role !== target.role) ||
+      (data.employeeCode !== undefined && cleanEmployeeCode !== target.employeeCode) ||
       (data.locationId !== undefined && data.locationId !== currentPrimaryLocId)
     );
 
@@ -384,6 +390,23 @@ export async function updateMemberDetailsAction(input: UpdateMemberDetailsInput)
     }
   }
 
+  // Validação de matrícula única nesta organização
+  if (data.employeeCode !== undefined && cleanEmployeeCode !== target.employeeCode) {
+    if (cleanEmployeeCode) {
+      const existingWithCode = await prisma.organizationMember.findFirst({
+        where: {
+          organizationId: context.organizationId,
+          employeeCode: cleanEmployeeCode,
+          id: { not: target.id },
+        },
+        select: { id: true },
+      });
+      if (existingWithCode) {
+        return { error: `A matrícula "${cleanEmployeeCode}" já está em uso nesta organização.` };
+      }
+    }
+  }
+
   // Validação de Unidade e Equipe se informadas
   if (data.locationId) {
     const loc = await prisma.location.findFirst({
@@ -421,10 +444,13 @@ export async function updateMemberDetailsAction(input: UpdateMemberDetailsInput)
       });
     }
 
-    // 2. Atualizar OrganizationMember (role, pin)
+    // 2. Atualizar OrganizationMember (role, pin, employeeCode)
     const memberUpdate: Record<string, any> = {};
     if (data.role && data.role !== target.role) {
       memberUpdate.role = data.role as Role;
+    }
+    if (data.employeeCode !== undefined && cleanEmployeeCode !== target.employeeCode) {
+      memberUpdate.employeeCode = cleanEmployeeCode;
     }
     if (data.pin && data.pin.trim()) {
       memberUpdate.pinHash = await bcrypt.hash(data.pin.trim(), 10);
@@ -510,6 +536,7 @@ export async function updateMemberDetailsAction(input: UpdateMemberDetailsInput)
           updatedEmail: Boolean(userUpdate.email !== undefined),
           updatedPassword: Boolean(userUpdate.passwordHash),
           updatedRole: Boolean(memberUpdate.role),
+          updatedEmployeeCode: Boolean(memberUpdate.employeeCode !== undefined),
           updatedPin: Boolean(memberUpdate.pinHash),
           updatedTeam: Boolean(data.teamId !== undefined),
           updatedLocation: Boolean(data.locationId !== undefined && canChangeLocation),
@@ -610,7 +637,7 @@ export async function saveLocationAction(formData: FormData): Promise<ActionResu
 
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(openingTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(closingTime)) return { error: "Informe horários válidos." };
   try { new Intl.DateTimeFormat("pt-BR", { timeZone: timezone }); } catch { return { error: "Fuso horário inválido." }; }
-  if (!operatingDays.split(",").every(day => ["MON","TUE","WED","THU","FRI","SAT","SUN"].includes(day))) return { error: "Dias de operação inválidos." };
+  if (!operatingDays.split(",").every(day => ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"].includes(day))) return { error: "Dias de operação inválidos." };
   const locationId = String(formData.get("locationId") || "");
   if (locationId && !await prisma.location.findFirst({ where: { id: locationId, organizationId: context.organizationId } })) return { error: "Unidade não encontrada nesta organização." };
   try {
@@ -695,11 +722,11 @@ export async function saveTeamAction(formData: FormData): Promise<ActionResult> 
   if (teamId && !await prisma.team.findFirst({ where: { id: teamId, organizationId: context.organizationId } })) return { error: "Equipe não encontrada nesta organização." };
   const team = await prisma.$transaction(async (tx) => {
     const data = {
-        organizationId: context.organizationId,
-        name,
-        description,
-        managerMemberId,
-        status: "ACTIVE",
+      organizationId: context.organizationId,
+      name,
+      description,
+      managerMemberId,
+      status: "ACTIVE",
     };
     const t = teamId ? await tx.team.update({ where: { id: teamId, organizationId: context.organizationId }, data }) : await tx.team.create({ data });
 
@@ -786,9 +813,9 @@ export async function updateTeamMembersAction(
 
   const validMembers = memberIds.length > 0
     ? await prisma.organizationMember.findMany({
-        where: { id: { in: memberIds }, organizationId: context.organizationId, status: "ACTIVE" },
-        select: { id: true },
-      })
+      where: { id: { in: memberIds }, organizationId: context.organizationId, status: "ACTIVE" },
+      select: { id: true },
+    })
     : [];
   const validMemberIds = validMembers.map((m) => m.id);
 
@@ -851,9 +878,9 @@ export async function updateTeamLocationsAction(
 
   const validLocations = locationIds.length > 0
     ? await prisma.location.findMany({
-        where: { id: { in: locationIds }, organizationId: context.organizationId, status: "ACTIVE" },
-        select: { id: true },
-      })
+      where: { id: { in: locationIds }, organizationId: context.organizationId, status: "ACTIVE" },
+      select: { id: true },
+    })
     : [];
   const validLocationIds = validLocations.map((l) => l.id);
 

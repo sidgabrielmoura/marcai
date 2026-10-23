@@ -21,7 +21,7 @@ export const includeTask = {
   organization: { select: { settings: true } },
   location: true,
   team: { select: { name: true } },
-  process: { select: { name: true } },
+  process: { select: { id: true, name: true, status: true } },
   execution: {
     select: {
       id: true,
@@ -29,7 +29,7 @@ export const includeTask = {
       availableAt: true,
       scheduledAt: true,
       completedAt: true,
-      process: { select: { name: true } },
+      process: { select: { id: true, name: true, status: true } },
     },
   },
   assignments: {
@@ -94,6 +94,20 @@ export function readable(c: AuthenticatedContext): Prisma.TaskWhereInput {
   return {
     organizationId: c.organizationId,
     deletedAt: null,
+    AND: [
+      {
+        OR: [
+          { processId: null },
+          { process: { status: { not: "ARCHIVED" } } },
+        ],
+      },
+      {
+        OR: [
+          { executionId: null },
+          { execution: { process: { status: { not: "ARCHIVED" } } } },
+        ],
+      },
+    ],
     OR: [
       taskScope(c),
       {
@@ -125,6 +139,20 @@ export function taskDetailScope(
   return {
     organizationId: context.organizationId,
     deletedAt: null,
+    AND: [
+      {
+        OR: [
+          { processId: null },
+          { process: { status: { not: "ARCHIVED" } } },
+        ],
+      },
+      {
+        OR: [
+          { executionId: null },
+          { execution: { process: { status: { not: "ARCHIVED" } } } },
+        ],
+      },
+    ],
     OR: [
       readable(context),
       {
@@ -523,9 +551,20 @@ type BoardVisibilityTask = {
   status: string;
   completedAt: Date | null;
   location: { timezone: string } | null;
-  execution: { status: string; completedAt?: Date | null } | null;
+  execution: {
+    status: string;
+    completedAt?: Date | null;
+    process?: { status: string } | null;
+  } | null;
+  process?: { status: string } | null;
 };
 function appearsOnBoard(task: BoardVisibilityTask, now: Date) {
+  if (
+    task.process?.status === "ARCHIVED" ||
+    task.execution?.process?.status === "ARCHIVED"
+  ) {
+    return false;
+  }
   const timezone = task.location?.timezone ?? "America/Sao_Paulo";
   if (
     task.execution &&
@@ -739,10 +778,11 @@ export async function execution(c: AuthenticatedContext, id: string) {
     where: {
       id,
       organizationId: c.organizationId,
+      process: { status: { not: "ARCHIVED" } },
       tasks: { some: executionTeamScope },
     },
     include: {
-      process: { select: { name: true } },
+      process: { select: { name: true, status: true } },
       tasks: {
         where: { deletedAt: null },
         select: {
@@ -755,7 +795,7 @@ export async function execution(c: AuthenticatedContext, id: string) {
       },
     },
   });
-  if (!e)
+  if (!e || e.process.status === "ARCHIVED")
     fail(404, "EXECUTION_UNAVAILABLE", "Execução indisponível no seu acesso.");
   const visible = await prisma.task.findMany({
     where: {
@@ -824,8 +864,14 @@ async function boardCounts(
       },
     },
     execution: {
-      select: { status: true, availableAt: true, completedAt: true },
+      select: {
+        status: true,
+        availableAt: true,
+        completedAt: true,
+        process: { select: { status: true } },
+      },
     },
+    process: { select: { status: true } },
     location: { select: { timezone: true } },
     assignments: { where: { removedAt: null }, select: { type: true } },
   } as const;
