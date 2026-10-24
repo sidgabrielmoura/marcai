@@ -21,6 +21,7 @@ import {
   weekdayLabels,
   type ScheduleDefinition,
 } from "@/domain/rules/process-definition";
+import { CANONICAL_TIMEZONES } from "@/domain/rules/date-time";
 
 const ALL_WEEKDAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"] as const;
 
@@ -384,19 +385,11 @@ export function ScheduleFields({
           value={s.timezone}
           onChange={(e) => update({ timezone: e.target.value })}
         >
-          <NativeSelectOption value="America/Sao_Paulo">
-            Horário de Brasília (São Paulo, Rio, Sul, Sudeste, Centro-Oeste)
-          </NativeSelectOption>
-          <NativeSelectOption value="America/Manaus">
-            Horário do Amazonas (Manaus)
-          </NativeSelectOption>
-          <NativeSelectOption value="America/Rio_Branco">
-            Horário do Acre (Rio Branco)
-          </NativeSelectOption>
-          <NativeSelectOption value="America/Noronha">
-            Horário de Fernando de Noronha
-          </NativeSelectOption>
-          <NativeSelectOption value="UTC">UTC (Universal)</NativeSelectOption>
+          {CANONICAL_TIMEZONES.map((tz) => (
+            <NativeSelectOption key={tz.value} value={tz.value}>
+              {tz.label} ({tz.offsetLabel})
+            </NativeSelectOption>
+          ))}
         </NativeSelect>
       </div>
 

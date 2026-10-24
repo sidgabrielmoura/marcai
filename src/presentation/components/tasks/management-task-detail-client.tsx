@@ -2,6 +2,11 @@
 import { ManagementTaskBlockButton } from "./management-task-block-button";
 
 import { useState } from "react";
+import {
+  formatDateInTimezone,
+  formatDateTimeInTimezone,
+  formatTimeInTimezone,
+} from "@/domain/rules/date-time";
 import { canEditTaskDefinition } from "@/domain/rules/task-edit";
 import { EditTaskDialog } from "./edit-task-dialog";
 import { useRouter } from "next/navigation";
@@ -185,6 +190,7 @@ interface ManagementTaskDetailProps {
     criticality: string;
     required: boolean;
     deadlineAt: Date | string | null;
+    timezone?: string | null;
     slaDurationMinutes: number | null;
     slaDueAt: Date | string | null;
     slaExceededAt: Date | string | null;
@@ -340,14 +346,8 @@ export function ManagementTaskDetailClient({
     }
     const diffMinutes = Math.round((target.getTime() - now.getTime()) / 60000);
     const isToday = target.toDateString() === now.toDateString();
-    const timeStr = target.toLocaleTimeString("pt-BR", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    const dateStr = target.toLocaleDateString("pt-BR", {
-      day: "2-digit",
-      month: "2-digit",
-    });
+    const timeStr = formatTimeInTimezone(target, task.timezone);
+    const dateStr = formatDateInTimezone(target, task.timezone);
     if (diffMinutes <= 0) {
       return "Prazo no passado (escolha um horário futuro)";
     }
@@ -371,7 +371,7 @@ export function ManagementTaskDetailClient({
           setLoading(false);
           return;
         }
-        customDeadlineAt = new Date(reassignCustomDate).toISOString();
+        customDeadlineAt = reassignCustomDate;
       } else if (reassignDeadlineType === "eod") {
         const now = new Date();
         const target = new Date(
@@ -720,12 +720,7 @@ export function ManagementTaskDetailClient({
             </span>
             <span className="font-semibold text-[var(--brand-900)]">
               {task.deadlineAt
-                ? new Date(task.deadlineAt).toLocaleString("pt-BR", {
-                    day: "2-digit",
-                    month: "2-digit",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
+                ? formatDateTimeInTimezone(task.deadlineAt, task.timezone)
                 : "Sem prazo fixo"}
             </span>
           </div>
@@ -1151,13 +1146,7 @@ export function ManagementTaskDetailClient({
                             </span>
                             <span className="text-[length:var(--type-caption)] text-[var(--text-secondary)] block">
                               Tentativa #{sub.attemptNumber} •{" "}
-                              {new Date(sub.createdAt).toLocaleTimeString(
-                                "pt-BR",
-                                {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                },
-                              )}
+                              {formatTimeInTimezone(sub.createdAt, task.timezone)}
                             </span>
                           </div>
                           <Badge
@@ -1390,12 +1379,9 @@ export function ManagementTaskDetailClient({
                                       Severidade: {sev.label}
                                     </Badge>
                                     <span className="text-[11px] text-muted-foreground font-mono">
-                                      {new Date(imp.createdAt).toLocaleString(
-                                        "pt-BR",
-                                        {
-                                          dateStyle: "short",
-                                          timeStyle: "short",
-                                        },
+                                      {formatDateTimeInTimezone(
+                                        imp.createdAt,
+                                        task.timezone,
                                       )}
                                     </span>
                                   </div>
@@ -1463,12 +1449,10 @@ export function ManagementTaskDetailClient({
                                   Último alerta do sistema:
                                 </span>
                                 <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 font-mono">
-                                  {new Date(
+                                  {formatDateTimeInTimezone(
                                     latestBreach.createdAt,
-                                  ).toLocaleString("pt-BR", {
-                                    dateStyle: "short",
-                                    timeStyle: "short",
-                                  })}
+                                    task.timezone,
+                                  )}
                                 </span>
                               </div>
                             </div>
@@ -1501,12 +1485,10 @@ export function ManagementTaskDetailClient({
                                             {label}
                                           </span>
                                           <span className="text-[10px] text-muted-foreground font-mono">
-                                            {new Date(
+                                            {formatTimeInTimezone(
                                               b.createdAt,
-                                            ).toLocaleTimeString("pt-BR", {
-                                              hour: "2-digit",
-                                              minute: "2-digit",
-                                            })}
+                                              task.timezone,
+                                            )}
                                           </span>
                                         </div>
                                         <span className="text-[11px] text-slate-600 dark:text-slate-400 line-clamp-1">
@@ -1536,7 +1518,13 @@ export function ManagementTaskDetailClient({
           <span>Histórico de atividades</span>
         </h3>
 
-        <TaskActivityHistory logs={task.activityLogs} assignedMemberIds={task.assignments.filter((assignment) => assignment.type === "PRIMARY").map((assignment) => assignment.memberId)} />
+        <TaskActivityHistory
+          logs={task.activityLogs}
+          assignedMemberIds={task.assignments
+            .filter((assignment) => assignment.type === "PRIMARY")
+            .map((assignment) => assignment.memberId)}
+          timezone={task.timezone}
+        />
       </Card>
 
       <Dialog open={showTransferModal} onOpenChange={setShowTransferModal}>

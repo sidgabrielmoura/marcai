@@ -42,6 +42,7 @@ import { PageHeader, EmptyState } from "@/presentation/components/shared";
 import { uiLabel } from "@/presentation/components/shared/ui-labels";
 import { toast } from "@/components/ui/toast";
 import { submitApprovalDecisionAction } from "@/presentation/actions/management-task-actions";
+import { formatDateInTimezone, formatDateTimeInTimezone } from "@/domain/rules/date-time";
 
 export interface ApprovalTask {
   id: string;
@@ -64,6 +65,7 @@ export interface ApprovalTask {
   createdAt: string;
   deadlineAt: string | null;
   slaDueAt: string | null;
+  timezone?: string;
   evidenceRequirements: Array<{
     id: string;
     type: string;
@@ -573,17 +575,14 @@ export function ManagementApprovalsClient({
                 <div>
                   <span className="text-[var(--text-muted)] block">Data de Criação</span>
                   <span className="font-semibold text-[var(--brand-900)]">
-                    {new Date(selectedTask.createdAt).toLocaleDateString("pt-BR")}
+                    {formatDateInTimezone(selectedTask.createdAt, selectedTask.timezone)}
                   </span>
                 </div>
                 {selectedTask.deadlineAt && (
                   <div>
                     <span className="text-[var(--text-muted)] block">Prazo Final</span>
                     <span className="font-semibold text-[var(--brand-900)]">
-                      {new Date(selectedTask.deadlineAt).toLocaleString("pt-BR", {
-                        dateStyle: "short",
-                        timeStyle: "short",
-                      })}
+                      {formatDateTimeInTimezone(selectedTask.deadlineAt, selectedTask.timezone)}
                     </span>
                   </div>
                 )}
@@ -662,7 +661,7 @@ export function ManagementApprovalsClient({
                                           Ver foto ampliada #{idx + 1}
                                         </button>
                                         <span className="text-[10px] text-[var(--text-muted)] block">
-                                          Enviado em {new Date(sub.createdAt).toLocaleString("pt-BR")}
+                                          Enviado em {formatDateTimeInTimezone(sub.createdAt, selectedTask.timezone)}
                                         </span>
                                       </div>
                                     </div>
@@ -681,7 +680,7 @@ export function ManagementApprovalsClient({
                                           Assinatura Digital Coletada
                                         </span>
                                         <span className="text-[10px] text-[var(--text-muted)] block">
-                                          Enviado em {new Date(sub.createdAt).toLocaleString("pt-BR")}
+                                          Enviado em {formatDateTimeInTimezone(sub.createdAt, selectedTask.timezone)}
                                         </span>
                                       </div>
                                     </div>
@@ -697,7 +696,7 @@ export function ManagementApprovalsClient({
                                         Baixar {sub.value || "arquivo anexo"}
                                       </a>
                                       <span className="text-[10px] text-[var(--text-muted)] block">
-                                        Enviado em {new Date(sub.createdAt).toLocaleString("pt-BR")}
+                                        Enviado em {formatDateTimeInTimezone(sub.createdAt, selectedTask.timezone)}
                                       </span>
                                     </div>
                                   ) : (
@@ -706,7 +705,7 @@ export function ManagementApprovalsClient({
                                         {sub.value || "Evidência registrada"}
                                       </span>
                                       <span className="text-[10px] text-[var(--text-muted)] block">
-                                        Enviado em {new Date(sub.createdAt).toLocaleString("pt-BR")}
+                                        Enviado em {formatDateTimeInTimezone(sub.createdAt, selectedTask.timezone)}
                                       </span>
                                     </div>
                                   )}

@@ -5,6 +5,7 @@ import { eligibleMember, isManagement, processScope } from "@/application/securi
 import { processDefinitionSchema, readProcessDefinition } from "@/domain/rules/process-definition";
 import { resolvePublishedTemplate, TemplateInputError } from "@/application/templates/template-library";
 import { materializeProcessTasks } from "./materialize-tasks";
+import { canonicalTimezone } from "@/domain/rules/date-time";
 
 export async function saveProcessInTransaction(tx: Prisma.TransactionClient, context: AuthenticatedContext,
   input: unknown, options: { processId?: string; requestId?: string; templateReference?: string; routineId?: string }, now = new Date()) {
@@ -55,7 +56,7 @@ export async function saveProcessInTransaction(tx: Prisma.TransactionClient, con
     const s = definition.schedule;
     const current = existing ? await tx.routine.findFirst({ where: { processId: existing.id, ...(options.routineId ? { id: options.routineId } : {}) }, orderBy: { createdAt: "asc" } }) : null;
     if (existing && options.routineId && !current) throw new TemplateInputError("A rotina mudou. Reabra a edição do processo.");
-    const routineData = { recurrenceRule: JSON.stringify(s), timezone: s.timezone, startsAt: new Date(s.startsAt), endsAt: s.endsAt ? new Date(s.endsAt + "T23:59:59Z") : null, generationLeadTime: s.generationLeadTime, pendingPreviousPolicy: s.pendingPreviousPolicy, status: "ACTIVE" };
+    const routineData = { recurrenceRule: JSON.stringify(s), timezone: canonicalTimezone(s.timezone), startsAt: new Date(s.startsAt), endsAt: s.endsAt ? new Date(s.endsAt + "T23:59:59Z") : null, generationLeadTime: s.generationLeadTime, pendingPreviousPolicy: s.pendingPreviousPolicy, status: "ACTIVE" };
     const r = current ? await tx.routine.update({ where: { id: current.id }, data: routineData }) : await tx.routine.create({ data: { ...routineData, processId: process.id } });
     routineId = r.id;
   } else if (existing) await tx.routine.updateMany({ where: { processId: existing.id, status: "ACTIVE" }, data: { status: "PAUSED" } });
@@ -63,7 +64,7 @@ export async function saveProcessInTransaction(tx: Prisma.TransactionClient, con
   if (!existing && !definition.schedule) {
     const execution = await tx.processExecution.create({ data: { organizationId: context.organizationId, processId: process.id, locationId: location.id,
       scheduledAt: now, availableAt: now, startedAt: now, status: "IN_PROGRESS", definitionSnapshot: definition as unknown as Prisma.InputJsonValue } });
-    notifications = await materializeProcessTasks(tx, context, execution, definition, now);
+    notifications = await materializeProcessTasks(tx, context, execution, definition, now, location.timezone);
     await tx.activityLog.create({ data: { organizationId: context.organizationId, actorId: context.memberId, action: "EXECUTION_GENERATED", entityType: "EXECUTION", entityId: execution.id } });
   }
   await tx.activityLog.create({ data: { organizationId: context.organizationId, actorId: context.memberId, action: existing ? "PROCESS_UPDATED" : "PROCESS_CREATED", entityType: "PROCESS", entityId: process.id, metadata: { version: version.version, taskCount: definition.tasks.length, ...(origin ? { templateReference: origin.reference } : {}) } } });

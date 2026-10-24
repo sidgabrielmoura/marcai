@@ -199,17 +199,19 @@ export function ProcessDetailClient({
   const activeRoutine = routines.find((r) => r.status === "ACTIVE") ?? routines[0] ?? null;
 
   // Formatting helpers
+  const effectiveTz = activeRoutine?.timezone ?? "America/Sao_Paulo";
   function formatDateTime(iso: string) {
     const d = new Date(iso);
     return {
-      date: d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }),
-      time: d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+      date: d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", timeZone: effectiveTz }),
+      time: d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: effectiveTz }),
       full: d.toLocaleDateString("pt-BR", {
         day: "2-digit",
         month: "short",
         year: "numeric",
         hour: "2-digit",
         minute: "2-digit",
+        timeZone: effectiveTz,
       }),
     };
   }

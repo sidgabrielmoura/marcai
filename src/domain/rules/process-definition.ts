@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { canonicalTimezone } from "./date-time";
+
 const calendarDate = z.string().refine(value => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00Z`);
@@ -14,7 +16,7 @@ export const scheduleSchema = z.object({
   times: z.array(z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)).min(1, "Informe um horário.").max(12).refine(values => new Set(values).size === values.length, "Não repita os horários."),
   startsAt: calendarDate,
   endsAt: date,
-  timezone: z.string().refine(v => { try { new Intl.DateTimeFormat("pt-BR", { timeZone: v }); return true; } catch { return false; } }, "Fuso horário inválido."),
+  timezone: z.string().transform(canonicalTimezone).refine(v => { try { new Intl.DateTimeFormat("pt-BR", { timeZone: v }); return true; } catch { return false; } }, "Fuso horário inválido."),
   generationLeadTime: z.number().int().min(0).max(43200),
   pendingPreviousPolicy: z.enum(["CREATE_NEW", "SKIP_IF_PENDING", "BLOCK_NEW"]),
   skipDates: z.array(calendarDate).max(365).refine(values => new Set(values).size === values.length, "Não repita as datas de exceção."),

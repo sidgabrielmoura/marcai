@@ -17,6 +17,7 @@ import { fail } from "./http";
 import { boardState, columnFor, deadline, dayKey } from "./policy";
 import { operationPermission } from "@/domain/rules/employee-workflow";
 import { resolveExecutionStatus } from "@/domain/rules/execution-state";
+import { resolveEffectiveTimezone } from "@/domain/rules/date-time";
 export const includeTask = {
   organization: { select: { settings: true } },
   location: true,
@@ -29,6 +30,7 @@ export const includeTask = {
       availableAt: true,
       scheduledAt: true,
       completedAt: true,
+      routine: { select: { timezone: true } },
       process: { select: { id: true, name: true, status: true } },
     },
   },
@@ -383,7 +385,10 @@ export async function project(
     required: task.required,
     processName: task.process?.name ?? task.execution?.process.name ?? null,
     locationName: task.location?.name ?? null,
-    timezone: task.location?.timezone ?? "America/Sao_Paulo",
+    timezone: resolveEffectiveTimezone({
+      routineTimezone: task.execution?.routine?.timezone,
+      locationTimezone: task.location?.timezone,
+    }),
     deadlineAt: task.deadlineAt?.toISOString() ?? null,
     slaDueAt: task.slaDueAt?.toISOString() ?? null,
     scheduledDate:

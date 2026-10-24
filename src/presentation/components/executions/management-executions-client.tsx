@@ -28,6 +28,11 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { PageHeader, EmptyState } from "@/presentation/components/shared";
 import { uiLabel } from "@/presentation/components/shared/ui-labels";
 import { formatRoutineRule } from "@/domain/rules/schedule";
+import {
+  formatDateInTimezone,
+  formatDateTimeInTimezone,
+  formatTimeInTimezone,
+} from "@/domain/rules/date-time";
 
 export interface ExecutionItem {
   id: string;
@@ -37,6 +42,7 @@ export interface ExecutionItem {
   routineName: string | null;
   locationId: string | null;
   locationName: string | null;
+  timezone?: string;
   status: string;
   scheduledAt: string;
   startedAt: string | null;
@@ -379,17 +385,14 @@ export function ManagementExecutionsClient({
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-[var(--text-muted)]">
                         <span className="flex items-center gap-1">
                           <Calendar size={13} />
-                          Agendado: {new Date(exec.scheduledAt).toLocaleDateString("pt-BR")}
+                          Agendado: {formatDateInTimezone(exec.scheduledAt, exec.timezone)}
                         </span>
 
                         {exec.completedAt && (
                           <span className="flex items-center gap-1 text-emerald-700 font-medium">
                             <CheckCircle2 size={13} />
                             Concluído em:{" "}
-                            {new Date(exec.completedAt).toLocaleString("pt-BR", {
-                              dateStyle: "short",
-                              timeStyle: "short",
-                            })}
+                            {formatDateTimeInTimezone(exec.completedAt, exec.timezone)}
                           </span>
                         )}
 
@@ -481,18 +484,12 @@ export function ManagementExecutionsClient({
                               <div className="flex items-center gap-2 shrink-0">
                                 {task.completedAt ? (
                                   <span className="text-[10px] text-emerald-700 font-medium">
-                                    {new Date(task.completedAt).toLocaleTimeString("pt-BR", {
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })}
+                                    {formatTimeInTimezone(task.completedAt, exec.timezone)}
                                   </span>
                                 ) : task.deadlineAt ? (
                                   <span className="text-[10px] text-[var(--text-muted)]">
                                     Prazo:{" "}
-                                    {new Date(task.deadlineAt).toLocaleTimeString("pt-BR", {
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })}
+                                    {formatTimeInTimezone(task.deadlineAt, exec.timezone)}
                                   </span>
                                 ) : null}
 

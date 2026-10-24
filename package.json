@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test:domain": "tsx scripts/verify-domain-rules.ts",
     "test:operational": "tsx scripts/verify-operational-rules.ts",
+    "test:timezone": "tsx scripts/verify-date-time-timezone.ts",
     "test:regressions": "tsx scripts/verify-workflow-regressions.ts",
     "test:task-history": "tsx scripts/verify-task-history.ts",
     "test:templates": "tsx scripts/verify-template-library.ts",

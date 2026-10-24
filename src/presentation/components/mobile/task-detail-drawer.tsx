@@ -233,7 +233,7 @@ export function EmployeeTaskDetailDrawer({
     if (isScheduled) {
       toast.add({
         title: "Aguardando horário",
-        description: `Esta tarefa está agendada para iniciar às ${new Date(task.scheduledDate!).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} e só pode ser concluída a partir deste horário.`,
+        description: `Esta tarefa está agendada para iniciar às ${new Date(task.scheduledDate!).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: task.timezone ?? "America/Sao_Paulo" })} e só pode ser concluída a partir deste horário.`,
         type: "error",
       });
       return;
@@ -869,7 +869,7 @@ export function EmployeeTaskDetailDrawer({
                         <span className="font-semibold text-slate-800 dark:text-slate-200">{occ.reason}</span>
                         <span className="text-[10px] text-muted-foreground font-mono">
                           {new Date(occ.createdAt).toLocaleString("pt-BR", {
-                            timeZone: "America/Sao_Paulo",
+                            timeZone: task?.timezone ?? "America/Sao_Paulo",
                           })}
                         </span>
                       </div>
@@ -895,7 +895,7 @@ export function EmployeeTaskDetailDrawer({
           <p className="text-[11px] text-slate-500">
             Liberada em{" "}
             {new Date(task.scheduledDate!).toLocaleString("pt-BR", {
-              timeZone: "America/Sao_Paulo",
+              timeZone: task.timezone ?? "America/Sao_Paulo",
               dateStyle: "short",
               timeStyle: "short",
             })}
@@ -1117,7 +1117,7 @@ export function EmployeeTaskDetailDrawer({
                     <Clock className="size-3 text-slate-400" />
                     Prazo:{" "}
                     {new Date(task.deadlineAt).toLocaleString("pt-BR", {
-                      timeZone: "America/Sao_Paulo",
+                      timeZone: task?.timezone ?? "America/Sao_Paulo",
                       dateStyle: "short",
                       timeStyle: "short",
                     })}
@@ -1193,7 +1193,7 @@ export function EmployeeTaskDetailDrawer({
                       <Clock className="size-3 text-slate-400" />
                       Prazo:{" "}
                       {new Date(task.deadlineAt).toLocaleString("pt-BR", {
-                        timeZone: "America/Sao_Paulo",
+                        timeZone: task?.timezone ?? "America/Sao_Paulo",
                         dateStyle: "short",
                         timeStyle: "short",
                       })}

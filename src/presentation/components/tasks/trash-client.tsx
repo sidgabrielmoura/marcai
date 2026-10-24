@@ -22,6 +22,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Spinner } from "@/components/ui/spinner";
+import { formatDateTimeInTimezone } from "@/domain/rules/date-time";
 
 interface TrashTaskItem {
   id: string;
@@ -30,6 +31,7 @@ interface TrashTaskItem {
   deletedBy: string | null;
   deleteReason: string | null;
   locationName: string | null;
+  timezone?: string | null;
 }
 
 interface TrashClientProps {
@@ -109,12 +111,7 @@ export function TrashClient({ tasks, canPurge }: TrashClientProps) {
                     <span>•</span>
                     <span>
                       Excluída em:{" "}
-                      {new Date(task.deletedAt).toLocaleDateString("pt-BR", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      {formatDateTimeInTimezone(task.deletedAt, task.timezone)}
                     </span>
                   </div>
                   {task.deleteReason && (

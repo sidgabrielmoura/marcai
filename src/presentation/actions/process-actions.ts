@@ -26,6 +26,7 @@ import { readable } from "@/application/mobile/data";
 import { taskScope } from "@/application/security/operational-scope";
 import { evaluateTaskDependencies } from "@/domain/rules/dependency-rules";
 import { resolveExecutionStatus } from "@/domain/rules/execution-state";
+import { resolveEffectiveTimezone } from "@/domain/rules/date-time";
 import { revalidatePath } from "@/infrastructure/realtime/revalidate";
 export type ActionResult = {
   success?: boolean;
@@ -510,6 +511,7 @@ export type EmployeeProcessExecutionDetail = {
   processName: string;
   processDescription: string | null;
   locationName: string | null;
+  timezone?: string;
   status: string;
   scheduledAt: string;
   completedAt: string | null;
@@ -534,7 +536,8 @@ export async function getEmployeeProcessExecutionAction(
         },
         include: {
           process: { select: { description: true } },
-          location: { select: { name: true } },
+          location: { select: { name: true, timezone: true } },
+          routine: { select: { timezone: true } },
         },
       });
       const tasks = await Promise.all(
@@ -563,6 +566,10 @@ export async function getEmployeeProcessExecutionAction(
           processName: dto.name,
           processDescription: record.process.description,
           locationName: record.location?.name ?? null,
+          timezone: resolveEffectiveTimezone({
+            routineTimezone: record.routine?.timezone,
+            locationTimezone: record.location?.timezone,
+          }),
           scheduledAt: record.scheduledAt.toISOString(),
           completedAt: record.completedAt?.toISOString() ?? null,
           orderRule: "CUSTOM",
@@ -583,7 +590,8 @@ export async function getEmployeeProcessExecutionAction(
     },
     include: {
       process: { select: { id: true, name: true, description: true } },
-      location: { select: { id: true, name: true } },
+      location: { select: { id: true, name: true, timezone: true } },
+      routine: { select: { timezone: true } },
       tasks: {
         where: { AND: [{ deletedAt: null }, taskScope(context)] },
         include: {
@@ -744,6 +752,10 @@ export async function getEmployeeProcessExecutionAction(
       processName: execution.process.name,
       processDescription: execution.process.description,
       locationName: execution.location?.name || null,
+      timezone: resolveEffectiveTimezone({
+        routineTimezone: execution.routine?.timezone,
+        locationTimezone: execution.location?.timezone,
+      }),
       status: execution.status,
       scheduledAt: execution.scheduledAt.toISOString(),
       completedAt: execution.completedAt

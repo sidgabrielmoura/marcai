@@ -349,7 +349,7 @@ export function TaskDetailClient({
     if (scheduled) {
       toast.add({
         title: "Aguardando horário",
-        description: `Esta tarefa está agendada para iniciar às ${new Date(task.scheduledDate!).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} e só pode ser concluída a partir deste horário.`,
+        description: `Esta tarefa está agendada para iniciar às ${new Date(task.scheduledDate!).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: task.timezone ?? "America/Sao_Paulo" })} e só pode ser concluída a partir deste horário.`,
         type: "error",
       });
       return;
@@ -682,7 +682,7 @@ export function TaskDetailClient({
                 {event.action +
                   " · " +
                   new Date(event.createdAt).toLocaleString("pt-BR", {
-                    timeZone: "America/Sao_Paulo",
+                    timeZone: task.timezone ?? "America/Sao_Paulo",
                   })}
               </li>
             ))}

@@ -13,6 +13,7 @@ import {
   assertCanCreateLocation,
   assertCanAddMember,
 } from "@/domain/rules/subscription-limits";
+import { canonicalTimezone } from "@/domain/rules/date-time";
 
 export type ActionResult = {
   success?: boolean;
@@ -626,7 +627,7 @@ export async function saveLocationAction(formData: FormData): Promise<ActionResu
 
   const name = formData.get("name") as string;
   const address = (formData.get("address") as string) || null;
-  const timezone = (formData.get("timezone") as string) || "America/Sao_Paulo";
+  const timezone = canonicalTimezone(formData.get("timezone") as string);
   const openingTime = (formData.get("openingTime") as string) || "08:00";
   const closingTime = (formData.get("closingTime") as string) || "20:00";
   const operatingDays = formData.has("operatingDays") ? String(formData.get("operatingDays")) : "MON,TUE,WED,THU,FRI,SAT";

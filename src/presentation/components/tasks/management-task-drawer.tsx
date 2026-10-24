@@ -88,13 +88,14 @@ interface ManagementTaskDrawerProps {
 }
 
 import { TaskActivityHistory } from "./task-activity-history";
+import {
+  formatDateInTimezone,
+  formatDateTimeInTimezone,
+  formatTimeInTimezone,
+} from "@/domain/rules/date-time";
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleString("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    dateStyle: "short",
-    timeStyle: "short",
-  });
+function fmtDate(iso: string, timezone?: string) {
+  return formatDateTimeInTimezone(iso, timezone);
 }
 
 function fmtDuration(secs: number | null): string {
@@ -219,8 +220,8 @@ export function ManagementTaskDrawer({
     }
     const diffMinutes = Math.round((target.getTime() - now.getTime()) / 60000);
     const isToday = target.toDateString() === now.toDateString();
-    const timeStr = target.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-    const dateStr = target.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+    const timeStr = formatTimeInTimezone(target, task?.timezone);
+    const dateStr = formatDateInTimezone(target, task?.timezone);
     if (diffMinutes <= 0) {
       return "Prazo no passado (escolha um horário futuro)";
     }
@@ -267,7 +268,7 @@ export function ManagementTaskDrawer({
         });
         return;
       }
-      customDeadlineAt = new Date(reassignCustomDate).toISOString();
+      customDeadlineAt = reassignCustomDate;
     } else if (reassignDeadlineType === "eod") {
       const now = new Date();
       const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 18, 0, 0, 0);
@@ -459,11 +460,7 @@ export function ManagementTaskDrawer({
                   {task.deadlineAt && (
                     <span className="inline-flex items-center gap-1 font-medium">
                       <Clock className="size-3 text-slate-400" />
-                      Prazo: {new Date(task.deadlineAt).toLocaleString("pt-BR", {
-                        timeZone: "America/Sao_Paulo",
-                        dateStyle: "short",
-                        timeStyle: "short",
-                      })}
+                      Prazo: {formatDateTimeInTimezone(task.deadlineAt, task.timezone)}
                     </span>
                   )}
                 </>
@@ -1007,7 +1004,13 @@ export function ManagementTaskDrawer({
                       <h3 className="font-bold text-xs uppercase tracking-wider text-(--text-primary)">Histórico</h3>
                     </div>
                     <CardContent className="p-4 flex flex-col gap-2 text-xs">
-                      <TaskActivityHistory logs={task.activityLogs} assignedMemberIds={task.assignments.filter((assignment) => assignment.type === "PRIMARY").map((assignment) => assignment.memberId)} />
+                      <TaskActivityHistory
+                        logs={task.activityLogs}
+                        assignedMemberIds={task.assignments
+                          .filter((assignment) => assignment.type === "PRIMARY")
+                          .map((assignment) => assignment.memberId)}
+                        timezone={task.timezone}
+                      />
                     </CardContent>
                   </Card>
                 )}

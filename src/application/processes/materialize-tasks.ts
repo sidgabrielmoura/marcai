@@ -2,11 +2,18 @@ import { Prisma } from "@prisma/client";
 import type { ProcessDefinition } from "@/domain/rules/process-definition";
 import { eligibleMember } from "@/application/security/operational-scope";
 import type { DispatchNotificationAsyncParams } from "@/infrastructure/notifications/notification-service";
+import { parseLocalDateTimeToUtc, canonicalTimezone } from "@/domain/rules/date-time";
 
 // Both immediate and recurring executions use the same immutable task snapshot.
 // External deliveries are returned to the caller and dispatched only after commit.
 export async function materializeProcessTasks(tx: Prisma.TransactionClient, context: { organizationId: string; memberId: string },
-  execution: { id: string; processId: string; locationId: string | null; scheduledAt: Date }, definition: ProcessDefinition, now: Date) {
+  execution: { id: string; processId: string; locationId: string | null; scheduledAt: Date }, definition: ProcessDefinition, now: Date, timezone?: string | null) {
+  let effectiveTz = timezone;
+  if (!effectiveTz && execution.locationId) {
+    const loc = await tx.location.findUnique({ where: { id: execution.locationId }, select: { timezone: true } });
+    effectiveTz = loc?.timezone;
+  }
+  const targetTz = canonicalTimezone(effectiveTz);
   const notifications: DispatchNotificationAsyncParams[] = [];
   const taskIds = new Map<string, string>();
   for (const [order, t] of definition.tasks.entries()) {
@@ -17,7 +24,7 @@ export async function materializeProcessTasks(tx: Prisma.TransactionClient, cont
       const approver = await tx.organizationMember.findFirst({ where: { id, organizationId: context.organizationId, status: "ACTIVE", user: { status: "ACTIVE" }, role: { in: ["OWNER", "ADMIN", "MANAGER"] } } });
       if (!approver || approver.role === "MANAGER" && !await eligibleMember(context.organizationId, id, execution.locationId, t.teamId, tx, execution.scheduledAt)) throw new Error("Aprovador indisponível para a execução.");
     }
-    const deadline = t.deadlineAt ? new Date(t.deadlineAt) : null;
+    const deadline = parseLocalDateTimeToUtc(t.deadlineAt, targetTz);
     const task = await tx.task.create({ data: {
       organizationId: context.organizationId, processId: execution.processId, executionId: execution.id, locationId: execution.locationId,
       origin: "PROCESS", definitionTaskId: t.id, definitionOrder: order, teamId: t.teamId,

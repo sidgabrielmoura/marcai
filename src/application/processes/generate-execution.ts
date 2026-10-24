@@ -54,7 +54,7 @@ export async function generateRoutineExecution(routineId: string, context: Authe
       startedAt: isNowOrPast ? now : null,
       definitionSnapshot: definition as unknown as Prisma.InputJsonValue,
     } });
-    notifications.push(...await materializeProcessTasks(tx, context, execution, definition, now));
+    notifications.push(...await materializeProcessTasks(tx, context, execution, definition, now, routine.timezone));
     await tx.activityLog.create({ data: { organizationId: context.organizationId, actorId: context.memberId || null, action: "EXECUTION_GENERATED", entityType: "EXECUTION", entityId: execution.id, metadata: { scheduledAt: scheduledAt.toISOString(), templateVersion: routine.process.sourceTemplateVersion?.version ?? 1 } } });
     return { success: true, generated: true, data: { id: execution.id } };
   }, { timeout: 30000 });

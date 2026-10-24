@@ -10,6 +10,10 @@ import { EmployeeHistoryList, type HistoryTaskItem } from "@/presentation/compon
 import { Button } from "@/components/ui/button";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+  formatDateInTimezone,
+  resolveEffectiveTimezone,
+} from "@/domain/rules/date-time";
 
 export default async function HistoryPage({
   searchParams,
@@ -35,7 +39,10 @@ export default async function HistoryPage({
   const [tasks, count] = await Promise.all([
     prisma.task.findMany({
       where,
-      include: { location: { select: { name: true } } },
+      include: {
+        location: { select: { name: true, timezone: true } },
+        execution: { select: { routine: { select: { timezone: true } } } },
+      },
       orderBy: { updatedAt: "desc" },
       take: 20,
       skip: (page - 1) * 20,
@@ -48,9 +55,13 @@ export default async function HistoryPage({
     title: t.title,
     status: t.status,
     locationName: t.location?.name || null,
-    dateLabel: (t.completedAt ?? t.cancelledAt ?? t.updatedAt).toLocaleDateString("pt-BR", {
-      timeZone: "America/Sao_Paulo",
-    }),
+    dateLabel: formatDateInTimezone(
+      t.completedAt ?? t.cancelledAt ?? t.updatedAt,
+      resolveEffectiveTimezone({
+        routineTimezone: t.execution?.routine?.timezone,
+        locationTimezone: t.location?.timezone,
+      }),
+    ),
   }));
 
   const url = (n: number) => `/history?period=${period}&status=${status}&page=${n}`;

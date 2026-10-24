@@ -7,6 +7,7 @@ import {
   type ApprovalTask,
 } from "@/presentation/components/approvals/management-approvals-client";
 import { redirect } from "next/navigation";
+import { resolveEffectiveTimezone } from "@/domain/rules/date-time";
 
 export default async function ManagementApprovalsPage({
   searchParams,
@@ -29,7 +30,8 @@ export default async function ManagementApprovalsPage({
         },
       },
       include: {
-        location: { select: { id: true, name: true } },
+        location: { select: { id: true, name: true, timezone: true } },
+        execution: { select: { routine: { select: { timezone: true } } } },
         team: { select: { id: true, name: true } },
         process: { select: { id: true, name: true } },
         assignments: {
@@ -123,6 +125,10 @@ export default async function ManagementApprovalsPage({
       createdAt: t.createdAt.toISOString(),
       deadlineAt: t.deadlineAt ? t.deadlineAt.toISOString() : null,
       slaDueAt: t.slaDueAt ? t.slaDueAt.toISOString() : null,
+      timezone: resolveEffectiveTimezone({
+        routineTimezone: t.execution?.routine?.timezone,
+        locationTimezone: t.location?.timezone,
+      }),
       evidenceRequirements: t.evidenceRequirements.map((r) => ({
         id: r.id,
         type: r.type,

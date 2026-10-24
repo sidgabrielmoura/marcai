@@ -47,6 +47,11 @@ import {
   Role,
 } from "@/domain/types";
 import { revalidatePath } from "@/infrastructure/realtime/revalidate";
+import {
+  parseLocalDateTimeToUtc,
+  formatTimeInTimezone,
+  resolveEffectiveTimezone,
+} from "@/domain/rules/date-time";
 
 export type ActionResult = {
   success?: boolean;
@@ -148,15 +153,15 @@ export async function createAdHocTaskAction(
     }
   }
 
-  if (
-    !(await prisma.location.findFirst({
-      where: {
-        id: locationId,
-        organizationId: context.organizationId,
-        status: "ACTIVE",
-      },
-    }))
-  )
+  const location = await prisma.location.findFirst({
+    where: {
+      id: locationId,
+      organizationId: context.organizationId,
+      status: "ACTIVE",
+    },
+    select: { id: true, timezone: true },
+  });
+  if (!location)
     return { error: "Unidade inválida." };
   if (
     teamId &&
@@ -183,8 +188,10 @@ export async function createAdHocTaskAction(
     return {
       error: "O responsável precisa pertencer à equipe e ter acesso à unidade.",
     };
-  const deadlineDate = deadlineAt ? new Date(deadlineAt) : null;
-  if (deadlineDate && Number.isNaN(deadlineDate.getTime()))
+  const deadlineDate = deadlineAt
+    ? parseLocalDateTimeToUtc(deadlineAt, location.timezone)
+    : null;
+  if (deadlineAt && (!deadlineDate || Number.isNaN(deadlineDate.getTime())))
     return { error: "Prazo inválido." };
   const slaDueDate = deadlineDate;
 
@@ -312,6 +319,8 @@ export async function createAdHocTaskAction(
  * Registra quem transferiu, notifica e revoga acesso do anterior
  */
 const taskInclude = {
+  location: { select: { id: true, name: true, timezone: true } },
+  execution: { select: { routine: { select: { timezone: true } } } },
   dependencies: {
     include: { dependsOnTask: { include: { approvalWorkflow: true } } },
   },
@@ -488,13 +497,20 @@ export async function editTaskAction(
             "Não é possível alterar a obrigatoriedade em uma execução encerrada.",
         };
     }
+    const effectiveTz = resolveEffectiveTimezone({
+      routineTimezone: task.execution?.routine?.timezone,
+      locationTimezone: task.location?.timezone,
+    });
+    const parsedDeadline = data.deadlineAt
+      ? parseLocalDateTimeToUtc(data.deadlineAt, effectiveTz)
+      : null;
     await tx.task.update({
       where: { id: taskId, organizationId: c.organizationId },
       data: {
         ...data,
         description: data.description || null,
         instructions: data.instructions || null,
-        deadlineAt: data.deadlineAt ? new Date(data.deadlineAt) : null,
+        deadlineAt: parsedDeadline,
       },
     });
     await audit(tx, task, c, "TASK_UPDATED", {
@@ -552,11 +568,15 @@ export async function reassignTaskAction(
         error: "Escolha uma pessoa ativa da equipe com acesso à unidade.",
       };
 
+    const effectiveTz = resolveEffectiveTimezone({
+      routineTimezone: task.execution?.routine?.timezone,
+      locationTimezone: task.location?.timezone,
+    });
     const now = new Date();
     let newDeadline: Date | null = null;
     if (customDeadlineAt) {
-      const parsedDate = new Date(customDeadlineAt);
-      if (isNaN(parsedDate.getTime()) || parsedDate <= now) {
+      const parsedDate = parseLocalDateTimeToUtc(customDeadlineAt, effectiveTz);
+      if (!parsedDate || isNaN(parsedDate.getTime()) || parsedDate <= now) {
         return {
           error: "O novo prazo limite precisa ser uma data e hora futura.",
         };
@@ -669,10 +689,7 @@ export async function reassignTaskAction(
     }
 
     const formattedTime = newDeadline
-      ? newDeadline.toLocaleTimeString("pt-BR", {
-          hour: "2-digit",
-          minute: "2-digit",
-        })
+      ? formatTimeInTimezone(newDeadline, effectiveTz)
       : null;
 
     const notifTitle = isSameMember
@@ -781,10 +798,11 @@ export async function claimTaskAction(taskId: string): Promise<ActionResult> {
       };
     const now = new Date();
     if (task.scheduledDate && task.scheduledDate > now) {
-      const formattedTime = task.scheduledDate.toLocaleTimeString("pt-BR", {
-        hour: "2-digit",
-        minute: "2-digit",
+      const effectiveTz = resolveEffectiveTimezone({
+        routineTimezone: task.execution?.routine?.timezone,
+        locationTimezone: task.location?.timezone,
       });
+      const formattedTime = formatTimeInTimezone(task.scheduledDate, effectiveTz);
       return {
         error: `Esta tarefa está agendada para às ${formattedTime} e só poderá ser assumida a partir do horário agendado.`,
       };
@@ -1264,6 +1282,7 @@ export type ManagementTaskDrawerResult = {
   actualDuration: number | null;
   startedAt: string | null;
   completedAt: string | null;
+  timezone?: string;
   locationName: string | null;
   teamName: string | null;
   assignments: Array<{
@@ -1347,6 +1366,7 @@ export async function getManagementTaskDrawerAction(taskId: string): Promise<{
         where: { id: taskId, ...taskScope(context), deletedAt: null },
         include: {
           location: true,
+          execution: { select: { routine: { select: { timezone: true } } } },
           team: true,
           assignments: {
             where: { removedAt: null },
@@ -1459,6 +1479,10 @@ export async function getManagementTaskDrawerAction(taskId: string): Promise<{
         actualDuration: task.actualDuration,
         startedAt: task.startedAt ? task.startedAt.toISOString() : null,
         completedAt: task.completedAt ? task.completedAt.toISOString() : null,
+        timezone: resolveEffectiveTimezone({
+          routineTimezone: task.execution?.routine?.timezone,
+          locationTimezone: task.location?.timezone,
+        }),
         locationName: task.location?.name || null,
         teamName: task.team?.name || null,
         assignments: task.assignments.map((a) => ({

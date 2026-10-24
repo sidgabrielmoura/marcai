@@ -17,6 +17,7 @@ import { saveLocationAction } from "@/presentation/actions/org-management-action
 import { PageHeader, EmptyState } from "@/presentation/components/shared";
 import type { ManualSubscription } from "@/application/superadmin/manual-subscription";
 import { checkLocationLimit } from "@/domain/rules/subscription-limits";
+import { CANONICAL_TIMEZONES } from "@/domain/rules/date-time";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -410,12 +411,10 @@ export function LocationsClient({
                 Fuso horário
               </FieldLabel>
               <Select
-                items={[
-                  { value: "America/Sao_Paulo", label: "Brasília (São Paulo)" },
-                  { value: "America/Manaus", label: "Manaus" },
-                  { value: "America/Cuiaba", label: "Cuiabá" },
-                  { value: "America/Belem", label: "Belém" },
-                ]}
+                items={CANONICAL_TIMEZONES.map((tz) => ({
+                  value: tz.value,
+                  label: `${tz.label} (${tz.offsetLabel})`,
+                }))}
                 name="timezone"
                 value={selectedTimezone}
                 onValueChange={(val) =>
@@ -430,12 +429,11 @@ export function LocationsClient({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectItem value="America/Sao_Paulo">
-                      Brasília (São Paulo)
-                    </SelectItem>
-                    <SelectItem value="America/Manaus">Manaus</SelectItem>
-                    <SelectItem value="America/Cuiaba">Cuiabá</SelectItem>
-                    <SelectItem value="America/Belem">Belém</SelectItem>
+                    {CANONICAL_TIMEZONES.map((tz) => (
+                      <SelectItem key={tz.value} value={tz.value}>
+                        {tz.label} ({tz.offsetLabel})
+                      </SelectItem>
+                    ))}
                   </SelectGroup>
                 </SelectContent>
               </Select>

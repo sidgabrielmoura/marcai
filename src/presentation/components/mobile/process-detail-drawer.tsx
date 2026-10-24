@@ -23,6 +23,7 @@ import {
   completeProcessExecutionAction,
   type EmployeeProcessExecutionDetail,
 } from "@/presentation/actions/process-actions";
+import { formatDateTimeInTimezone } from "@/domain/rules/date-time";
 import { EmployeeTaskDetailDrawer } from "./task-detail-drawer";
 import {
   X,
@@ -412,11 +413,10 @@ export function EmployeeProcessDetailDrawer({
                   <span className="inline-flex items-center gap-1 font-medium">
                     <Calendar className="size-3 text-slate-400" />
                     Agendado:{" "}
-                    {new Date(execution.scheduledAt).toLocaleString("pt-BR", {
-                      timeZone: "America/Sao_Paulo",
-                      dateStyle: "short",
-                      timeStyle: "short",
-                    })}
+                    {formatDateTimeInTimezone(
+                      execution.scheduledAt,
+                      execution.timezone,
+                    )}
                   </span>
                 )}
                 {execution?.locationName && (

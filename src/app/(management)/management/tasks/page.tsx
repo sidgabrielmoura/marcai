@@ -2,6 +2,7 @@ import { getManagementContext } from "@/application/security/auth-context";
 import { prisma } from "@/infrastructure/database/prisma";
 import { ManagementShell } from "@/presentation/components/mobile/management-shell";
 import { TasksViewClient } from "@/presentation/components/tasks/tasks-view-client";
+import { resolveEffectiveTimezone } from "@/domain/rules/date-time";
 
 export default async function ManagementTasksPage() {
   const context = await getManagementContext();
@@ -24,7 +25,8 @@ export default async function ManagementTasksPage() {
       select: {
         id: true, title: true, description: true, origin: true, status: true, priority: true,
         criticality: true, required: true, deadlineAt: true, taskType: true, slaExceededAt: true, slaDueAt: true,
-        location: { select: { name: true } },
+        location: { select: { name: true, timezone: true } },
+        execution: { select: { routine: { select: { timezone: true } } } },
         team: { select: { name: true } },
         assignments: {
           where: { type: "PRIMARY", removedAt: null },
@@ -69,6 +71,10 @@ export default async function ManagementTasksPage() {
     criticality: t.criticality,
     required: t.required,
     deadlineAt: t.deadlineAt,
+    timezone: resolveEffectiveTimezone({
+      routineTimezone: t.execution?.routine?.timezone,
+      locationTimezone: t.location?.timezone,
+    }),
     locationName: t.location?.name || null,
     teamName: t.team?.name || null,
     primaryAssignee: t.assignments[0]?.member?.user?.name || null,

@@ -7,6 +7,7 @@ import {
 } from "@/presentation/components/executions/management-executions-client";
 import { formatRoutineRule } from "@/domain/rules/schedule";
 import { resolveExecutionStatus } from "@/domain/rules/execution-state";
+import { resolveEffectiveTimezone } from "@/domain/rules/date-time";
 import { redirect } from "next/navigation";
 
 export default async function ManagementExecutionsPage({
@@ -46,8 +47,8 @@ export default async function ManagementExecutionsPage({
       where: whereClause,
       include: {
         process: { select: { id: true, name: true, criticality: true } },
-        location: { select: { id: true, name: true } },
-        routine: { select: { id: true, recurrenceRule: true } },
+        location: { select: { id: true, name: true, timezone: true } },
+        routine: { select: { id: true, recurrenceRule: true, timezone: true } },
         tasks: {
           where: { deletedAt: null },
           select: {
@@ -112,6 +113,10 @@ export default async function ManagementExecutionsPage({
     routineName: formatRoutineRule(e.routine?.recurrenceRule),
     locationId: e.locationId,
     locationName: e.location?.name || null,
+    timezone: resolveEffectiveTimezone({
+      routineTimezone: e.routine?.timezone,
+      locationTimezone: e.location?.timezone,
+    }),
     status: resolveExecutionStatus(e, now),
     scheduledAt: e.scheduledAt.toISOString(),
     startedAt: e.startedAt ? e.startedAt.toISOString() : null,

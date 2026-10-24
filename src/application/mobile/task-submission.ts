@@ -38,6 +38,7 @@ import { idempotent } from "./idempotency";
 import { fail, MobileError } from "./http";
 import { mutable, verifyFormAttachments } from "./attachments";
 import { deadline } from "./policy";
+import { resolveEffectiveTimezone } from "@/domain/rules/date-time";
 
 export type ActionResult = {
   success?: boolean;
@@ -120,7 +121,10 @@ export async function saveEvidence(
           const timeFormatted = task.scheduledDate.toLocaleTimeString("pt-BR", {
             hour: "2-digit",
             minute: "2-digit",
-            timeZone: task.location?.timezone ?? "America/Sao_Paulo",
+            timeZone: resolveEffectiveTimezone({
+              routineTimezone: task.execution?.routine?.timezone,
+              locationTimezone: task.location?.timezone,
+            }),
           });
           return {
             error: `Esta tarefa está agendada para às ${timeFormatted} e só permite registro de evidências a partir do seu horário de início.`,
@@ -346,7 +350,11 @@ export async function completeTask(
         where: { ...taskScope(c), id: taskId, deletedAt: null },
         include: {
           assignments: { where: { removedAt: null }, select: { type: true } },
-          execution: true,
+          execution: {
+            include: {
+              routine: { select: { timezone: true } },
+            },
+          },
           dependencies: {
             include: { dependsOnTask: { include: { approvalWorkflow: true } } },
           },
@@ -403,7 +411,10 @@ export async function completeTask(
         const timeFormatted = task.scheduledDate.toLocaleTimeString("pt-BR", {
           hour: "2-digit",
           minute: "2-digit",
-          timeZone: task.location?.timezone ?? "America/Sao_Paulo",
+          timeZone: resolveEffectiveTimezone({
+            routineTimezone: task.execution?.routine?.timezone,
+            locationTimezone: task.location?.timezone,
+          }),
         });
         return {
           error: `Esta tarefa está agendada para às ${timeFormatted} e só pode ser concluída a partir do horário agendado.`,

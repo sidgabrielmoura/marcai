@@ -83,6 +83,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { ManagementTaskDrawer } from "./management-task-drawer";
+import { formatTimeInTimezone } from "@/domain/rules/date-time";
 
 interface TaskItem {
   id: string;
@@ -94,6 +95,7 @@ interface TaskItem {
   criticality: string;
   required: boolean;
   deadlineAt: Date | string | null;
+  timezone?: string;
   locationName: string | null;
   teamName: string | null;
   primaryAssignee: string | null;
@@ -970,12 +972,9 @@ export function TasksViewClient({
                             <div className="flex items-center gap-1 font-semibold text-[var(--brand-900)] shrink-0">
                               <Clock className="size-3 text-brand-700" />
                               <span>
-                                {new Date(task.deadlineAt).toLocaleTimeString(
-                                  "pt-BR",
-                                  {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  },
+                                {formatTimeInTimezone(
+                                  task.deadlineAt,
+                                  task.timezone,
                                 )}
                               </span>
                             </div>

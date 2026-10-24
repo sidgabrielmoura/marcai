@@ -4,6 +4,7 @@ import { prisma } from "@/infrastructure/database/prisma";
 import { ManagementShell } from "@/presentation/components/mobile/management-shell";
 import { notFound } from "next/navigation";
 import { ManagementTaskDetailClient } from "@/presentation/components/tasks/management-task-detail-client";
+import { resolveEffectiveTimezone } from "@/domain/rules/date-time";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -26,6 +27,7 @@ export default async function ManagementTaskDetailPage({ params }: PageProps) {
       },
       include: {
         location: true,
+        execution: { select: { routine: { select: { timezone: true } } } },
         team: true,
         assignments: {
           where: { removedAt: null },
@@ -182,6 +184,10 @@ export default async function ManagementTaskDetailPage({ params }: PageProps) {
           slaExceededAt: task.slaExceededAt,
 
           actualDuration: task.actualDuration,
+          timezone: resolveEffectiveTimezone({
+            routineTimezone: task.execution?.routine?.timezone,
+            locationTimezone: task.location?.timezone,
+          }),
           locationName: task.location?.name || null,
           teamName: task.team?.name || null,
           assignments: task.assignments.map((a) => ({

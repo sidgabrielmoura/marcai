@@ -8,6 +8,7 @@ import {
   OverviewTask,
 } from "@/presentation/components/dashboard/overview-dashboard-client";
 import { TaskStatus, Priority, Criticality } from "@/domain/types";
+import { resolveEffectiveTimezone } from "@/domain/rules/date-time";
 
 export default async function ManagementOverviewPage() {
   const context = await getManagementContext();
@@ -34,7 +35,8 @@ export default async function ManagementOverviewPage() {
         locationId: true, teamId: true, processId: true, deadlineAt: true, slaDueAt: true,
         completedAt: true, createdAt: true, startedAt: true, scheduledDate: true,
         toleranceMinutes: true, maxDuration: true, actualDuration: true,
-        location: { select: { name: true } },
+        location: { select: { name: true, timezone: true } },
+        execution: { select: { routine: { select: { timezone: true } } } },
         team: { select: { name: true } },
         process: { select: { name: true } },
         occurrences: {
@@ -98,6 +100,10 @@ export default async function ManagementOverviewPage() {
       teamName: t.team?.name || "Sem equipe",
       processName: t.process?.name || "Avulsa",
       deadlineAt: t.deadlineAt ? t.deadlineAt.toISOString() : null,
+      timezone: resolveEffectiveTimezone({
+        routineTimezone: t.execution?.routine?.timezone,
+        locationTimezone: t.location?.timezone,
+      }),
       completedAt: t.completedAt ? t.completedAt.toISOString() : null,
       createdAt: t.createdAt.toISOString(),
       isOverdue, slaExceeded,

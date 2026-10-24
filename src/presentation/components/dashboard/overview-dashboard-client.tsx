@@ -13,6 +13,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { PageHeader, EmptyState, StatusBadge, PriorityBadge } from "../shared";
+import { formatDateTimeInTimezone } from "@/domain/rules/date-time";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -53,6 +54,7 @@ export interface OverviewTask {
   teamName: string;
   processName: string;
   deadlineAt: string | null;
+  timezone?: string;
   completedAt: string | null;
   createdAt: string;
   isOverdue: boolean;
@@ -758,12 +760,7 @@ export function OverviewDashboardClient({
                         <>
                           <span>·</span>
                           <span className={task.slaExceeded ? "text-red-600 font-semibold" : ""}>
-                            Prazo: {new Date(task.deadlineAt).toLocaleString("pt-BR", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
+                            Prazo: {formatDateTimeInTimezone(task.deadlineAt, task.timezone)}
                           </span>
                         </>
                       )}

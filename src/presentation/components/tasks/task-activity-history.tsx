@@ -5,15 +5,21 @@ import { uiLabel } from "../shared/ui-labels";
 import { activityActor, viewersWithoutClaim, viewMetadata, type TaskActivity } from "@/presentation/lib/task-activity";
 import { Button } from "@/components/ui/button";
 
-function timestamp(value: Date | string) {
-  return new Date(value).toLocaleString("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    dateStyle: "short",
-    timeStyle: "medium",
-  });
+import { formatDateTimeInTimezone } from "@/domain/rules/date-time";
+
+function timestamp(value: Date | string, timezone?: string | null) {
+  return formatDateTimeInTimezone(value, timezone, { includeSeconds: true });
 }
 
-export function TaskActivityHistory({ logs, assignedMemberIds }: { logs: TaskActivity[]; assignedMemberIds: string[] }) {
+export function TaskActivityHistory({
+  logs,
+  assignedMemberIds,
+  timezone,
+}: {
+  logs: TaskActivity[];
+  assignedMemberIds: string[];
+  timezone?: string | null;
+}) {
   const [visible, setVisible] = useState(20);
   const viewers = viewersWithoutClaim(logs, assignedMemberIds);
   return (
@@ -26,7 +32,7 @@ export function TaskActivityHistory({ logs, assignedMemberIds }: { logs: TaskAct
             {viewers.map((log) => (
               <li key={log.actorId} className="flex flex-wrap justify-between gap-x-3 gap-y-1">
                 <span className="min-w-0 break-words">{activityActor(log)}</span>
-                <time dateTime={new Date(log.createdAt).toISOString()} className="text-muted-foreground">{timestamp(log.createdAt)}</time>
+                <time dateTime={new Date(log.createdAt).toISOString()} className="text-muted-foreground">{timestamp(log.createdAt, timezone)}</time>
               </li>
             ))}
           </ul>
@@ -40,7 +46,7 @@ export function TaskActivityHistory({ logs, assignedMemberIds }: { logs: TaskAct
               <p className="break-words text-muted-foreground">Por: {activityActor(log)}</p>
               {log.action.toUpperCase() === "TASK_VIEWED" && viewMetadata(log)?.wasUnassigned === true && <p className="text-muted-foreground">Sem responsável no momento da visualização.</p>}
             </div>
-            <time dateTime={new Date(log.createdAt).toISOString()} className="shrink-0 text-muted-foreground">{timestamp(log.createdAt)}</time>
+            <time dateTime={new Date(log.createdAt).toISOString()} className="shrink-0 text-muted-foreground">{timestamp(log.createdAt, timezone)}</time>
           </div>
         ))}
       </div>
