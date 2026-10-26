@@ -193,12 +193,19 @@ export function TaskDetailClient({
   const operationDenied = task.actions?.complete.allowed === false;
   const evidenceDenied = task.actions?.evidence.allowed === false;
 
-  const totalRequirements = requirements.length;
-  const completedRequirements = requirements.filter(
-    (req) =>
-      req.submissions.filter((s) => s.validationStatus === "VALID").length >=
-      req.minQuantity,
-  ).length;
+  const isFormTask =
+    task.taskType === "FORM" ||
+    (Array.isArray(task.formFields) && task.formFields.length > 0);
+  const isStandardTask = !isFormTask;
+
+  const totalRequirements = isStandardTask ? requirements.length : 0;
+  const completedRequirements = isStandardTask
+    ? requirements.filter(
+        (req) =>
+          req.submissions.filter((s) => s.validationStatus === "VALID").length >=
+          req.minQuantity,
+      ).length
+    : 0;
 
   if (!draft.ready)
     return (
@@ -365,15 +372,17 @@ export function TaskDetailClient({
     }
     setBusy(true);
     try {
-      const pendingRequirements = requirements.filter((req) => {
-        const validCount = req.submissions.filter(
-          (s) => s.validationStatus === "VALID",
-        ).length;
-        return validCount < req.minQuantity;
-      });
+      const pendingRequirements = !isFormTask
+        ? requirements.filter((req) => {
+            const validCount = req.submissions.filter(
+              (s) => s.validationStatus === "VALID",
+            ).length;
+            return validCount < req.minQuantity;
+          })
+        : [];
 
       // Validação de formulário se for o caso
-      if (task.taskType === "FORM" && Array.isArray(task.formFields)) {
+      if (isFormTask && Array.isArray(task.formFields)) {
         for (const field of task.formFields) {
           if (field.required) {
             const answer = formAnswers[field.id];
@@ -390,104 +399,134 @@ export function TaskDetailClient({
         }
       }
 
-      // Validação prévia de exigências obrigatórias
-      for (const req of pendingRequirements) {
-        const draft = evidenceDrafts[req.id];
-        const meta = evidenceTypeMeta[req.type] || { label: req.type };
-        const failures = req.submissions.filter(
-          (s) => s.validationStatus === "REJECTED",
-        ).length;
-        if (failures >= 3) continue; // Tolerância operacional D-05
+      // Validação prévia de exigências obrigatórias (apenas tarefas padrão)
+      if (!isFormTask) {
+        for (const req of pendingRequirements) {
+          const draft = evidenceDrafts[req.id];
+          const meta = evidenceTypeMeta[req.type] || { label: req.type };
+          const failures = req.submissions.filter(
+            (s) => s.validationStatus === "REJECTED",
+          ).length;
+          if (failures >= 3) continue; // Tolerância operacional D-05
 
-        if (req.required) {
-          if (req.type === "PHOTO") {
-            if (!draft?.file) {
-              toast.add({
-                title: "Evidência obrigatória",
-                description: `Tire a foto de comprovação (${meta.label}) antes de concluir.`,
-                type: "error",
-              });
-              setBusy(false);
-              return;
-            }
-          } else if (["VIDEO", "FILE"].includes(req.type)) {
-            if (!draft?.file) {
-              toast.add({
-                title: "Evidência obrigatória",
-                description: `Anexe o arquivo (${meta.label}) antes de concluir.`,
-                type: "error",
-              });
-              setBusy(false);
-              return;
-            }
-          } else if (req.type === "SIGNATURE") {
-            if (!draft?.signed) {
-              toast.add({
-                title: "Evidência obrigatória",
-                description: "Desenhe a sua assinatura antes de concluir.",
-                type: "error",
-              });
-              setBusy(false);
-              return;
-            }
-          } else if (req.type === "LOCATION") {
-            if (!draft?.value) {
-              toast.add({
-                title: "Evidência obrigatória",
-                description: "Capture a localização GPS antes de concluir.",
-                type: "error",
-              });
-              setBusy(false);
-              return;
-            }
-          } else if (req.type === "NUMBER") {
-            if (
-              !draft?.value ||
-              !draft.value.trim() ||
-              !Number.isFinite(Number(draft.value.replace(",", ".")))
-            ) {
-              toast.add({
-                title: "Evidência obrigatória",
-                description: `Informe a medição numérica para "${meta.label}".`,
-                type: "error",
-              });
-              setBusy(false);
-              return;
-            }
-          } else if (req.type === "TEXT") {
-            if (!draft?.value || !draft.value.trim()) {
-              toast.add({
-                title: "Evidência obrigatória",
-                description: `Preencha o relato escrito para "${meta.label}".`,
-                type: "error",
-              });
-              setBusy(false);
-              return;
+          if (req.required) {
+            if (req.type === "PHOTO") {
+              if (!draft?.file) {
+                toast.add({
+                  title: "Evidência obrigatória",
+                  description: `Tire a foto de comprovação (${meta.label}) antes de concluir.`,
+                  type: "error",
+                });
+                setBusy(false);
+                return;
+              }
+            } else if (["VIDEO", "FILE"].includes(req.type)) {
+              if (!draft?.file) {
+                toast.add({
+                  title: "Evidência obrigatória",
+                  description: `Anexe o arquivo (${meta.label}) antes de concluir.`,
+                  type: "error",
+                });
+                setBusy(false);
+                return;
+              }
+            } else if (req.type === "SIGNATURE") {
+              if (!draft?.signed) {
+                toast.add({
+                  title: "Evidência obrigatória",
+                  description: "Desenhe a sua assinatura antes de concluir.",
+                  type: "error",
+                });
+                setBusy(false);
+                return;
+              }
+            } else if (req.type === "LOCATION") {
+              if (!draft?.value) {
+                toast.add({
+                  title: "Evidência obrigatória",
+                  description: "Capture a localização GPS antes de concluir.",
+                  type: "error",
+                });
+                setBusy(false);
+                return;
+              }
+            } else if (req.type === "NUMBER") {
+              if (
+                !draft?.value ||
+                !draft.value.trim() ||
+                !Number.isFinite(Number(draft.value.replace(",", ".")))
+              ) {
+                toast.add({
+                  title: "Evidência obrigatória",
+                  description: `Informe a medição numérica para "${meta.label}".`,
+                  type: "error",
+                });
+                setBusy(false);
+                return;
+              }
+            } else if (req.type === "TEXT") {
+              if (!draft?.value || !draft.value.trim()) {
+                toast.add({
+                  title: "Evidência obrigatória",
+                  description: `Preencha o relato escrito para "${meta.label}".`,
+                  type: "error",
+                });
+                setBusy(false);
+                return;
+              }
             }
           }
         }
       }
 
-      // Envia automaticamente as evidências pendentes fornecidas
-      for (const req of pendingRequirements) {
-        const draft = evidenceDrafts[req.id];
-        if (!draft) continue;
+      // Envia automaticamente as evidências pendentes fornecidas (apenas tarefas padrão)
+      if (!isFormTask) {
+        for (const req of pendingRequirements) {
+          const draft = evidenceDrafts[req.id];
+          if (!draft) continue;
 
-        if (
-          req.type === "SIGNATURE" &&
-          draft.signed &&
-          draft.getSignatureBlob
-        ) {
-          const blob = await draft.getSignatureBlob();
-          if (blob) {
-            const sigFile = new File([blob], "assinatura.png", {
-              type: "image/png",
-            });
+          if (
+            req.type === "SIGNATURE" &&
+            draft.signed &&
+            draft.getSignatureBlob
+          ) {
+            const blob = await draft.getSignatureBlob();
+            if (blob) {
+              const sigFile = new File([blob], "assinatura.png", {
+                type: "image/png",
+              });
+              const form = new FormData();
+              form.set("taskId", task.id);
+              form.set("roundId", task.roundId);
+              form.set("requirementId", req.id);
+              form.set("file", sigFile);
+              form.set(
+                "receipt",
+                await receipt("evidence-upload", {
+                  requirementId: form.get("requirementId"),
+                  file: form.get("file"),
+                }),
+              );
+              const uploadRes = await uploadEvidenceAction(form);
+              if (uploadRes.error) {
+                toast.add({
+                  title: "Erro ao enviar assinatura",
+                  description: uploadRes.error,
+                  type: "error",
+                });
+                setBusy(false);
+                return;
+              }
+            }
+          } else if (
+            ["PHOTO", "VIDEO", "FILE"].includes(req.type) &&
+            draft.file
+          ) {
             const form = new FormData();
             form.set("taskId", task.id);
             form.set("roundId", task.roundId);
             form.set("requirementId", req.id);
-            form.set("file", sigFile);
+            form.set("file", draft.file);
             form.set(
               "receipt",
               await receipt("evidence-upload", {
@@ -497,74 +536,48 @@ export function TaskDetailClient({
             );
             const uploadRes = await uploadEvidenceAction(form);
             if (uploadRes.error) {
+              const meta = evidenceTypeMeta[req.type] || { label: req.type };
               toast.add({
-                title: "Erro ao enviar assinatura",
+                title: `Erro ao enviar ${meta.label}`,
                 description: uploadRes.error,
                 type: "error",
               });
               setBusy(false);
               return;
             }
-          }
-        } else if (
-          ["PHOTO", "VIDEO", "FILE"].includes(req.type) &&
-          draft.file
-        ) {
-          const form = new FormData();
-          form.set("taskId", task.id);
-          form.set("roundId", task.roundId);
-          form.set("requirementId", req.id);
-          form.set("file", draft.file);
-          form.set(
-            "receipt",
-            await receipt("evidence-upload", {
-              requirementId: form.get("requirementId"),
-              file: form.get("file"),
-            }),
-          );
-          const uploadRes = await uploadEvidenceAction(form);
-          if (uploadRes.error) {
-            const meta = evidenceTypeMeta[req.type] || { label: req.type };
-            toast.add({
-              title: `Erro ao enviar ${meta.label}`,
-              description: uploadRes.error,
-              type: "error",
-            });
-            setBusy(false);
-            return;
-          }
-        } else if (
-          ["TEXT", "NUMBER", "LOCATION"].includes(req.type) &&
-          draft.value?.trim()
-        ) {
-          const submitRes = await submitEvidenceAction(
-            task.id,
-            req.id,
-            draft.value.trim(),
-            {
-              roundId: task.roundId,
-              receipt: await receipt("evidence", {
-                id: req.id,
-                value: draft.value.trim(),
-              }),
-            },
-          );
-          if (submitRes.error) {
-            const meta = evidenceTypeMeta[req.type] || { label: req.type };
-            toast.add({
-              title: `Erro ao enviar ${meta.label}`,
-              description: submitRes.error,
-              type: "error",
-            });
-            setBusy(false);
-            return;
+          } else if (
+            ["TEXT", "NUMBER", "LOCATION"].includes(req.type) &&
+            draft.value?.trim()
+          ) {
+            const submitRes = await submitEvidenceAction(
+              task.id,
+              req.id,
+              draft.value.trim(),
+              {
+                roundId: task.roundId,
+                receipt: await receipt("evidence", {
+                  id: req.id,
+                  value: draft.value.trim(),
+                }),
+              },
+            );
+            if (submitRes.error) {
+              const meta = evidenceTypeMeta[req.type] || { label: req.type };
+              toast.add({
+                title: `Erro ao enviar ${meta.label}`,
+                description: submitRes.error,
+                type: "error",
+              });
+              setBusy(false);
+              return;
+            }
           }
         }
       }
 
       // Envia os arquivos de form se for o caso
       const finalFormAnswers = { ...formAnswers };
-      if (task.taskType === "FORM" && Array.isArray(task.formFields)) {
+      if (isFormTask && Array.isArray(task.formFields)) {
         for (const field of task.formFields) {
           if (
             ["PHOTO", "VIDEO", "FILE"].includes(field.type) &&
@@ -605,7 +618,7 @@ export function TaskDetailClient({
       // Conclui a tarefa
       const completeRes = await completeTaskAction(
         task.id,
-        task.taskType === "FORM" ? finalFormAnswers : undefined,
+        isFormTask ? finalFormAnswers : undefined,
         task.roundId,
         await receipt("complete", finalFormAnswers),
       );
@@ -1152,89 +1165,91 @@ export function TaskDetailClient({
         </CardContent>
       </Card>
 
-      {/* Card 2: Comprovações e Evidências */}
-      <Card className="rounded-xl p-0 border border-[var(--border-subtle)] bg-[var(--surface)] shadow-none overflow-hidden">
-        <div className="px-4 py-3 bg-slate-50/80 dark:bg-muted/30 border-b border-[var(--border-subtle)] flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <FileCheck2 className="size-4 text-[var(--brand-900)] dark:text-primary" />
-            <h3 className="font-bold text-xs uppercase tracking-wider text-[var(--text-primary)]">
-              Comprovações e Evidências
-            </h3>
-          </div>
-          {totalRequirements > 0 && (
-            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-200/80 dark:bg-muted text-slate-800 dark:text-foreground">
-              {completedRequirements}/{totalRequirements} entregues
-            </span>
-          )}
-        </div>
-
-        <CardContent className="p-4 sm:p-5 flex flex-col gap-3.5">
-          {totalRequirements === 0 ? (
-            <div className="p-4 text-center rounded-lg bg-emerald-50/60 border border-emerald-100 text-xs text-emerald-800">
-              <FileCheck2 className="size-5 mx-auto mb-1 text-emerald-600" />
-              Nenhuma evidência documental exigida. Basta confirmar o término do
-              trabalho no botão abaixo.
+      {/* Card 2: Comprovações e Evidências - Somente se for tarefa padrão */}
+      {isStandardTask && (
+        <Card className="rounded-xl p-0 border border-[var(--border-subtle)] bg-[var(--surface)] shadow-none overflow-hidden">
+          <div className="px-4 py-3 bg-slate-50/80 dark:bg-muted/30 border-b border-[var(--border-subtle)] flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FileCheck2 className="size-4 text-[var(--brand-900)] dark:text-primary" />
+              <h3 className="font-bold text-xs uppercase tracking-wider text-[var(--text-primary)]">
+                Comprovações e Evidências
+              </h3>
             </div>
-          ) : (
-            requirements.map((req) => (
-              <div key={req.id + ":" + req.submissions.length}>
-                <TaskEvidenceItem
-                  taskId={task.id}
-                  requirement={req}
-                  disabled={
-                    terminal ||
-                    busy ||
-                    scheduled ||
-                    task.status === "BLOCKED" ||
-                    !!task.isUnassigned ||
-                    isToleranceExceeded ||
-                    evidenceDenied
-                  }
-                  draft={evidenceDrafts[req.id]}
-                  onDraftChange={(draft) =>
-                    setEvidenceDrafts((prev) => ({ ...prev, [req.id]: draft }))
-                  }
-                  onSuccess={(msg) => {
-                    toast.add({
-                      title: "Comprovação enviada",
-                      description: msg || "Comprovação enviada com sucesso!",
-                      type: "success",
-                    });
-                    router.refresh();
-                  }}
-                  onError={(err) => {
-                    toast.add({
-                      title: "Erro no envio",
-                      description: err,
-                      type: "error",
-                    });
-                  }}
-                />
-                {!terminal &&
-                !task.isUnassigned &&
-                req.submissions.filter((s) => s.validationStatus === "VALID")
-                  .length < req.minQuantity ? (
-                  <Button
-                    variant="outline"
+            {totalRequirements > 0 && (
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-200/80 dark:bg-muted text-slate-800 dark:text-foreground">
+                {completedRequirements}/{totalRequirements} entregues
+              </span>
+            )}
+          </div>
+
+          <CardContent className="p-4 sm:p-5 flex flex-col gap-3.5">
+            {totalRequirements === 0 ? (
+              <div className="p-4 text-center rounded-lg bg-emerald-50/60 border border-emerald-100 text-xs text-emerald-800">
+                <FileCheck2 className="size-5 mx-auto mb-1 text-emerald-600" />
+                Nenhuma evidência documental exigida. Basta confirmar o término do
+                trabalho no botão abaixo.
+              </div>
+            ) : (
+              requirements.map((req) => (
+                <div key={req.id + ":" + req.submissions.length}>
+                  <TaskEvidenceItem
+                    taskId={task.id}
+                    requirement={req}
                     disabled={
+                      terminal ||
                       busy ||
                       scheduled ||
-                      isToleranceExceeded ||
                       task.status === "BLOCKED" ||
+                      !!task.isUnassigned ||
+                      isToleranceExceeded ||
                       evidenceDenied
                     }
-                    onClick={() => {
-                      void registerRequirement(req);
+                    draft={evidenceDrafts[req.id]}
+                    onDraftChange={(draft) =>
+                      setEvidenceDrafts((prev) => ({ ...prev, [req.id]: draft }))
+                    }
+                    onSuccess={(msg) => {
+                      toast.add({
+                        title: "Comprovação enviada",
+                        description: msg || "Comprovação enviada com sucesso!",
+                        type: "success",
+                      });
+                      router.refresh();
                     }}
-                  >
-                    Registrar comprovação
-                  </Button>
-                ) : null}
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+                    onError={(err) => {
+                      toast.add({
+                        title: "Erro no envio",
+                        description: err,
+                        type: "error",
+                      });
+                    }}
+                  />
+                  {!terminal &&
+                  !task.isUnassigned &&
+                  req.submissions.filter((s) => s.validationStatus === "VALID")
+                    .length < req.minQuantity ? (
+                    <Button
+                      variant="outline"
+                      disabled={
+                        busy ||
+                        scheduled ||
+                        isToleranceExceeded ||
+                        task.status === "BLOCKED" ||
+                        evidenceDenied
+                      }
+                      onClick={() => {
+                        void registerRequirement(req);
+                      }}
+                    >
+                      Registrar comprovação
+                    </Button>
+                  ) : null}
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Card 3: Ocorrências registradas - Inicialmente colapsado, layout neutro */}
       {(() => {

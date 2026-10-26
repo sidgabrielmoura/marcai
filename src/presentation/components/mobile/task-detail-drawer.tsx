@@ -248,14 +248,18 @@ export function EmployeeTaskDetailDrawer({
     }
     setActionBusy(true);
     try {
-      // 1. Identificar requisitos de evidência pendentes
-      const pendingRequirements = task.evidenceRequirements.filter((req) => {
-        const validCount = req.submissions.filter((s) => s.validationStatus === "VALID").length;
-        return validCount < req.minQuantity;
-      });
+      const isForm =
+        task.taskType === "FORM" ||
+        (Array.isArray(task.formFields) && task.formFields.length > 0);
 
-      // 1.5 Validar perguntas obrigatórias se aplicável
-      if (task.taskType === "FORM" && Array.isArray(task.formFields)) {
+      const pendingRequirements = !isForm
+        ? task.evidenceRequirements.filter((req) => {
+          const validCount = req.submissions.filter((s) => s.validationStatus === "VALID").length;
+          return validCount < req.minQuantity;
+        })
+        : [];
+
+      if (isForm && Array.isArray(task.formFields)) {
         for (const field of task.formFields as any[]) {
           if (field?.required) {
             const answer = formAnswers[field.id];
@@ -272,140 +276,144 @@ export function EmployeeTaskDetailDrawer({
         }
       }
 
-      // 2. Conferir se todas as exigências obrigatórias foram anexadas/preenchidas
-      for (const req of pendingRequirements) {
-        const draft = evidenceDrafts[req.id];
-        const meta = evidenceTypeMeta[req.type] || { label: req.type };
-        const failures = req.submissions.filter((s) => s.validationStatus === "REJECTED").length;
+      // 2. Conferir se todas as exigências obrigatórias foram anexadas/preenchidas (apenas tarefas padrão)
+      if (!isForm) {
+        for (const req of pendingRequirements) {
+          const draft = evidenceDrafts[req.id];
+          const meta = evidenceTypeMeta[req.type] || { label: req.type };
+          const failures = req.submissions.filter((s) => s.validationStatus === "REJECTED").length;
 
-        // Regra D-05: após 3 falhas de validação, a continuidade operacional com ressalva é permitida
-        if (failures >= 3) continue;
+          // Regra D-05: após 3 falhas de validação, a continuidade operacional com ressalva é permitida
+          if (failures >= 3) continue;
 
-        if (req.required) {
-          if (req.type === "PHOTO") {
-            if (!draft?.file) {
-              toast.add({
-                title: "Evidência obrigatória",
-                description: `Tire a foto de comprovação (${meta.label}) antes de concluir.`,
-                type: "error",
-              });
-              setActionBusy(false);
-              return;
-            }
-          } else if (["VIDEO", "FILE"].includes(req.type)) {
-            if (!draft?.file) {
-              toast.add({
-                title: "Evidência obrigatória",
-                description: `Anexe o arquivo (${meta.label}) antes de concluir.`,
-                type: "error",
-              });
-              setActionBusy(false);
-              return;
-            }
-          } else if (req.type === "SIGNATURE") {
-            if (!draft?.signed) {
-              toast.add({
-                title: "Evidência obrigatória",
-                description: "Desenhe a sua assinatura antes de concluir.",
-                type: "error",
-              });
-              setActionBusy(false);
-              return;
-            }
-          } else if (req.type === "LOCATION") {
-            if (!draft?.value) {
-              toast.add({
-                title: "Evidência obrigatória",
-                description: "Capture a localização GPS antes de concluir.",
-                type: "error",
-              });
-              setActionBusy(false);
-              return;
-            }
-          } else if (req.type === "NUMBER") {
-            if (!draft?.value || !draft.value.trim() || !Number.isFinite(Number(draft.value.replace(",", ".")))) {
-              toast.add({
-                title: "Evidência obrigatória",
-                description: `Informe a medição numérica para "${meta.label}".`,
-                type: "error",
-              });
-              setActionBusy(false);
-              return;
-            }
-          } else if (req.type === "TEXT") {
-            if (!draft?.value || !draft.value.trim()) {
-              toast.add({
-                title: "Evidência obrigatória",
-                description: `Preencha o relato escrito para "${meta.label}".`,
-                type: "error",
-              });
-              setActionBusy(false);
-              return;
+          if (req.required) {
+            if (req.type === "PHOTO") {
+              if (!draft?.file) {
+                toast.add({
+                  title: "Evidência obrigatória",
+                  description: `Tire a foto de comprovação (${meta.label}) antes de concluir.`,
+                  type: "error",
+                });
+                setActionBusy(false);
+                return;
+              }
+            } else if (["VIDEO", "FILE"].includes(req.type)) {
+              if (!draft?.file) {
+                toast.add({
+                  title: "Evidência obrigatória",
+                  description: `Anexe o arquivo (${meta.label}) antes de concluir.`,
+                  type: "error",
+                });
+                setActionBusy(false);
+                return;
+              }
+            } else if (req.type === "SIGNATURE") {
+              if (!draft?.signed) {
+                toast.add({
+                  title: "Evidência obrigatória",
+                  description: "Desenhe a sua assinatura antes de concluir.",
+                  type: "error",
+                });
+                setActionBusy(false);
+                return;
+              }
+            } else if (req.type === "LOCATION") {
+              if (!draft?.value) {
+                toast.add({
+                  title: "Evidência obrigatória",
+                  description: "Capture a localização GPS antes de concluir.",
+                  type: "error",
+                });
+                setActionBusy(false);
+                return;
+              }
+            } else if (req.type === "NUMBER") {
+              if (!draft?.value || !draft.value.trim() || !Number.isFinite(Number(draft.value.replace(",", ".")))) {
+                toast.add({
+                  title: "Evidência obrigatória",
+                  description: `Informe a medição numérica para "${meta.label}".`,
+                  type: "error",
+                });
+                setActionBusy(false);
+                return;
+              }
+            } else if (req.type === "TEXT") {
+              if (!draft?.value || !draft.value.trim()) {
+                toast.add({
+                  title: "Evidência obrigatória",
+                  description: `Preencha o relato escrito para "${meta.label}".`,
+                  type: "error",
+                });
+                setActionBusy(false);
+                return;
+              }
             }
           }
         }
       }
 
-      // 3. Se tudo está conferido e válido, enviar as evidências pendentes fornecidas
-      for (const req of pendingRequirements) {
-        const draft = evidenceDrafts[req.id];
-        if (!draft) continue;
+      // 3. Se tudo está conferido e válido, enviar as evidências pendentes fornecidas (apenas tarefas padrão)
+      if (!isForm) {
+        for (const req of pendingRequirements) {
+          const draft = evidenceDrafts[req.id];
+          if (!draft) continue;
 
-        if (req.type === "SIGNATURE" && draft.signed && draft.getSignatureBlob) {
-          const blob = await draft.getSignatureBlob();
-          if (blob) {
-            const sigFile = new File([blob], "assinatura.png", { type: "image/png" });
+          if (req.type === "SIGNATURE" && draft.signed && draft.getSignatureBlob) {
+            const blob = await draft.getSignatureBlob();
+            if (blob) {
+              const sigFile = new File([blob], "assinatura.png", { type: "image/png" });
+              const form = new FormData();
+              form.set("taskId", task.id);
+              form.set("requirementId", req.id);
+              form.set("file", sigFile);
+              form.set("roundId", task.roundId);
+              const uploadRes = await uploadEvidenceAction(form);
+              if (uploadRes.error) {
+                toast.add({
+                  title: "Erro ao enviar assinatura",
+                  description: uploadRes.error,
+                  type: "error",
+                });
+                setActionBusy(false);
+                return;
+              }
+            }
+          } else if (["PHOTO", "VIDEO", "FILE"].includes(req.type) && draft.file) {
             const form = new FormData();
             form.set("taskId", task.id);
             form.set("requirementId", req.id);
-            form.set("file", sigFile);
+            form.set("file", draft.file);
             form.set("roundId", task.roundId);
             const uploadRes = await uploadEvidenceAction(form);
             if (uploadRes.error) {
+              const meta = evidenceTypeMeta[req.type] || { label: req.type };
               toast.add({
-                title: "Erro ao enviar assinatura",
+                title: `Erro ao enviar ${meta.label}`,
                 description: uploadRes.error,
                 type: "error",
               });
               setActionBusy(false);
               return;
             }
-          }
-        } else if (["PHOTO", "VIDEO", "FILE"].includes(req.type) && draft.file) {
-          const form = new FormData();
-          form.set("taskId", task.id);
-          form.set("requirementId", req.id);
-          form.set("file", draft.file);
-          form.set("roundId", task.roundId);
-          const uploadRes = await uploadEvidenceAction(form);
-          if (uploadRes.error) {
-            const meta = evidenceTypeMeta[req.type] || { label: req.type };
-            toast.add({
-              title: `Erro ao enviar ${meta.label}`,
-              description: uploadRes.error,
-              type: "error",
-            });
-            setActionBusy(false);
-            return;
-          }
-        } else if (["TEXT", "NUMBER", "LOCATION"].includes(req.type) && draft.value?.trim()) {
-          const submitRes = await submitEvidenceAction(task.id, req.id, draft.value.trim(), { roundId: task.roundId });
-          if (submitRes.error) {
-            const meta = evidenceTypeMeta[req.type] || { label: req.type };
-            toast.add({
-              title: `Erro ao enviar ${meta.label}`,
-              description: submitRes.error,
-              type: "error",
-            });
-            setActionBusy(false);
-            return;
+          } else if (["TEXT", "NUMBER", "LOCATION"].includes(req.type) && draft.value?.trim()) {
+            const submitRes = await submitEvidenceAction(task.id, req.id, draft.value.trim(), { roundId: task.roundId });
+            if (submitRes.error) {
+              const meta = evidenceTypeMeta[req.type] || { label: req.type };
+              toast.add({
+                title: `Erro ao enviar ${meta.label}`,
+                description: submitRes.error,
+                type: "error",
+              });
+              setActionBusy(false);
+              return;
+            }
           }
         }
       }
 
       // 4. Se o form tiver arquivos (fotos, vídeos ou anexos), fazemos o upload seguro antes de concluir.
       const finalFormAnswers = { ...formAnswers };
-      if (task.taskType === "FORM" && Array.isArray(task.formFields)) {
+      if (isForm && Array.isArray(task.formFields)) {
         for (const field of task.formFields as any[]) {
           if (["PHOTO", "VIDEO", "FILE"].includes(field?.type) && finalFormAnswers[field.id] instanceof File) {
             const file = finalFormAnswers[field.id] as File;
@@ -435,8 +443,8 @@ export function EmployeeTaskDetailDrawer({
         }
       }
 
-      // 5. Todas as comprovações foram enviadas com sucesso -> Concluir tarefa direto
-      const completeRes = await completeTaskAction(task.id, task.taskType === "FORM" ? finalFormAnswers : undefined, task.roundId);
+      // 5. Concluir tarefa direto
+      const completeRes = await completeTaskAction(task.id, isForm ? finalFormAnswers : undefined, task.roundId);
       if (completeRes.error) {
         toast.add({
           title: "Erro ao concluir tarefa",
@@ -471,14 +479,19 @@ export function EmployeeTaskDetailDrawer({
     }
   }
 
-  const completedRequirements = task
+  const isFormTask =
+    task?.taskType === "FORM" ||
+    (Array.isArray(task?.formFields) && task.formFields.length > 0);
+  const isStandardTask = !isFormTask;
+
+  const completedRequirements = task && isStandardTask
     ? task.evidenceRequirements.filter((req) => {
       const validCount = req.submissions.filter((s) => s.validationStatus === "VALID").length;
       return validCount >= req.minQuantity;
     }).length
     : 0;
 
-  const totalRequirements = task?.evidenceRequirements.length ?? 0;
+  const totalRequirements = task && isStandardTask ? (task.evidenceRequirements.length ?? 0) : 0;
 
   const bodyContent = (
     <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-4 flex flex-col gap-4">
@@ -780,60 +793,63 @@ export function EmployeeTaskDetailDrawer({
             </CardContent>
           </Card>
 
-          <Card className="shrink-0 rounded-xl p-0 border border-[var(--border-subtle)] bg-[var(--surface)] shadow-none overflow-hidden">
-            <div className="px-4 py-3 bg-slate-50/80 dark:bg-muted/30 border-b border-[var(--border-subtle)] flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <FileCheck2 className="size-4 text-[var(--brand-900)] dark:text-primary" />
-                <h3 className="font-bold text-xs uppercase tracking-wider text-[var(--text-primary)] line-clamp-1">
-                  Comprovações e Evidências
-                </h3>
-              </div>
-              {totalRequirements > 0 && (
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-200/80 dark:bg-muted text-slate-800 dark:text-foreground">
-                  {completedRequirements}/{totalRequirements} entregues
-                </span>
-              )}
-            </div>
-
-            <CardContent className="p-4 flex flex-col gap-3.5">
-              {totalRequirements === 0 ? (
-                <div className="p-3.5 text-center rounded-lg bg-emerald-50/60 border border-emerald-100 text-xs text-emerald-800">
-                  <FileCheck2 className="size-5 mx-auto mb-1 text-emerald-600" />
-                  Nenhuma evidência documental exigida. Basta confirmar o término do trabalho no botão abaixo.
+          {/* Card: Comprovações e Evidências - Apenas se for tarefa padrão */}
+          {isStandardTask && (
+            <Card className="shrink-0 rounded-xl p-0 border border-[var(--border-subtle)] bg-[var(--surface)] shadow-none overflow-hidden">
+              <div className="px-4 py-3 bg-slate-50/80 dark:bg-muted/30 border-b border-[var(--border-subtle)] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FileCheck2 className="size-4 text-[var(--brand-900)] dark:text-primary" />
+                  <h3 className="font-bold text-xs uppercase tracking-wider text-[var(--text-primary)] line-clamp-1">
+                    Comprovações e Evidências
+                  </h3>
                 </div>
-              ) : (
-                task.evidenceRequirements.map((req) => (
-                  <TaskEvidenceItem
-                    key={req.id}
-                    taskId={task.id}
-                    requirement={req}
-                    disabled={isTerminal || task.status === "BLOCKED" || !!task.isUnassigned || isToleranceExceeded}
-                    draft={evidenceDrafts[req.id]}
-                    onDraftChange={(draft) =>
-                      setEvidenceDrafts((prev) => ({ ...prev, [req.id]: draft }))
-                    }
-                    onSuccess={async (msg) => {
-                      toast.add({
-                        title: "Comprovação enviada",
-                        description: msg || "Comprovação enviada com sucesso!",
-                        type: "success",
-                      });
-                      if (taskId) await loadTask(taskId);
-                      onTaskUpdated?.();
-                      router.refresh();
-                    }}
-                    onError={(err) => {
-                      toast.add({
-                        title: "Erro no envio",
-                        description: err,
-                        type: "error",
-                      });
-                    }}
-                  />
-                ))
-              )}
-            </CardContent>
-          </Card>
+                {totalRequirements > 0 && (
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-200/80 dark:bg-muted text-slate-800 dark:text-foreground">
+                    {completedRequirements}/{totalRequirements} entregues
+                  </span>
+                )}
+              </div>
+
+              <CardContent className="p-4 flex flex-col gap-3.5">
+                {totalRequirements === 0 ? (
+                  <div className="p-3.5 text-center rounded-lg bg-emerald-50/60 border border-emerald-100 text-xs text-emerald-800">
+                    <FileCheck2 className="size-5 mx-auto mb-1 text-emerald-600" />
+                    Nenhuma evidência documental exigida. Basta confirmar o término do trabalho no botão abaixo.
+                  </div>
+                ) : (
+                  task.evidenceRequirements.map((req) => (
+                    <TaskEvidenceItem
+                      key={req.id}
+                      taskId={task.id}
+                      requirement={req}
+                      disabled={isTerminal || task.status === "BLOCKED" || !!task.isUnassigned || isToleranceExceeded}
+                      draft={evidenceDrafts[req.id]}
+                      onDraftChange={(draft) =>
+                        setEvidenceDrafts((prev) => ({ ...prev, [req.id]: draft }))
+                      }
+                      onSuccess={async (msg) => {
+                        toast.add({
+                          title: "Comprovação enviada",
+                          description: msg || "Comprovação enviada com sucesso!",
+                          type: "success",
+                        });
+                        if (taskId) await loadTask(taskId);
+                        onTaskUpdated?.();
+                        router.refresh();
+                      }}
+                      onError={(err) => {
+                        toast.add({
+                          title: "Erro no envio",
+                          description: err,
+                          type: "error",
+                        });
+                      }}
+                    />
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {(() => {
             const validOccurrences = (task.occurrences || []).filter((occ) => !isPauseOccurrence(occ));

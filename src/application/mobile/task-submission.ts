@@ -442,23 +442,28 @@ export async function completeTask(
       task.evidenceRequirements.forEach((r) => {
         r.submissions = evidenceInRound(r.submissions, round);
       });
+      const isFormTask =
+        task.taskType === "FORM" ||
+        (Array.isArray(task.formFields) && task.formFields.length > 0);
       const check = canCompleteTask(
         task.status,
-        task.evidenceRequirements.map((r) => ({
-          id: r.id,
-          required: r.required,
-          minQuantity: r.minQuantity,
-          validSubmissionsCount: r.submissions.filter(
-            (s) => s.validationStatus === "VALID",
-          ).length,
-          failedAttemptsCount: r.submissions.filter(
-            (s) => s.validationStatus === "REJECTED",
-          ).length,
-        })),
+        isFormTask
+          ? []
+          : task.evidenceRequirements.map((r) => ({
+              id: r.id,
+              required: r.required,
+              minQuantity: r.minQuantity,
+              validSubmissionsCount: r.submissions.filter(
+                (s) => s.validationStatus === "VALID",
+              ).length,
+              failedAttemptsCount: r.submissions.filter(
+                (s) => s.validationStatus === "REJECTED",
+              ).length,
+            })),
       );
       if (!check.allowed) return { error: check.reason };
 
-      if (task.taskType === "FORM" && Array.isArray(task.formFields)) {
+      if (isFormTask && Array.isArray(task.formFields)) {
         const error = validateFormAnswers(
           task.formFields as Parameters<typeof validateFormAnswers>[0],
           formAnswers,
@@ -750,7 +755,11 @@ export async function startTask(
       task.evidenceRequirements.forEach((r) => {
         r.submissions = evidenceInRound(r.submissions, round);
       });
+      const isFormTask =
+        task.taskType === "FORM" ||
+        (Array.isArray(task.formFields) && task.formFields.length > 0);
       if (
+        !isFormTask &&
         task.evidenceRequirements.some(
           (r) =>
             r.submissions.filter((s) => s.validationStatus === "VALID").length <

@@ -2,6 +2,7 @@
 import { clearEmployeeDrafts } from "@/presentation/lib/employee-drafts";
 
 import { useState, useActionState, useEffect } from "react";
+import Link from "next/link";
 import { Brand } from "@/presentation/components/shared/brand";
 import {
   loginWithPasswordAction,
@@ -667,6 +668,29 @@ export default function LoginPage() {
               Esqueceu seu PIN ou precisa de ajuda? Fale com o responsável pela
               sua unidade.
             </p>
+          </div>
+
+          <div className="mt-4 flex items-center justify-center gap-3 text-xs text-[var(--text-secondary)]">
+            <Link
+              href="/termos"
+              className="hover:text-[var(--brand-900)] hover:underline transition-colors"
+            >
+              Termos
+            </Link>
+            <span className="text-[var(--neutral-300)]">•</span>
+            <Link
+              href="/privacidade"
+              className="hover:text-[var(--brand-900)] hover:underline transition-colors"
+            >
+              Privacidade
+            </Link>
+            <span className="text-[var(--neutral-300)]">•</span>
+            <Link
+              href="/seguranca"
+              className="hover:text-[var(--brand-900)] hover:underline transition-colors"
+            >
+              Segurança
+            </Link>
           </div>
         </div>
       </div>
