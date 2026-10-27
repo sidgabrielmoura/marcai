@@ -11,6 +11,7 @@ export async function synchronizeExecution(
   now = new Date(),
   changedTaskId?: string,
 ) {
+  let changed = false;
   if (executionId)
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"execution:" + executionId}))`;
   const where = {
@@ -93,6 +94,7 @@ export async function synchronizeExecution(
       },
     });
     if (!released.count) continue;
+    changed = true;
 
     for (const assignment of task.assignments) {
       if (
@@ -116,7 +118,7 @@ export async function synchronizeExecution(
     }
   }
 
-  if (!executionId) return;
+  if (!executionId) return changed;
   const execution = await tx.processExecution.findFirst({
     where: { id: executionId, organizationId },
     include: {
@@ -126,9 +128,9 @@ export async function synchronizeExecution(
       },
     },
   });
-  if (!execution) return;
+  if (!execution) return changed;
   const status = resolveExecutionStatus(execution, now) as ExecutionStatus;
-  if (status === execution.status) return;
+  if (status === execution.status) return changed;
 
   await tx.processExecution.update({
     where: { id: executionId, organizationId },
@@ -249,4 +251,5 @@ export async function synchronizeExecution(
       });
     }
   }
+  return true;
 }

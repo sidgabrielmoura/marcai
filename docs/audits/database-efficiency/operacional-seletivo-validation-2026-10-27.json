@@ -1,0 +1,272 @@
+{
+  "generatedAt": "2026-10-27T19:24:00.095Z",
+  "status": "validated_locally",
+  "implementation": "Selective operational scheduler using cron-job.org",
+  "migration": "20261027180000_selective_operational",
+  "production": {
+    "databaseContacted": false,
+    "migrationApplied": false,
+    "backendDeployed": false,
+    "mobilePublished": false,
+    "cronsActivated": false,
+    "externalMessagesSent": false
+  },
+  "backend": {
+    "finishedAt": "2026-10-27T19:16:08.436Z",
+    "database": "disposable PostgreSQL 18 on 127.0.0.1:56433",
+    "checks": [
+      {
+        "name": "generate",
+        "success": true,
+        "exitCode": 0
+      },
+      {
+        "name": "types",
+        "success": true,
+        "exitCode": 0
+      },
+      {
+        "name": "verify-domain-rules",
+        "success": true,
+        "exitCode": 0
+      },
+      {
+        "name": "verify-operational-rules",
+        "success": true,
+        "exitCode": 0
+      },
+      {
+        "name": "verify-workflow-regressions",
+        "success": true,
+        "exitCode": 0
+      },
+      {
+        "name": "verify-task-history",
+        "success": true,
+        "exitCode": 0
+      },
+      {
+        "name": "verify-database-efficiency",
+        "success": true,
+        "exitCode": 0
+      },
+      {
+        "name": "verify-selective-operational",
+        "success": true,
+        "exitCode": 0
+      },
+      {
+        "name": "schema-diff",
+        "success": true,
+        "exitCode": 0
+      }
+    ],
+    "selective": {
+      "finishedAt": "2026-10-27T19:16:04.833Z",
+      "passed": 15,
+      "checks": [
+        "unauthorized and disabled route perform zero SQL",
+        "empty selective tick is exactly one SELECT with no writes",
+        "business writes coalesce per organization/phase/transaction and rollback atomically",
+        "lower-ID late commit survives acknowledgement of a newer committed signal",
+        "new signals and stale revision cannot be erased by phase completion",
+        "failure delays captured signals; new changes bypass the old backoff",
+        "probe bounds phase and signal batches without acknowledging unseen work",
+        "a persistent execution failure cannot postpone unrelated future deadlines for an hour",
+        "execution release is scoped and future releases remain scheduled",
+        "SLA milestones, warning deduplication and unassigned alerts preserve idempotency",
+        "approvals and reports execute only due work once",
+        "dependency batches continue beyond 200 and honor future location access",
+        "routine catch-up preserves edit bounds, lead time and unique occurrences",
+        "partial budget does not advance completion; inactive organizations cannot be scheduled",
+        "dispatcher reconciles empty organizations then repeated calls become one read"
+      ],
+      "success": true,
+      "productionDatabaseContacted": false,
+      "externalTransports": false
+    },
+    "efficiency": {
+      "finishedAt": "2026-10-27T19:15:49.169Z",
+      "checks": [
+        {
+          "name": "pool bounds, UTC and opt-in sampling",
+          "success": true
+        },
+        {
+          "name": "read memo is per invocation and never persists authorization between requests",
+          "success": true
+        },
+        {
+          "name": "web session uses one SQL query and revokes on PIN/status/role changes",
+          "success": true
+        },
+        {
+          "name": "request projection excludes expired, future and foreign scopes",
+          "success": true
+        },
+        {
+          "name": "list projection preserves DTO, permissions, clocks and evidence counts",
+          "success": true
+        },
+        {
+          "name": "notification destinations are authorized in batches and isolate tenants",
+          "success": true
+        },
+        {
+          "name": "cross-organization destination lookup stays bounded and rejects foreign access",
+          "success": true
+        },
+        {
+          "name": "event replay snapshots do not load historical events; idle and repeated-resource replay stay bounded",
+          "success": true
+        },
+        {
+          "name": "late transactions cannot fall behind the replay watermark",
+          "success": true
+        },
+        {
+          "name": "SSE idle reconnect preserves cursor, avoids refresh and backs off; revoked scope stops streaming",
+          "success": true
+        },
+        {
+          "name": "lease excludes overlap and failed/expired leases recover",
+          "success": true
+        },
+        {
+          "name": "retry backoff is persistent and can be cleared after correction",
+          "success": true
+        },
+        {
+          "name": "job cadence excludes immediate retries after success and permits the next scheduled run",
+          "success": true
+        },
+        {
+          "name": "all retention entry points share a lease and reject unauthorized calls before database work",
+          "success": true
+        },
+        {
+          "name": "all handled SLA milestones cause no per-task transaction",
+          "success": true
+        },
+        {
+          "name": "approval escalation filters completed work before the batch limit",
+          "success": true
+        },
+        {
+          "name": "history projects rounds in a batch instead of one lookup per task",
+          "success": true
+        },
+        {
+          "name": "server board pagination reuses totals without truncating items",
+          "success": true
+        },
+        {
+          "name": "routine latest index reduces page access; future generation avoids transaction",
+          "success": true
+        },
+        {
+          "name": "maintenance removes expired auxiliaries and preserves active sessions",
+          "success": true
+        },
+        {
+          "name": "realtime client deduplicates reconnect listeners, bursts and hidden-tab work",
+          "success": true
+        },
+        {
+          "name": "QR polling is sequential, pauses when hidden and stops at expiry or approval",
+          "success": true
+        }
+      ]
+    }
+  },
+  "app": {
+    "tests": 322,
+    "passed": 322,
+    "failed": 0,
+    "durationMs": 102798.7597,
+    "typecheck": {
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    "workflow": {
+      "command": "npm run workflow:check",
+      "exitCode": 0,
+      "snapshotFiles": 204
+    },
+    "schemaFixture": {
+      "generatedAt": "2026-10-27T17:51:35.038Z",
+      "prismaVersion": "7.10.0",
+      "schema": "marcai/prisma/schema.prisma",
+      "schemaSha256": "64f0b398082a3b304aa7b0ba4d40ff78c2ef17f7a47c6c7b87678a79dc6bb08d",
+      "excludedNativeModels": [
+        "NativeSession",
+        "NativeRefreshToken",
+        "NativeChallenge",
+        "NativeRateLimit",
+        "NativeInstallation",
+        "NativeRequest",
+        "NativeBlob",
+        "NativeUpload",
+        "NativeUploadChunk",
+        "NativeEvent",
+        "NativePushOutbox",
+        "NativePushDelivery",
+        "NativeAlertCycle",
+        "MobileJobCursor",
+        "WebAuthSession",
+        "WebLoginChallenge",
+        "WebQrBinding",
+        "WebPasskeyChallenge"
+      ],
+      "baselineSchemaSha256": "3debe3600b0147433f6571bc7d342160857ea5422382fd3a56d298d85657766d",
+      "sqlSha256": "9626f48fb9e4feafb8c57e1d2d92e6103ac3256364688e1dea3dd619ed8863cc",
+      "legacyTables": 44,
+      "command": "prisma migrate diff --from-empty --to-schema <local schema> --script"
+    }
+  },
+  "build": {
+    "status": "passed",
+    "command": "node scripts/test-database-efficiency.cjs --build --webpack",
+    "startedAt": "2026-10-27T19:16:40.102Z",
+    "finishedAt": "2026-10-27T19:21:46.579Z",
+    "checks": [
+      {
+        "name": "generate",
+        "success": true,
+        "exitCode": 0
+      },
+      {
+        "name": "types",
+        "success": true,
+        "exitCode": 0
+      },
+      {
+        "name": "build",
+        "success": true,
+        "exitCode": 0
+      }
+    ],
+    "cssOptimizationWarnings": 19,
+    "note": "CSS optimizer warnings already present before this backend change."
+  },
+  "sourceSha256": {
+    "prisma/schema.prisma": "64f0b398082a3b304aa7b0ba4d40ff78c2ef17f7a47c6c7b87678a79dc6bb08d",
+    "prisma/migrations/20261027180000_selective_operational/migration.sql": "4808480c7d9d5d86933a389235deb5cc472f5f7f64d59ae5f3d7e72d12f2fb35",
+    "src/app/api/jobs/operational/route.ts": "5e531263df3003fb73ac111aa795f85e3894b6c3bad5e44e7a10718929a17422",
+    "src/application/processes/operational-agenda.ts": "e77e31e73b9c326bbfca4fb0e2fbc1f313ff4ff0523b27e7cfbb8ea2abe218ee",
+    "src/application/processes/operational-next.ts": "0176e6b08e50b76fee061d989490c1555ee7dffd58b0777ce984d5893d450caf",
+    "src/application/processes/operational-phases.ts": "e66815f07b712c400bb5eda612b07c33f8af0ae5b5e9fd58bfda3eab62d3cdce",
+    "src/application/processes/operational-tick.ts": "6c5747580b2fcb3d1c32929e7f77173747ca4b699d502ea592487485fcb01efd",
+    "src/application/processes/generate-execution.ts": "0bcc046a7512ba8f4f51bb5e3db2c92843e09e49fa299b288b1eef3e04357de1",
+    "src/application/tasks/synchronize-execution.ts": "1dfe5ce221b3796075ffc35673c84bf5b771ca1c23c7926a17dd5be4a5aabbf3",
+    "src/infrastructure/database/prisma.ts": "49c8323a1cf76e513371255cf3e30871ac7fd1e967daea70590b1281a0c6ea2a",
+    "scripts/verify-selective-operational.ts": "fd3477ecfa97f3ac9409c1dd5a9c9484d0b8fcf4aa8704ef9ca5e4020147f497",
+    "scripts/test-database-efficiency.cjs": "40dc099916a1533f5334298d4e974fa5f6c5115b78784042c6eebb84cfc511bd"
+  },
+  "limits": [
+    "One metadata query every five minutes can still keep Neon compute active.",
+    "Production CU-hour reduction and native-device behavior require deployment and observation.",
+    "Reconciliation is hourly by default; the external cron determines wake-up precision.",
+    "Failed phase scans retry after one minute; existing individual backoffs are preserved."
+  ]
+}

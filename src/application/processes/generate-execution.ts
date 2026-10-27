@@ -12,18 +12,19 @@ import { dispatchNotificationAsync } from "@/infrastructure/notifications/notifi
 export function routineScheduledAt(routine: {
   updatedAt: Date; recurrenceRule: string; startsAt: Date; endsAt: Date | null; timezone: string;
   process: { updatedAt: Date; validFrom: Date | null; validUntil: Date | null };
-}, previous: { scheduledAt: Date } | undefined, now: Date, automatic: boolean) {
-  const floor = new Date(Math.max(now.getTime() - (automatic ? 60000 : 1), routine.updatedAt.getTime() - 1, routine.process.updatedAt.getTime() - 1, previous?.scheduledAt.getTime() ?? 0, (routine.process.validFrom?.getTime() ?? 0) - 1));
+}, previous: { scheduledAt: Date } | undefined, now: Date, automatic: boolean, recoverSince?: Date) {
+  const recoveryFloor=automatic&&recoverSince?Math.max(recoverSince.getTime(),now.getTime()-86400000):now.getTime()-(automatic?60000:1);
+  const floor = new Date(Math.max(recoveryFloor, routine.updatedAt.getTime() - 1, routine.process.updatedAt.getTime() - 1, previous?.scheduledAt.getTime() ?? 0, (routine.process.validFrom?.getTime() ?? 0) - 1));
   const scheduledAt = nextOccurrence(routine.recurrenceRule, routine.startsAt, routine.endsAt, routine.timezone, floor);
   return !scheduledAt || routine.process.validUntil && scheduledAt > routine.process.validUntil ? null : scheduledAt;
 }
 
-export async function generateRoutineExecution(routineId: string, context: AuthenticatedContext, now = new Date(), automatic = false) {
+export async function generateRoutineExecution(routineId: string, context: AuthenticatedContext, now = new Date(), automatic = false, recoverSince?: Date) {
   const notifications: DispatchNotificationAsyncParams[] = [];
   const result = await prisma.$transaction(async tx => {
     // Serialize generation by routine so concurrent clicks cannot duplicate occurrences.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${routineId}))`;
-    const routine = await tx.routine.findFirst({ where: { id: routineId, process: processScope(context) }, include: {
+    const routine = await tx.routine.findFirst({ where: { id: routineId, process: { ...processScope(context), organization: { status: 'ACTIVE' } } }, include: {
       process: { include: { sourceTemplateVersion: true } },
       executions: { orderBy: { scheduledAt: "desc" }, take: 1 },
     } });
@@ -43,7 +44,7 @@ export async function generateRoutineExecution(routineId: string, context: Authe
       }
       return { error: check.reason || "A execução anterior ainda está pendente. Conclua-a ou altere a regra de pendência na rotina.", blocked: true };
     }
-    const scheduledAt = routineScheduledAt(routine, routine.executions[0], now, automatic);
+    const scheduledAt = routineScheduledAt(routine, routine.executions[0], now, automatic, recoverSince);
     if (!scheduledAt) return { error: "Não há próxima ocorrência dentro da validade do processo e da rotina." };
     if (automatic && scheduledAt.getTime() > now.getTime() + routine.generationLeadTime * 60000) return { error: "Fora da janela de geração antecipada." };
     const isNowOrPast = scheduledAt <= now;

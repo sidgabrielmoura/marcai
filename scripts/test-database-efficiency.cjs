@@ -51,6 +51,7 @@ async function main() {
       await client.query(triggers);
     }
     await client.query(fs.readFileSync(path.join(root,'prisma/migrations/20261021230000_database_efficiency/migration.sql'),'utf8'));
+    await client.query(fs.readFileSync(path.join(root,'prisma/migrations/20261027180000_selective_operational/migration.sql'),'utf8'));
     report.migrationAppliedLocally=true;
   } finally { await client.end(); }
   if (process.argv.includes('--setup')) return;
@@ -61,7 +62,7 @@ async function main() {
     run('build',[path.join(root,'node_modules/next/dist/bin/next'),'build',...(process.argv.includes('--webpack')?['--webpack']:[])],{timeout:1200000});
     return;
   }
-  for (const script of ['verify-domain-rules.ts','verify-operational-rules.ts','verify-workflow-regressions.ts','verify-task-history.ts','verify-database-efficiency.ts']) {
+  for (const script of ['verify-domain-rules.ts','verify-operational-rules.ts','verify-workflow-regressions.ts','verify-task-history.ts','verify-database-efficiency.ts','verify-selective-operational.ts']) {
     run(script.replace('.ts',''),['--import','tsx',path.join(workspace,'scripts',script)]);
   }
   // CLI diff ignores trigger bodies but must find no missing/extra ORM schema objects.

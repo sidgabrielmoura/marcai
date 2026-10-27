@@ -1,6 +1,7 @@
 import { validateCronRequest } from "@/infrastructure/security/cron-auth";
 import { operationalTick } from "@/application/processes/operational-tick";
 import { runScheduledJob } from "@/application/jobs/scheduled-job";
+import { runSelectiveOperational } from "@/application/processes/operational-agenda";
 
 export const maxDuration = 60;
 
@@ -12,7 +13,9 @@ async function handleOperationalCron(request: Request) {
 
   if (process.env.OPERATIONAL_JOBS_ENABLED === "0") return Response.json({ success: true, skipped: true, reason: "DISABLED" });
   const interval = Number(process.env.OPERATIONAL_JOB_MIN_INTERVAL_MS ?? "60000");
-  const run = await runScheduledJob("operational", 90_000, () => operationalTick(), { minIntervalMs: interval });
+  const run = process.env.OPERATIONAL_SELECTIVE_ENABLED === "0"
+    ? await runScheduledJob("operational", 90_000, () => operationalTick(), { minIntervalMs: interval })
+    : await runSelectiveOperational(new Date(), interval);
   if (run.skipped) return Response.json({ success: true, ...run });
   const result = run.result;
   return Response.json(

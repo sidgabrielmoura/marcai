@@ -29,12 +29,16 @@ A primeira página de tarefas retorna as contagens completas. As seguintes usam 
 
 ## Agendador
 
+A análise dos quatro agendamentos apresentados no cron-job.org, incluindo impacto da frequência de cinco minutos e colisão entre lixeira/histórico, está em [crons-2026-10-27.md](audits/database-efficiency/crons-2026-10-27.md). Os crons não foram ativados pela auditoria.
+
 | Variável | Padrão | Efeito |
 | --- | --- | --- |
 | `OPERATIONAL_JOBS_ENABLED` | habilitado | `0` devolve `DISABLED` antes de acessar o banco, após autenticar o cron |
 | `OPERATIONAL_JOB_MIN_INTERVAL_MS` | `60000` | Intervalo mínimo entre inícios de varreduras operacionais |
+| `OPERATIONAL_SELECTIVE_ENABLED` | habilitado | `0` volta ao caminho legado; padrão usa agenda/sinais transacionais |
+| `OPERATIONAL_RECONCILE_INTERVAL_MS` | `3600000` | Conferência de segurança por organização/fase |
 
-A lease continua protegendo a concorrência e libera em sucesso/falha. O intervalo não altera o serviço de agendamento externo. Chamadas excessivas ainda atingem o banco para disputar a lease; corrigir também a programação na origem. Não desabilitar prazos de produção indiscriminadamente.
+A [agenda seletiva](operational-scheduler.md) consulta primeiro metadados e, sem trabalho, retorna `NO_WORK` com uma consulta e sem escritas. Com trabalho, a lease continua protegendo a concorrência e libera em sucesso/falha. O intervalo não altera o serviço externo. Uma consulta a cada cinco minutos ainda pode manter o compute ativo. A migração `20261027180000_selective_operational` deve preceder o backend novo. Não desabilitar prazos de produção indiscriminadamente.
 
 ## Validação e publicação
 

@@ -25,6 +25,7 @@ if (
     !("reusableProcessTemplate" in globalForPrisma.prisma) ||
     !("platformBusinessSegment" in globalForPrisma.prisma) ||
     !("scheduledJobState" in globalForPrisma.prisma) ||
+    !("operationalAgenda" in globalForPrisma.prisma) ||
     !("platformTemplate" in globalForPrisma.prisma))
 ) {
   globalForPrisma.prisma = undefined;

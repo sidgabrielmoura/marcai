@@ -102,6 +102,8 @@ FCM e Ably alimentam a mesma fila, com agrupamento de 350 ms. A confirmação de
 
 ## Regras obrigatórias para futuras alterações
 
+O operacional usa [agenda e sinais transacionais](operational-scheduler.md), com [plano registrado](operational-scheduler-plan.md). Antes de alterar mutações ou agendamentos, conferir a cobertura de triggers da migração `20261027180000_selective_operational`. Preservar o ciclo vazio com uma consulta/zero escritas, a revisão da agenda, o ACK apenas de IDs confirmados e a recuperação de horários. Não substituir sinais por watermark nem criar polling/cron no app. O backend permanece canônico.
+
 - Manter autorização atual no servidor, filtros multi-tenant e interseção de escopos. Não usar cache global para permissões.
 - Informar a família alterada e reutilizar o DTO da mutação. Usar `ALL` quando a abrangência não puder ser determinada com segurança.
 - Server Actions legadas continuam usando o wrapper `@/infrastructure/realtime/revalidate` após o commit; o alvo de superadmin deve ser autorizado explicitamente. Os caminhos otimizados de início/conclusão usam resposta DTO + indicação de sincronização; o marcador interno evita repetir revalidações de página da aplicação compartilhada.
