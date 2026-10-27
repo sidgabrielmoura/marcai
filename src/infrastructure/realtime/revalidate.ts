@@ -6,10 +6,10 @@ import { publishSyncRequired } from "./sync";
 
 const notified = new WeakMap<
   object,
-  { organizations: Set<string>; current?: Promise<string | undefined> }
+  { organizations: Set<string>; current?: ReturnType<typeof getSession> }
 >();
 
-function notifyAfterMutation(target?: string) {
+function notifyAfterMutation(target?: string, kinds = ["ALL"]) {
   if (!process.env.ABLY_API_KEY) return;
   after(async () => {
     const request = await headers();
@@ -18,15 +18,15 @@ function notifyAfterMutation(target?: string) {
       state = { organizations: new Set() };
       notified.set(request, state);
     }
-    const organizationId =
-      target ??
-      (await (state.current ??= getSession().then(
-        (session) => session?.activeOrgId,
-      )));
+    const session=target?null:await(state.current??=getSession());
+    const organizationId=target??session?.activeOrgId;
     if (!organizationId) return;
-    if (state.organizations.has(organizationId)) return;
-    state.organizations.add(organizationId);
-    await publishSyncRequired(organizationId);
+    const noticesOnly=kinds.every(kind=>kind==='NOTIFICATIONS_CHANGED');
+    // A preceding private notice must not swallow a later structural change.
+    const key=organizationId+(noticesOnly?':NOTICES':':ALL');
+    if (state.organizations.has(organizationId+':ALL') || state.organizations.has(key)) return;
+    state.organizations.add(key);
+    await publishSyncRequired(organizationId, kinds,noticesOnly?session?.userId:undefined);
   });
 }
 
@@ -40,5 +40,5 @@ export function revalidatePath(...args: Parameters<typeof invalidatePath>) {
   invalidatePath(...args);
   // No cross-request cache of authorization. Explicit targets and current-tenant
   // invalidations are coalesced independently within this request.
-  notifyAfterMutation();
+  notifyAfterMutation(undefined, args[0] === "/notifications" ? ["NOTIFICATIONS_CHANGED"] : ["ALL"]);
 }

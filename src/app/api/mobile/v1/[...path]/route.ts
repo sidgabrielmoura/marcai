@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { recordTaskView } from "@/application/mobile/task-views";
 import { eventStream } from "@/application/mobile/event-stream";
-import { realtimeToken } from "@/infrastructure/realtime/sync";
+import { realtimeAuthorization } from "@/infrastructure/realtime/sync";
 import { resolveDestination } from "@/application/mobile/destinations";
 import { prisma } from "@/infrastructure/database/prisma";
 import { json, failure, fail, MobileError } from "@/application/mobile/http";
@@ -129,7 +129,7 @@ async function handle(req: Request, ctx: Context) {
         if (method === "GET" && route === "session")
           return json(identity(auth.member));
         if (method === "GET" && route === "realtime/token") {
-          const token = await realtimeToken(c);
+          const token = await realtimeAuthorization(c, url.searchParams.get("protocol"));
           if (!token) fail(503, "REALTIME_UNAVAILABLE", "Tempo real temporariamente indisponível.");
           return json(token);
         }

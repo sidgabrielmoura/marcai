@@ -5,6 +5,9 @@ import { join } from "node:path";
 import { Client } from "pg";
 import vm from "node:vm";
 import ts from "typescript";
+import {AsyncLocalStorage} from 'node:async_hooks';
+import * as resourceEvents from '../src/presentation/realtime/resource-events';
+import {shareTabTransport} from '../src/presentation/realtime/tab-transport';
 import { prisma } from "../src/infrastructure/database/prisma";
 import { encryptSession, decryptSession } from "../src/infrastructure/security/session";
 import { authenticatedMemberSelect, contextFromMember, type AuthenticatedContext } from "../src/application/security/auth-context";
@@ -31,10 +34,12 @@ for (const key of ["ABLY_API_KEY", "RESEND_API_KEY", "WAHA_API_KEY", "FIREBASE_P
 globalThis.fetch = async () => { throw new Error("External transport disabled in isolated tests"); };
 
 const statements: string[] = [];
+const scopedStatements=new AsyncLocalStorage<string[]>();
 const originalQuery = Client.prototype.query;
 (Client.prototype as any).query = function (...args: any[]) {
   const query = typeof args[0] === "string" ? args[0] : args[0]?.text;
   if (query) statements.push(query);
+  if(query)scopedStatements.getStore()?.push(query);
   return (originalQuery as any).apply(this, args);
 };
 const results: Array<{ name: string; success: boolean; [key:string]: unknown }> = [];
@@ -234,8 +239,17 @@ async function main() {
   });
   await check("history projects rounds in a batch instead of one lookup per task",async()=>{
     await prisma.task.update({where:{id:task.id},data:{status:"COMPLETED",completedAt:new Date()}});
-    const start=statements.length; const result=await history(f.context,30,"ALL",null);
-    assert.equal(result.items.length,1); assert.ok(statements.length-start<20);
+    // Exclude unrelated async notification dispatch left by the previous job.
+    const queries:string[]=[];const result=await scopedStatements.run(queries,()=>history(f.context,30,"ALL",null));
+    metrics.historyQueries=queries.length;
+    // The routine timezone relation adds one bounded query to the old budget.
+    assert.equal(result.items.length,1); assert.ok(queries.length<=20,JSON.stringify({queries:queries.length,tables:queries.map(sql=>sql.match(/FROM\s+([^\s]+)/i)?.[1]??sql.slice(0,40))}));
+    const source=await prisma.task.findUniqueOrThrow({where:{id:task.id}});
+    for(let index=0;index<19;index++)await prisma.task.create({data:{organizationId:f.org.id,locationId:f.location.id,teamId:f.team.id,processId:source.processId,executionId:source.executionId,title:'History batch fixture',status:'COMPLETED',completedAt:new Date(),assignments:{create:{memberId:f.member.id}},evidenceRequirements:{create:{type:'TEXT',submissions:{create:{submittedBy:f.member.id,value:'Synthetic'}}}}}});
+    const batchQueries:string[]=[];
+    const batch=await scopedStatements.run(batchQueries,()=>history(f.context,30,'ALL',null));
+    assert.equal(batch.items.length,20);assert.ok(batchQueries.length<=queries.length,'History query count must not grow with the number of tasks');
+    metrics.historyBatchQueries={oneTask:queries.length,twentyTasks:batchQueries.length};
   });
   await check("server board pagination reuses totals without truncating items",async()=>{
     const pageFixture=await fixture();
@@ -326,7 +340,7 @@ async function verifyRealtimeClient() {
   const effects: Array<()=>void|(()=>void)> = [],timers=new Map<number,()=>void>(); let serial=0,refreshes=0;
   const listeners=new Map<string,()=>void>();
   const clients:any[]=[],sources:any[]=[];
-  class FakeChannel { callbacks:any[]=[]; subscribe(callback:any){this.callbacks.push(callback);return Promise.resolve();} }
+  class FakeChannel { callbacks:any[]=[]; on(){} subscribe(callback:any){this.callbacks.push(callback);return Promise.resolve();} }
   class FakeRealtime {
     options:any; auth={clientId:"fixture-user"}; channelsByName=new Map<string,FakeChannel>(); events=new Map<string,()=>void>(); closed=false;
     channels={get:(name:string)=>{if(!this.channelsByName.has(name))this.channelsByName.set(name,new FakeChannel());return this.channelsByName.get(name)!;}};
@@ -342,29 +356,39 @@ async function verifyRealtimeClient() {
   const source=readFileSync(join(process.cwd(),"src/presentation/hooks/use-realtime-events.ts"),"utf8");
   const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
   const module={exports:{} as any};
-  const sandbox={module,exports:module.exports,document,window:{addEventListener(){},removeEventListener(){}},URLSearchParams,EventSource:FakeSource,fetch:async()=>({ok:true,json:async()=>({capability:JSON.stringify({"org:fixture-org:notifications":["subscribe"],"user:fixture-user:notifications":["subscribe"]})})}),setTimeout:(callback:()=>void)=>{const id=++serial;timers.set(id,callback);return id;},clearTimeout:(id:number)=>timers.delete(id),require:(name:string)=>{
+  const sandbox={module,exports:module.exports,document,AbortController,window:{location:{pathname:'/tasks'},addEventListener(){},removeEventListener(){}},URLSearchParams,EventSource:FakeSource,fetch:async()=>({ok:true,json:async()=>({capability:JSON.stringify({"org:fixture-org:notifications":["subscribe"],"user:fixture-user:notifications":["subscribe"]})})}),setTimeout:(callback:()=>void)=>{const id=++serial;timers.set(id,callback);return id;},clearTimeout:(id:number)=>timers.delete(id),require:(name:string)=>{
     if(name==="react")return{useRef:(value:any)=>({current:value}),useEffect:(effect:any)=>effects.push(effect),useTransition:()=>[false,(fn:any)=>fn()]};
     if(name==="next/navigation")return{useRouter:()=>({refresh:()=>refreshes++})};
-    if(name==="ably")return{Realtime:FakeRealtime};throw new Error(name);
+    if(name==="ably")return{Realtime:FakeRealtime};
+    if(name==='@/presentation/realtime/resource-events')return resourceEvents;
+    if(name==='@/presentation/realtime/tab-transport')return {shareTabTransport};
+    throw new Error(name);
   }};
   vm.runInNewContext(code,sandbox); module.exports.useRealtimeEvents(()=>{},true); const cleanup=effects[0]!();
-  const client=clients[0]; await client.connect(); client.events.get("connected")();
+  const settle=async()=>{for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));};await settle();
+  const client=clients[0];
   assert.equal([...client.channelsByName.values()].reduce((count:number,c:any)=>count+c.callbacks.length,0),2);
   const channel=client.channelsByName.get("user:fixture-user:notifications");
   for(let i=0;i<20;i++)channel.callbacks[0]({id:"same-event",name:"notification:new",data:{organizationId:"fixture-org",notificationId:"same-notice"}});
-  assert.equal(timers.size,1); for(const [id,callback] of [...timers]){timers.delete(id);callback();} assert.equal(refreshes,1);
+  assert.equal(timers.size,1); for(const [id,callback] of [...timers]){timers.delete(id);callback();} assert.equal(refreshes,0);
+  channel.callbacks[0]({id:'task-event',name:'sync:required',data:{organizationId:'fixture-org',kinds:['TASK_CHANGED']}});
+  for(const [id,callback] of [...timers]){timers.delete(id);callback();}assert.equal(refreshes,1);
   client.events.get("failed")(); assert.equal(sources.length,1);
   sources[0].events.get("checkpoint")({data:JSON.stringify({cursor:"42",scopeVersion:"scope"})}); sources[0].onerror();
   for(const [id,callback] of [...timers]){timers.delete(id);callback();} assert.match(sources[1].url,/cursor=42/); assert.equal(refreshes,1);
   client.events.get("connected")(); assert.ok(sources[1].closed);
   document.hidden=true; listeners.get("visibilitychange")!(); assert.ok(client.closed); assert.equal(timers.size,0);
-  document.hidden=false; listeners.get("visibilitychange")!(); assert.equal(clients.length,2);
+  document.hidden=false; listeners.get("visibilitychange")!();await settle(); assert.equal(clients.length,2);
   if(typeof cleanup==="function")cleanup(); assert.ok(clients[1].closed);
 }
 
 main().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>{
   try {
     await prisma.webAuthSession.deleteMany({where:{userId:{in:users}}});
+    // Delete event-producing children while their tenant still exists. The
+    // current baseline includes tenant FKs on mobile_events.
+    await prisma.task.deleteMany({where:{organizationId:{in:organizations}}});
+    await prisma.processExecution.deleteMany({where:{organizationId:{in:organizations}}});
     await prisma.organization.deleteMany({where:{id:{in:organizations}}});
     await prisma.nativeEvent.deleteMany({where:{organizationId:{in:organizations}}});
     await prisma.user.deleteMany({where:{id:{in:users}}});

@@ -9,10 +9,6 @@ import { getSubscriptionNotice, type SubscriptionNotice } from "@/application/su
 
 const NOTIFICATION_REVALIDATE_PATHS = [
   "/notifications",
-  "/tasks",
-  "/overview",
-  "/management/tasks",
-  "/management/processes",
 ];
 
 function revalidateNotificationPaths() {

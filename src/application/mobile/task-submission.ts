@@ -46,7 +46,9 @@ export type ActionResult = {
   committed?: boolean;
   status?: "SUBMITTED" | "COMPLETED";
 };
-function refresh(id: string) {
+function refresh(id: string, request?: Request | null) {
+  // Optimized Server Actions return their DTO and publish a scoped hint.
+  if (request?.headers.get("X-Client-Reconciliation") === "2") return;
   for (const p of ["/tasks", "/history", "/notifications", "/management/tasks"])
     revalidatePath(p);
 }
@@ -322,7 +324,7 @@ export async function saveEvidence(
           : { success: true };
       },
     );
-    refresh(taskId);
+    refresh(taskId, req);
     return result;
   } catch (e) {
     const key = storedKey as string | null;
@@ -653,7 +655,7 @@ export async function completeTask(
       },
     );
   }
-  refresh(taskId);
+  refresh(taskId, req);
   return result;
 }
 
@@ -825,6 +827,6 @@ export async function startTask(
       memberId: c.memberId,
     });
   }
-  refresh(taskId);
+  refresh(taskId, req);
   return result;
 }

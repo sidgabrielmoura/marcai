@@ -4,6 +4,7 @@ import { useSubmissionReceipts } from "@/presentation/lib/submission-receipts";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { completeTaskAction } from "@/presentation/actions/task-actions";
+import {applyTaskResource} from '@/presentation/realtime/task-resource';
 import { Button } from "@/components/ui/button";
 import { Check, Loader2 } from "lucide-react";
 
@@ -43,12 +44,13 @@ export function QuickCompleteButton({
         undefined,
         roundId,
         await receipt("complete", {}),
+        false, // This button only reconciles the board; it needs no full detail DTO.
       );
       if (result.error) {
         setError(result.error);
         alert(`Não foi possível concluir: ${result.error}`);
       } else {
-        router.refresh();
+        if(!applyTaskResource(result))router.refresh();
       }
     } catch {
       setError("Erro de rede");

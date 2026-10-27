@@ -5,6 +5,7 @@ import { Priority, Role } from "@/domain/types";
 import { sendWebPushNotification } from "@/infrastructure/firebase/firebase-admin";
 import { sendOperationalAlertEmail } from "@/infrastructure/email";
 import { publishRealtimeNotification } from "@/infrastructure/realtime/ably";
+import { randomUUID } from "node:crypto";
 
 export interface SendNotificationParams {
   organizationId: string;
@@ -66,6 +67,7 @@ export interface DispatchNotificationAsyncParams {
 export async function dispatchNotificationAsync(params: DispatchNotificationAsyncParams): Promise<void> {
   const uniqueUsers = Array.from(new Set(params.userIds)).filter(Boolean);
   if (uniqueUsers.length === 0) return;
+  const changeId = randomUUID();
 
   const shouldSendPush =
     params.forcePush !== undefined
@@ -76,6 +78,7 @@ export async function dispatchNotificationAsync(params: DispatchNotificationAsyn
   void publishRealtimeNotification({
     organizationId: params.organizationId,
     userIds: uniqueUsers,
+    changeId,
     title: params.title,
     message: params.message,
     type: params.type,
@@ -119,9 +122,10 @@ export async function dispatchNotificationAsync(params: DispatchNotificationAsyn
           title: params.title,
           body: params.message,
           data: {
+              ...(params.data ? (params.data as Record<string, string | number | boolean>) : {}),
             organizationId: params.organizationId,
+            changeId,
             type: params.type,
-            ...(params.data ? (params.data as Record<string, string | number | boolean>) : {}),
           },
           clickAction,
         });
@@ -236,6 +240,7 @@ export async function sendNotification(params: SendNotificationParams) {
     priority: notification.priority,
     data: params.data,
     notificationId: notification.id,
+    changeId: notification.id,
     clickAction: params.clickAction,
   });
 
@@ -268,10 +273,11 @@ export async function sendNotification(params: SendNotificationParams) {
           title: params.title,
           body: params.message,
           data: {
+              ...(params.data ? (params.data as Record<string, string | number | boolean>) : {}),
             notificationId: notification.id,
+            changeId: notification.id,
             organizationId: params.organizationId,
             type: params.type,
-            ...(params.data ? (params.data as Record<string, string | number | boolean>) : {}),
           },
           clickAction: params.data?.taskId
             ? `/tasks/${params.data.taskId}`

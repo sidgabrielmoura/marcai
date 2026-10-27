@@ -1,5 +1,5 @@
 import { getAuthenticatedContext } from "@/application/security/auth-context";
-import { realtimeToken } from "@/infrastructure/realtime/sync";
+import { realtimeAuthorization } from "@/infrastructure/realtime/sync";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -18,7 +18,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
 
-    const tokenRequest = await realtimeToken(context);
+    const tokenRequest = await realtimeAuthorization(context, new URL(req.url).searchParams.get("protocol"));
     if (!tokenRequest) {
       return NextResponse.json(
         { error: "Serviço de tempo real não configurado." },

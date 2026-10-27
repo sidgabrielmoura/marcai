@@ -41,6 +41,7 @@ export interface PublishNotificationParams {
   priority?: string;
   data?: Record<string, unknown>;
   notificationId?: string;
+  changeId?: string;
   clickAction?: string;
   timestamp?: string;
 }
@@ -64,6 +65,8 @@ export async function publishRealtimeNotification(
 
   const payload = {
     notificationId: params.notificationId,
+    changeId: params.changeId ?? params.notificationId,
+    kinds: ["NOTIFICATIONS_CHANGED", ...(params.data?.taskId ? ["TASK_CHANGED"] : []), ...(params.data?.executionId ? ["EXECUTION_CHANGED"] : [])],
     organizationId: params.organizationId,
     title: params.title,
     message: params.message,

@@ -1,5 +1,7 @@
 # Controle de consumo e tempo real
 
+O contrato detalhado para futuras alterações por pessoas e IAs está em [database-access-architecture.md](database-access-architecture.md). Atualização de 27/10/2026: protocolo 2, leitores por recurso, DTOs de mutação, compartilhamento entre abas e cache móvel por família.
+
 O backend em `marcai` é canônico. O projeto `marcai-emp-app` consome a API e mantém somente um snapshot verificado desse backend. Editar o backend aqui e atualizar o snapshot com `node scripts/sync-employee-backend.mjs --refresh-from-source`, executado no repositório móvel. Scripts de aplicação na direção contrária foram bloqueados para evitar regressões.
 
 ## Transporte
@@ -8,7 +10,7 @@ O backend em `marcai` é canônico. O projeto `marcai-emp-app` consome a API e m
 - `GET /api/ably/token` autentica a sessão web. `GET /api/mobile/v1/realtime/token` autentica a sessão mobile, incluindo vínculo, papel, organização e credenciais vigentes.
 - Tokens têm dez minutos e somente `subscribe`. O canal privado é `user:{userId}:notifications`; o canal `org:{organizationId}:sync` contém apenas organização e categorias de alteração. Nunca publicar dados de tarefas nesse canal.
 - O replay persistente continua em `GET /api/mobile/v1/events?cursor=...`: ausência de cursor ou lacuna exige snapshot, sem baixar o histórico inteiro. O watermark por transações concluídas é preservado.
-- O mobile recupera o replay ao conectar, renovar autorização, retomar contexto e receber avisos. Na conexão saudável não há polling SQL de 2, 30 ou 60 segundos. O fallback é ativado em falhas e espaça consultas até dois minutos.
+- No protocolo 2, o mobile recupera o replay ao conectar, retomar contexto, reconectar ou perder continuidade. Renovação com mesmo escopo e avisos saudáveis invalidam diretamente as famílias afetadas, sem replay extra. O modo legado preserva compatibilidade. Não há polling SQL de 2, 30 ou 60 segundos na conexão saudável. O fallback é ativado em falhas e espaça consultas até dois minutos.
 - A autorização é revalidada em cada requisição. A renovação de token pode acordar o Neon a cada dez minutos em uma sessão permanentemente aberta; não confundir ausência de polling frequente com zero consumo.
 
 ## Escritas e invalidadores
@@ -35,6 +37,8 @@ A primeira página de tarefas retorna as contagens completas. As seguintes usam 
 A lease continua protegendo a concorrência e libera em sucesso/falha. O intervalo não altera o serviço de agendamento externo. Chamadas excessivas ainda atingem o banco para disputar a lease; corrigir também a programação na origem. Não desabilitar prazos de produção indiscriminadamente.
 
 ## Validação e publicação
+
+A investigação de 26/10, com a comparação de consumo, o diagnóstico de Scale to zero e as correções conjuntas no site/app, está em [acompanhamento-2026-10-26.md](audits/database-efficiency/acompanhamento-2026-10-26.md).
 
 ```powershell
 node scripts/test-database-efficiency.cjs

@@ -45,11 +45,23 @@ import {
   removeEvidence,
 } from "@/infrastructure/storage/evidence-storage";
 import { revalidatePath } from "@/infrastructure/realtime/revalidate";
+import {publishSyncRequired} from '@/infrastructure/realtime/sync';
 export type ActionResult = {
   success?: boolean;
   error?: string;
   status?: "SUBMITTED" | "COMPLETED";
+  task?: TaskDetailResult;
+  changeId?: string;
 };
+async function taskResponse(taskId:string,result:ActionResult,changeId:string,includeTask=true):Promise<ActionResult>{
+ if(result.error)return result;
+ const context=await getAuthenticatedContext(false);
+ if(!context)return {...result,changeId};
+ await publishSyncRequired(context.organizationId,['TASK_CHANGED','EXECUTION_CHANGED'],undefined,changeId);
+ if(!includeTask)return {...result,changeId};
+ try{return {...result,changeId,task:await webTaskDetail(context,taskId)};}
+ catch{return {...result,changeId};} // Access may have changed after the committed write.
+}
 function refresh(id: string) {
   for (const p of [
     `/tasks/${id}`,
@@ -67,7 +79,8 @@ export async function startTaskAction(
   taskId: string,
   justification?: string,
 ): Promise<ActionResult> {
-  return beginTask(null, taskId, justification);
+  const receipt=randomUUID();
+  return taskResponse(taskId,await beginTask(webRequest(receipt,true), taskId, justification),receipt);
 }
 
 export async function submitCloudinaryEvidenceAction(
@@ -267,7 +280,7 @@ export async function uploadTaskFormFileAction(
   }
 }
 
-function webRequest(receipt?: string) {
+function webRequest(receipt?: string, reconcile=false) {
   const origin =
     process.env.NEXT_PUBLIC_APP_URL ||
     process.env.APP_URL ||
@@ -275,7 +288,7 @@ function webRequest(receipt?: string) {
   return receipt
     ? new Request(origin, {
         method: "POST",
-        headers: { "Idempotency-Key": receipt },
+        headers: { "Idempotency-Key": receipt, ...(reconcile?{"X-Client-Reconciliation":"2"}:{}) },
       })
     : null;
 }
@@ -284,9 +297,11 @@ export async function completeTaskAction(
   formAnswers?: Record<string, any>,
   roundId?: string,
   receipt?: string,
+  includeDetail = true,
 ): Promise<ActionResult> {
   if (!roundId) return { error: "Atualize a tarefa antes de enviar." };
-  return submitTask(webRequest(receipt), taskId, formAnswers, roundId);
+  const changeId=receipt??randomUUID();
+  return taskResponse(taskId,await submitTask(webRequest(changeId,true), taskId, formAnswers, roundId),changeId,includeDetail);
 }
 
 export type TaskDetailResult = Awaited<ReturnType<typeof webTaskDetail>>;

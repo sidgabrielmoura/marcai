@@ -1,3 +1,9 @@
+# Tarefaí — site e API
+
+Antes de alterar acesso a dados, tempo real ou cache, consulte o [contrato de arquitetura](docs/database-access-architecture.md), os [controles de consumo](docs/database-cost-controls.md) e as instruções do [AGENTS.md](AGENTS.md). O backend aqui é canônico para o site e o app `marcai-emp-app`.
+
+Registro da implementação de 27/10/2026: [redução de consultas no site e app](docs/audits/database-efficiency/implementacao-2026-10-27.md).
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

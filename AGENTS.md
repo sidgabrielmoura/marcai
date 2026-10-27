@@ -8,6 +8,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
+## Contrato de consultas, cache e tempo real
+
+Antes de alterar acesso ao banco, APIs, Server Actions, notificações, cache, foco ou reconexão, leia [docs/database-access-architecture.md](docs/database-access-architecture.md) e [docs/database-cost-controls.md](docs/database-cost-controls.md). Preserve autorização por requisição, escopos e idempotência. Use invalidação por família e DTOs das mutações; não reintroduza polling, replay por evento saudável ou refresh global indiscriminado. O backend deste repositório é canônico: atualize o snapshot do app apenas na direção site → app. Mantenha documentação e testes de custo atualizados.
+
 ## Contrato de interface do superadmin
 
 Antes de alterar ou criar telas, componentes, formulários ou estilos da área `/superadmin`, leia e siga integralmente `docs/SUPERADMIN_LAYOUT.md`.

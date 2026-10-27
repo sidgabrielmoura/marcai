@@ -1,0 +1,49 @@
+{
+  "generatedAt": "2026-10-27T01:59:27.000Z",
+  "scope": [
+    "marcai",
+    "marcai-emp-app"
+  ],
+  "productionDatabaseWrites": false,
+  "productionMigrationChanged": false,
+  "neonScaleToZero": {
+    "disabled": true,
+    "evidence": "user-confirmed",
+    "changedByThisReview": false
+  },
+  "tests": {
+    "mobileSuite": {
+      "passed": 306,
+      "failed": 0
+    },
+    "focusedClients": {
+      "passed": 34,
+      "failed": 0
+    },
+    "typescript": {
+      "site": true,
+      "mobile": true
+    },
+    "canonicalSnapshot": {
+      "matchedFiles": 188
+    },
+    "workflowParity": true,
+    "diffWhitespace": true,
+    "nativeDeviceTest": false
+  },
+  "sourceSha256": {
+    "site": {
+      "src/presentation/hooks/use-realtime-events.ts": "97eb31265cb2261289f4f6eb8de58e9eb12a0e41648399e5a9bfa7e898d9e559"
+    },
+    "app": {
+      "src/core/api.ts": "c26d9b8f7d1ab2908a596926a4a905425b013603bd468c27f29ffeb2a2416839",
+      "src/core/query.ts": "271df84c5309438e579b63535d81d29ea9db07acb72ef1d050e01680271ed7ea",
+      "src/core/realtime-controller.ts": "32a67ab09ec2fe3dfccec6bb10874f1503c85ee4565fcfb4b83a80e5202b0736",
+      "src/features/notifications/provider.tsx": "5c2342ba15ac5e5c6c6c00093ee5a7b5e5081db32cbfbf9234c0d85c6630fd9b",
+      "app/(tabs)/notifications.tsx": "7cd43efe7e0d7010bb8199e2e75c23ad8f09d498f20f9ae0e61bcdab997c90d5",
+      "tests/database-cost-clients.test.mjs": "07f7b3c9fb1b1d0e086c7ee2c1693cd4068c9fa4d00d7bf87f4d0a80227dd1ee",
+      "tests/realtime.test.mjs": "b7bec22d4e196dbd5b98c848ae43d5be735eca03bcc49aec70fcef069bfd9ab3",
+      "tests/realtime-web.test.mjs": "b32609d0aa4080ddbc56a95650fb57e93c5fd3e2de3b65209150e20e71b9e6d0"
+    }
+  }
+}

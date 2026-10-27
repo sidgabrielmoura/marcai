@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import {dispatchResourceChange,subscribeResourceChanges} from '@/presentation/realtime/resource-events';
 import { useRouter } from "next/navigation";
 import {
   Drawer,
@@ -94,6 +95,13 @@ export function EmployeeProcessDetailDrawer({
     }
   }, [open, executionId, revision, loadExecution]);
 
+  useEffect(()=>{
+    if(!open||!executionId)return;
+    return subscribeResourceChanges(change=>{
+      if(change.kinds.some(k=>['ALL','TASK_CHANGED','EXECUTION_CHANGED'].includes(k)))setRevision(v=>v+1);
+    });
+  },[open,executionId]);
+
   const total =
     execution?.requiredTotal ??
     execution?.tasks.filter((t) => t.required).length ??
@@ -111,11 +119,10 @@ export function EmployeeProcessDetailDrawer({
         !["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(execution.status) &&
         new Date(execution.scheduledAt).getTime() <= Date.now()));
 
-  const updated = () => {
+  const updated = (reconcile = true) => {
     setSelectedId(null);
-    setRevision((v) => v + 1);
     onUpdated?.();
-    router.refresh();
+    if(reconcile&&!dispatchResourceChange({kinds:['TASK_CHANGED','EXECUTION_CHANGED']}))router.refresh();
   };
 
   const finish = async () => {
@@ -449,7 +456,7 @@ export function EmployeeProcessDetailDrawer({
           }}
           onBack={() => setSelectedId(null)}
           embedded={true}
-          onTaskUpdated={updated}
+          onTaskUpdated={()=>updated(false)}
         />
       </DrawerContent>
     </Drawer>

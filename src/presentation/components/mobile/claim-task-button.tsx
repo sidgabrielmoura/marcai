@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { claimTaskAction } from "@/presentation/actions/management-task-actions";
+import {applyTaskResource} from '@/presentation/realtime/task-resource';
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { Spinner } from "@/components/ui/spinner";
@@ -32,6 +33,7 @@ export function ClaimTaskButton({
         });
         router.refresh();
       } else {
+        const reconciled=applyTaskResource(result);
         toast.add({
           title: "Tarefa assumida com sucesso!",
           description: "Você já pode iniciar o registro das atividades.",
@@ -42,7 +44,7 @@ export function ClaimTaskButton({
         } else {
           router.push(`/tasks/${taskId}`);
         }
-        router.refresh();
+        if(!reconciled)router.refresh();
       }
     } catch {
       setError("Não foi possível assumir. Tente novamente.");

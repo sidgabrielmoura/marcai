@@ -32,6 +32,13 @@ async function main() {
   try {
     const {rows:[server]}=await client.query('SELECT version()');
     if (!server.version.startsWith('PostgreSQL 18.')) throw new Error('Tests require disposable PostgreSQL 18.');
+    if (process.argv.includes('--reset')) {
+      // The connection above is hard-coded to this disposable loopback database.
+      // Rebuild its baseline when a previous test run predates the current schema.
+      await client.query('DROP SCHEMA public CASCADE');
+      await client.query('CREATE SCHEMA public');
+      report.schemaResetLocally=true;
+    }
     if (!(await client.query("SELECT to_regclass('public.users') AS relation")).rows[0].relation) {
       const baseline=spawnSync('git',['show','HEAD:prisma/schema.prisma'],{cwd:root,encoding:'utf8',windowsHide:true});
       if (baseline.status!==0) throw new Error('Cannot read the committed baseline schema.');

@@ -1,5 +1,8 @@
 "use server";
 import { operate as employeeOperate } from "@/application/mobile/operations";
+import {webTaskDetail} from '@/application/mobile/web-task-contract';
+import {publishSyncRequired} from '@/infrastructure/realtime/sync';
+import {randomUUID} from 'node:crypto';
 import { evaluateTaskDependencies } from "@/domain/rules/dependency-rules";
 import { deadline } from "@/domain/rules/employee-workflow";
 
@@ -57,6 +60,8 @@ export type ActionResult = {
   success?: boolean;
   error?: string;
   data?: any;
+  task?:Awaited<ReturnType<typeof webTaskDetail>>;
+  changeId?:string;
 };
 
 // Schema de validação para criação de tarefa
@@ -756,10 +761,11 @@ export async function claimTaskAction(taskId: string): Promise<ActionResult> {
   const employee = await getAuthenticatedContext();
   if (employee?.role === "EMPLOYEE") {
     try {
-      const result = await employeeOperate(null, taskId, "claim", {});
-      revalidatePath("/tasks");
-      revalidatePath("/history");
-      return result;
+      const changeId=randomUUID();
+      const result = await employeeOperate(new Request('https://tarefai.invalid',{method:'POST',headers:{'Idempotency-Key':changeId}}), taskId, "claim", {});
+      await publishSyncRequired(employee.organizationId,['TASK_CHANGED','EXECUTION_CHANGED'],undefined,changeId);
+      try{return {...result,changeId,task:await webTaskDetail(employee,taskId)};}
+      catch{return {...result,changeId};}
     } catch (e) {
       return {
         error: e instanceof Error ? e.message : "Não foi possível continuar.",

@@ -3,7 +3,8 @@ import { useEmployeeDraft } from "@/presentation/hooks/use-employee-draft";
 import { useSubmissionReceipts } from "@/presentation/lib/submission-receipts";
 import { FormChoiceInput } from "@/presentation/components/shared/form-choice-input";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import {applyTaskResource,subscribeTaskResource} from '@/presentation/realtime/task-resource';
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -118,11 +119,11 @@ interface TaskDetailClientProps {
       evidence: { allowed: boolean; reason: string | null };
     };
     priority: string;
-    deadlineAt: Date | null;
-    slaDueAt?: Date | null;
+    deadlineAt: Date | string | null;
+    slaDueAt?: Date | string | null;
     toleranceMinutes?: number | null;
     locationName: string | null;
-    scheduledDate?: Date | null;
+    scheduledDate?: Date | string | null;
     requiresApproval?: boolean;
     correctionRequested?: boolean;
     isUnassigned?: boolean;
@@ -150,10 +151,13 @@ interface TaskDetailClientProps {
 }
 
 export function TaskDetailClient({
-  task,
+  task: initialTask,
   onCompleted,
   embedded,
 }: TaskDetailClientProps) {
+  const [task,setTask]=useState(initialTask);
+  useEffect(()=>{setTask(initialTask);},[initialTask]);
+  useEffect(()=>subscribeTaskResource(initialTask.id,updated=>setTask(updated)),[initialTask.id]);
   const router = useRouter();
   const receipt = useSubmissionReceipts(task.id + ":" + task.roundId);
   const [busy, setBusy] = useState(false);
@@ -168,6 +172,7 @@ export function TaskDetailClient({
   );
   const [occurrencesOpen, setOccurrencesOpen] = useState(false);
   const [requirements, setRequirements] = useState(task.evidenceRequirements);
+  useEffect(()=>setRequirements(task.evidenceRequirements),[task.evidenceRequirements]);
 
   const terminal = [
     "COMPLETED",
@@ -216,7 +221,7 @@ export function TaskDetailClient({
     );
 
   async function run(
-    action: () => Promise<{ success?: boolean; error?: string }>,
+    action: () => Promise<{ success?: boolean; error?: string;task?:import('@/presentation/actions/task-actions').TaskDetailResult;changeId?:string }>,
     options?: { successNotice?: string; complete?: boolean },
   ) {
     setBusy(true);
@@ -239,7 +244,7 @@ export function TaskDetailClient({
           if (onCompleted) onCompleted();
           else router.push("/tasks");
         }
-        router.refresh();
+        if(!applyTaskResource(r))router.refresh();
       }
     } catch {
       toast.add({
@@ -639,9 +644,9 @@ export function TaskDetailClient({
           type: "success",
         });
         await draft.discard();
+        applyTaskResource(completeRes);
         if (onCompleted) onCompleted();
         else router.push("/tasks");
-        router.refresh();
       }
     } catch {
       toast.add({

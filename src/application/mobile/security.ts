@@ -171,7 +171,12 @@ export async function withAuth<T>(req:Request,work:(auth:Awaited<ReturnType<type
  // Authenticated writes have finished (including interactive transactions).
  // GET/replay/token reads must never publish: that would create refresh loops.
  const kinds=mobileMutationKinds(req);
- if(kinds.length&&(!(result instanceof Response)||result.ok))await publishSyncRequired(context.organizationId,kinds,kinds.every(kind=>kind==='NOTIFICATIONS_CHANGED')?context.userId:undefined);
+ if(kinds.length&&(!(result instanceof Response)||result.ok)){
+ const receipt=req.headers.get('Idempotency-Key');
+ const changeId=receipt&&uuid.safeParse(receipt).success?receipt:randomUUID();
+ await publishSyncRequired(context.organizationId,kinds,kinds.every(kind=>kind==='NOTIFICATIONS_CHANGED')?context.userId:undefined,changeId);
+ if(result instanceof Response)result.headers.set('X-Change-Id',changeId);
+ }
  return result;
  });
 }

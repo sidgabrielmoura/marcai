@@ -44,10 +44,12 @@ export function eventStream(options: {
           const result = await replay(context, cursor);
           if (abort.signal.aborted) break;
           cursor = result.nextCursor;
-          const changed = result.events.length > 0 || result.requiresSnapshot || scopeVersion !== result.scopeVersion;
+          const changedScope = scopeVersion !== result.scopeVersion;
+          const changed = result.events.length > 0 || result.requiresSnapshot || changedScope;
           scopeVersion = result.scopeVersion;
           if (changed) {
-            send(mobile ? "sync" : "SYNC_REQUIRED", mobile ? result : { type: "SYNC_REQUIRED", payload: { cursor, scopeVersion, requiresSnapshot: result.requiresSnapshot } });
+            const kinds = result.requiresSnapshot || changedScope ? ["ALL"] : [...new Set(result.events.map(event=>event.kind))];
+            send(mobile ? "sync" : "SYNC_REQUIRED", mobile ? result : { type: "SYNC_REQUIRED", payload: { cursor, scopeVersion, requiresSnapshot: result.requiresSnapshot, kinds } });
             idleCycles = 0;
           } else {
             // Keep the legacy native reader compatible: older app versions

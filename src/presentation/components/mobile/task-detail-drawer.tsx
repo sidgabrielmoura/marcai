@@ -1,4 +1,5 @@
 "use client";
+import {applyTaskResource,loadTaskResource,subscribeTaskResource} from '@/presentation/realtime/task-resource';
 import { useTaskView } from "@/presentation/hooks/use-task-view";
 import { FormChoiceInput } from "@/presentation/components/shared/form-choice-input";
 
@@ -117,12 +118,15 @@ export function EmployeeTaskDetailDrawer({
   const [evidenceDrafts, setEvidenceDrafts] = useState<Record<string, EvidenceDraft>>({});
   const [formAnswers, setFormAnswers] = useState<Record<string, any>>({});
   const [drawerOccurrencesOpen, setDrawerOccurrencesOpen] = useState(false);
+  const loadingVersion=useRef(0);
   useTaskView(open && task?.id === taskId ? taskId : null);
 
   const loadTask = useCallback(async (id: string) => {
+    const version=++loadingVersion.current;
     setLoading(true);
     try {
-      const res = await getTaskDetailAction(id);
+      const res = await loadTaskResource(id);
+      if(version!==loadingVersion.current)return;
       if (res.error) {
         toast.add({
           title: "Erro ao carregar tarefa",
@@ -135,6 +139,7 @@ export function EmployeeTaskDetailDrawer({
         setFormAnswers((res.task.formAnswers as Record<string, any>) ?? {});
       }
     } catch {
+      if(version!==loadingVersion.current)return;
       toast.add({
         title: "Erro inesperado",
         description: "Não foi possível carregar os detalhes da tarefa.",
@@ -142,11 +147,17 @@ export function EmployeeTaskDetailDrawer({
       });
       setTask(null);
     } finally {
-      setLoading(false);
+      if(version===loadingVersion.current)setLoading(false);
     }
   }, []);
 
+  useEffect(()=>{
+    if(!open||!taskId)return;
+    return subscribeTaskResource(taskId,setTask);
+  },[open,taskId]);
+
   useEffect(() => {
+    loadingVersion.current++;
     if (open && taskId) {
       setLoading(true);
       setEvidenceDrafts({});
@@ -162,10 +173,11 @@ export function EmployeeTaskDetailDrawer({
       }, 300);
       return () => clearTimeout(timer);
     }
+    return()=>{loadingVersion.current++;};
   }, [open, taskId, loadTask]);
 
   async function handleAction(
-    actionFn: () => Promise<{ error?: string; success?: boolean }>,
+    actionFn: () => Promise<{ error?: string; success?: boolean; task?:TaskDetailResult;changeId?:string }>,
     opts?: {
       closeOnSuccess?: boolean;
       successNotice?: string;
@@ -189,9 +201,10 @@ export function EmployeeTaskDetailDrawer({
             type: "success",
           });
         }
-        if (taskId) await loadTask(taskId);
+        if(res.task)setTask(res.task);
+        else if (taskId) await loadTask(taskId);
         onTaskUpdated?.();
-        router.refresh();
+        if(!applyTaskResource(res))router.refresh();
         if (opts?.closeOnSuccess) {
           if (embedded && onBack) {
             onBack();
@@ -459,7 +472,8 @@ export function EmployeeTaskDetailDrawer({
           type: "success",
         });
         onTaskUpdated?.();
-        router.refresh();
+        if(completeRes.task)setTask(completeRes.task);
+        if(!applyTaskResource(completeRes))router.refresh();
         setTimeout(() => {
           if (embedded && onBack) {
             onBack();
