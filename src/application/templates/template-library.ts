@@ -70,7 +70,8 @@ export async function listTemplateLibrary(context: AuthenticatedContext, include
     });
   }
 
-  return [...platformItems, ...privateItems];
+  const catalog = platformItems.length > 0 ? platformItems : templateCatalog;
+  return [...catalog, ...privateItems];
 }
 
 export async function resolvePublishedTemplate(context: AuthenticatedContext, reference: string, db: TemplateDb = prisma): Promise<TemplateItem | null> {

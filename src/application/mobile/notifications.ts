@@ -44,7 +44,6 @@ export async function register(c:AuthenticatedContext,sessionId:string,installat
  await tx.$executeRaw`DELETE FROM mobile_installations WHERE token=${b.token} AND id<>${b.installationId}::uuid`;
  await tx.$executeRaw`INSERT INTO mobile_installations(id,user_id,organization_id,session_id,platform,environment,token,address_type,permission,app_version) VALUES(${b.installationId}::uuid,${c.userId},${c.organizationId},${sessionId}::uuid,${b.platform},${b.environment},${b.token},${b.addressType},${b.permission},${b.appVersion}) ON CONFLICT(id) DO UPDATE SET user_id=excluded.user_id,organization_id=excluded.organization_id,session_id=excluded.session_id,platform=excluded.platform,environment=excluded.environment,token=excluded.token,address_type=excluded.address_type,permission=excluded.permission,app_version=excluded.app_version,last_sync_at=now(),revoked_at=NULL`;
  });
- await prisma.$executeRaw`UPDATE mobile_push_outbox o SET state='QUEUED',available_at=now() FROM notifications n WHERE o.id=n.id AND o.state='NO_DEVICE' AND n."userId"=${c.userId} AND n."organizationId"=${c.organizationId} AND n."createdAt">now()-interval '1 hour'`;
  return {registered:['authorized','provisional'].includes(b.permission),lastSyncAt:new Date().toISOString()};
 }
 export async function installationStatus(c:AuthenticatedContext,id:string) {

@@ -56,6 +56,7 @@ async function main() {
       .getByRole("button", { name: "Nova organização", exact: true })
       .click();
     await page.locator("#org-name").fill("Validação de bloqueio sem cadastro");
+    await page.locator("#org-owner-email").fill("valida.owner@teste.com");
     const submit = page.getByRole("button", {
       name: "Criar organização",
       exact: true,

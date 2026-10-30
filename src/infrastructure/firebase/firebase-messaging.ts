@@ -22,7 +22,7 @@ export async function getFirebaseMessaging(): Promise<Messaging | null> {
       return messagingInstance;
     }
   } catch (error) {
-    console.warn("[Firebase Messaging] Não suportado neste navegador:", error);
+    console.warn("[Firebase Messaging] Não suportado neste navegador:", errorCode(error));
   }
 
   return null;
@@ -45,7 +45,7 @@ export async function registerFirebaseServiceWorker(): Promise<ServiceWorkerRegi
   } catch (error) {
     console.error(
       "[Firebase Messaging] Erro ao registrar /firebase-messaging-sw.js:",
-      error
+      errorCode(error)
     );
     return null;
   }
@@ -64,27 +64,30 @@ export async function requestPushNotificationToken(): Promise<string | null> {
   if (!messaging) return null;
 
   try {
-    const permission = await Notification.requestPermission();
+    const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
     if (permission !== "granted") {
       console.warn("[Firebase Messaging] Permissão de notificação negada:", permission);
       return null;
     }
 
     const registration = await registerFirebaseServiceWorker();
-    const swRegistration = registration || (await navigator.serviceWorker.ready);
+    if (!registration) throw new Error("Não foi possível registrar o serviço de notificações.");
+    const swRegistration = registration;
+    if (!registration.active) await new Promise<void>((resolve, reject) => {
+      const worker = registration.installing || registration.waiting;
+      if (!worker) return reject(new Error("Serviço de notificações indisponível."));
+      const timeout = setTimeout(() => { cleanup(); reject(new Error("O serviço de notificações não ficou pronto.")); }, 15000);
+      const cleanup = () => { clearTimeout(timeout); worker.removeEventListener("statechange", check); };
+      const check = () => {
+        if (worker.state === "activated") { cleanup(); resolve(); }
+        else if (worker.state === "redundant") { cleanup(); reject(new Error("Falha na ativação do serviço de notificações.")); }
+      };
+      worker.addEventListener("statechange", check);
+      check();
+    });
 
-    if (swRegistration && swRegistration.installing) {
-      await new Promise<void>((resolve) => {
-        const sw = swRegistration.installing;
-        if (!sw) return resolve();
-        sw.addEventListener("statechange", () => {
-          if (sw.state === "activated") resolve();
-        });
-        setTimeout(resolve, 1000);
-      });
-    }
-
-    const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || undefined;
+    const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY?.trim();
+    if (!vapidKey) throw new Error("A chave pública de notificações não foi configurada no build.");
 
     const token = await getToken(messaging, {
       serviceWorkerRegistration: swRegistration,
@@ -93,9 +96,14 @@ export async function requestPushNotificationToken(): Promise<string | null> {
 
     return token || null;
   } catch (error) {
-    console.error("[Firebase Messaging] Falha ao obter token FCM:", error);
+    console.error("[Firebase Messaging] Falha ao obter token FCM:", errorCode(error));
     return null;
   }
+}
+
+function errorCode(error: unknown): string {
+  const code = (error as {code?:unknown})?.code;
+  return typeof code === "string" ? code : "messaging/registration-failed";
 }
 
 /**

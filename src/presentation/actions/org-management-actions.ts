@@ -956,6 +956,8 @@ export async function updateOrganizationSettingsAction(formData: FormData): Prom
     updated.allowManagersToEditSensitiveData = val === "on" || val === "true" || val === "1";
   }
   if (formData.has("hasWhatsappSettings")) {
+    if (context.role !== "OWNER") return {error:"Somente o proprietário pode configurar os alertas do WhatsApp."};
+    if (formData.has("wahaEndpoint") || formData.has("wahaApiKey")) return {error:"A conexão WhatsApp é configurada somente no servidor."};
     const enabled = formData.get("whatsappAlertsEnabled") === "true" || formData.get("whatsappAlertsEnabled") === "on";
     const recipientPhone = String(formData.get("whatsappRecipientPhone") || "").trim();
     const recipientName = String(formData.get("whatsappRecipientName") || "").trim();
@@ -996,7 +998,19 @@ export async function updateOrganizationSettingsAction(formData: FormData): Prom
     }
   }
   await prisma.$transaction(async tx => {
-    await tx.organization.update({ where: { id: context.organizationId }, data: { name, settings: updated } });
+    const [current] = await tx.$queryRaw<Array<{settings:Record<string,unknown>}>>`SELECT settings FROM organizations WHERE id=${context.organizationId} FOR UPDATE`;
+    const patch = Object.fromEntries(Object.entries(updated).filter(([key,value])=>JSON.stringify(value)!==JSON.stringify(settings[key])));
+    await tx.organization.update({ where: { id: context.organizationId }, data: { name, settings: {...current?.settings,...patch} as any } });
+    if (updated.whatsappAlerts && !updated.whatsappAlerts.enabled) {
+      await tx.whatsAppAlertDelivery.updateMany({
+        where: { organizationId: context.organizationId, status: { in: ["PENDING", "SCHEDULED"] } },
+        data: { status: "CANCELLED", suppressionReason: "ALERTS_DISABLED", leaseToken: null, leaseUntil: null },
+      });
+      await tx.whatsAppAlertOccurrence.updateMany({
+        where: { organizationId: context.organizationId, status: "ACTIVE" },
+        data: { status: "CANCELLED", nextRepeatAt: null },
+      });
+    }
     await tx.activityLog.create({ data: { organizationId: context.organizationId, actorId: context.memberId, action: "ORGANIZATION_SETTINGS_UPDATED", entityType: "ORGANIZATION", entityId: context.organizationId } });
   });
   revalidatePath("/management/settings"); revalidatePath("/overview");
@@ -1041,8 +1055,8 @@ export async function testWahaConnectionAction(
   apiKey?: string
 ): Promise<ActionResult> {
   const context = await getAuthenticatedContext();
-  if (!context || !["OWNER", "ADMIN"].includes(context.role)) {
-    return { error: "Apenas administradores podem testar a integração." };
+  if (!context || context.role !== "OWNER") {
+    return { error: "Somente o proprietário pode testar a integração." };
   }
 
   const cleanEndpoint = (endpoint || "").trim();

@@ -2,10 +2,21 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, ClipboardPaste, RotateCcw } from "lucide-react";
 import { createAdHocTaskAction } from "@/presentation/actions/management-task-actions";
 import { FormFieldDefinition } from "@/domain/rules/process-definition";
 import { FormFieldsEditor } from "@/presentation/components/shared/form-fields-editor";
+import { getCopiedTask } from "@/presentation/utils/task-clipboard";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { PageHeader } from "@/presentation/components/shared";
 import { Card } from "@/components/ui/card";
@@ -96,6 +107,10 @@ export function CreateTaskForm({
     setSteps((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : [""]));
   };
 
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [scheduledDate, setScheduledDate] = useState<string>("");
+  const [deadlineAt, setDeadlineAt] = useState<string>("");
   const [locationId, setLocationId] = useState<string>(locations[0]?.id || "");
   const [teamId, setTeamId] = useState<string>("none");
   const [primaryMemberId, setPrimaryMemberId] = useState<string>("none");
@@ -104,6 +119,73 @@ export function CreateTaskForm({
   const [toleranceMinutes, setToleranceMinutes] = useState<string>("20");
   const [evidenceType, setEvidenceType] = useState<string>("NONE");
   const [evidenceRequired, setEvidenceRequired] = useState<boolean>(true);
+  const [showResetDialog, setShowResetDialog] = useState(false);
+
+  function handleResetTask() {
+    setTitle("");
+    setDescription("");
+    setScheduledDate("");
+    setDeadlineAt("");
+    setLocationId(locations[0]?.id || "");
+    setTeamId("none");
+    setPrimaryMemberId("none");
+    setPriority("MEDIUM");
+    setCriticality("MEDIUM");
+    setToleranceMinutes("20");
+    setEvidenceType("NONE");
+    setEvidenceRequired(true);
+    setSteps([""]);
+    setFormFields([]);
+    setShowResetDialog(false);
+    toast.add({
+      title: "Formulário redefinido",
+      description: "Todos os campos voltaram aos valores padrão.",
+      type: "info",
+    });
+  }
+
+  function handlePasteTask() {
+    const copied = getCopiedTask();
+    if (!copied) {
+      toast.add({
+        title: "Nenhuma tarefa copiada",
+        description: "Copie uma tarefa avulsa ou etapa de processo antes de colar.",
+        type: "info",
+      });
+      return;
+    }
+
+    setTitle(copied.title);
+    setDescription(copied.description || copied.instructions || "");
+    setPriority(copied.priority || "MEDIUM");
+    setCriticality(copied.criticality || "MEDIUM");
+    setToleranceMinutes(String(copied.toleranceMinutes ?? 20));
+
+    if (copied.formFields && copied.formFields.length > 0) {
+      setFormFields(copied.formFields.map((f) => ({ ...f, id: crypto.randomUUID() })));
+    }
+
+    if (copied.evidenceType && copied.evidenceType !== "NONE") {
+      setEvidenceType(copied.evidenceType);
+      setEvidenceRequired(copied.evidenceRequired ?? true);
+    }
+
+    if (copied.instructions) {
+      const lines = copied.instructions
+        .split("\n")
+        .map((l) => l.replace(/^\d+[\.\)]\s*/, "").trim())
+        .filter(Boolean);
+      if (lines.length > 0) {
+        setSteps(lines);
+      }
+    }
+
+    toast.add({
+      title: "Tarefa colada com sucesso!",
+      description: `Dados de "${copied.title}" aplicados ao formulário.`,
+      type: "success",
+    });
+  }
 
   const locationItems = locations.map((loc) => ({
     label: loc.name,
@@ -133,6 +215,8 @@ export function CreateTaskForm({
       "primaryMemberId",
       primaryMemberId === "none" ? "" : primaryMemberId,
     );
+    formData.set("scheduledDate", scheduledDate);
+    formData.set("deadlineAt", deadlineAt);
     formData.set("priority", priority);
     formData.set("criticality", criticality);
     formData.set("toleranceMinutes", toleranceMinutes);
@@ -186,7 +270,57 @@ export function CreateTaskForm({
         title={initialTaskType === "FORM" ? "Criar tarefa com perguntas" : "Criar tarefa avulsa"}
         subtitle={initialTaskType === "FORM" ? "Cadastre uma tarefa estruturada com perguntas e respostas para a equipe." : "Cadastre uma demanda pontual para a equipe (fora de rotinas de processos)."}
         backHref="/management/tasks"
+        action={
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowResetDialog(true)}
+              className="h-10 px-3.5 rounded-[14px] bg-[var(--surface)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-red-600 hover:bg-red-50/60 dark:hover:bg-red-950/30 hover:border-red-200 dark:hover:border-red-900/40 font-semibold text-xs flex items-center gap-1.5 cursor-pointer shadow-none transition-colors"
+              title="Redefinir formulário para os valores padrão"
+            >
+              <RotateCcw className="size-3.5" />
+              <span>Redefinir tarefa</span>
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handlePasteTask}
+              className="h-10 px-3.5 rounded-[14px] bg-[var(--surface)] border-[var(--border-subtle)] text-[var(--brand-900)] hover:bg-[var(--canvas)] font-semibold text-xs flex items-center gap-1.5 cursor-pointer shadow-none transition-colors"
+              title="Preencher formulário com a tarefa copiada"
+            >
+              <ClipboardPaste className="size-3.5 text-[var(--brand-700)]" />
+              <span>Colar tarefa</span>
+            </Button>
+          </div>
+        }
       />
+
+      <AlertDialog
+        open={showResetDialog}
+        onOpenChange={setShowResetDialog}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Redefinir tarefa?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Todas as informações preenchidas neste formulário serão descartadas e os campos voltarão para os valores padrão. Deseja continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowResetDialog(false)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={handleResetTask}
+            >
+              Sim, redefinir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <form onSubmit={handleSubmit} className="task-form-grid ">
         <Card className="bg-[var(--surface)] rounded-[18px] p-5 shadow-none flex flex-col gap-3 border-[var(--border-subtle)]">
@@ -203,6 +337,8 @@ export function CreateTaskForm({
                 aria-label={initialTaskType === "FORM" ? "Título da tarefa com perguntas" : "Título da tarefa"}
                 type="text"
                 name="title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
                 required
                 placeholder={initialTaskType === "FORM" ? "Ex.: Avaliação de Insumos" : "Ex.: Conferir o estoque"}
                 className="w-full h-11 text-[length:var(--type-label)] px-3.5 bg-[var(--canvas)] border-[var(--border-subtle)] rounded-[14px] text-[var(--brand-900)] placeholder:text-[var(--text-secondary)]"
@@ -216,6 +352,8 @@ export function CreateTaskForm({
               <Textarea
                 aria-label="Objetivo"
                 name="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
                 rows={2}
                 placeholder="Explique o que precisa ser verificado ou executado..."
                 className="w-full text-[length:var(--type-label)] p-3 bg-[var(--canvas)] border-[var(--border-subtle)] rounded-[14px] text-[var(--brand-900)] placeholder:text-[var(--text-secondary)] resize-none"
@@ -429,17 +567,39 @@ export function CreateTaskForm({
 
               <Field>
                 <FieldLabel className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]">
-                  Prazo final
+                  Disponível a partir de (Início agendado)
                 </FieldLabel>
                 <Input
-                  aria-label="Prazo final"
+                  aria-label="Disponível a partir de (Início agendado)"
                   type="datetime-local"
-                  name="deadlineAt"
+                  name="scheduledDate"
+                  value={scheduledDate}
+                  onChange={(e) => setScheduledDate(e.target.value)}
                   className="w-full h-11 text-[length:var(--type-label)] px-3 bg-[var(--canvas)] border-[var(--border-subtle)] rounded-[14px] text-[var(--brand-900)]"
                 />
+                <span className="text-[11px] text-[var(--text-secondary)] mt-1 block">
+                  Deixe vazio para início imediato.
+                </span>
               </Field>
 
               <Field>
+                <FieldLabel className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]">
+                  Prazo final limite
+                </FieldLabel>
+                <Input
+                  aria-label="Prazo final limite"
+                  type="datetime-local"
+                  name="deadlineAt"
+                  value={deadlineAt}
+                  onChange={(e) => setDeadlineAt(e.target.value)}
+                  className="w-full h-11 text-[length:var(--type-label)] px-3 bg-[var(--canvas)] border-[var(--border-subtle)] rounded-[14px] text-[var(--brand-900)]"
+                />
+                <span className="text-[11px] text-[var(--text-secondary)] mt-1 block">
+                  Prazo máximo de conclusão (deve ser posterior ao horário de início se informado).
+                </span>
+              </Field>
+
+              <Field className="sm:col-span-2">
                 <FieldLabel className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]">
                   Tempo de tolerância
                 </FieldLabel>
@@ -537,8 +697,8 @@ export function CreateTaskForm({
                 ? "Criando tarefa..."
                 : "Criando tarefa..."
               : initialTaskType === "FORM"
-              ? "Criar tarefa com perguntas"
-              : "Criar tarefa"}
+                ? "Criar tarefa com perguntas"
+                : "Criar tarefa"}
           </span>
         </Button>
       </form>

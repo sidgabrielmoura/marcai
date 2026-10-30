@@ -1,3 +1,4 @@
+import { notificationTransaction } from "@/infrastructure/notifications/transaction";
 import {getEvidenceRound} from "@/application/tasks/evidence-round";
 import {prisma} from '@/infrastructure/database/prisma';
 import {lockTask} from '@/application/tasks/task-lock';
@@ -11,7 +12,7 @@ export async function deadlineAlerts(budgetMs=12000){
  while(Date.now()<deadlineAt){
  const tasks=await prisma.task.findMany({where:{id:{gt:cursor},deletedAt:null,organization:{status:'ACTIVE'},status:{in:['AVAILABLE','IN_PROGRESS','PAUSED','NEEDS_CORRECTION']},OR:[{deadlineAt:{lte:new Date(now.getTime()+30*60000)}},{slaDueAt:{lte:new Date(now.getTime()+30*60000)}}]},select:{id:true,organizationId:true},orderBy:{id:'asc'},take:200});
  if(!tasks.length){cursor="";break;}
- for(const row of tasks){if(Date.now()>=deadlineAt)break;await prisma.$transaction(async tx=>{
+ for(const row of tasks){if(Date.now()>=deadlineAt)break;await notificationTransaction(async tx=>{
  await lockTask(tx,row.organizationId,row.id);
  const t=await tx.task.findUnique({where:{id:row.id},include:{assignments:{where:{removedAt:null}},evidenceRequirements:true,organization:{select:{settings:true}}}});
  if(!t||t.deletedAt||!['AVAILABLE','IN_PROGRESS','PAUSED','NEEDS_CORRECTION'].includes(t.status)||t.scheduledDate&&t.scheduledDate>now)return;

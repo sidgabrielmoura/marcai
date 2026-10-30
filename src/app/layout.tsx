@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { FirebaseAnalytics } from "@/presentation/components/shared/firebase-analytics";
-import { PushNotificationRegistrar } from "@/presentation/components/shared/push-notification-registrar";
 import { Toaster } from "@/components/ui/toast";
 import { AppReloadLoader } from "@/components/loader/logo-loader";
 import "./globals.css";
@@ -156,7 +155,6 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col font-sans text-(--text-primary)">
         <AppReloadLoader size={128} />
         <FirebaseAnalytics />
-        <PushNotificationRegistrar />
         {children}
         <Toaster />
       </body>

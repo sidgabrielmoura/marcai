@@ -67,7 +67,7 @@ export function FormFieldsEditor({
                     aria-label={`Pergunta ${idx + 1}`}
                     value={field.question}
                     onChange={(e) => handleUpdateField(field.id, { question: e.target.value })}
-                    className="flex-1 h-8 text-sm"
+                    className="flex-1 h-8 text-xs!"
                   />
                   <Button
                     type="button"
@@ -81,19 +81,9 @@ export function FormFieldsEditor({
                   </Button>
                 </div>
 
-                {field.type === "MULTIPLE_CHOICE" && <div className="space-y-2"><p className="text-xs text-muted-foreground">Alternativas (mínimo de duas)</p>{field.options.map((option, i) => <div className="flex gap-1" key={i}><Input aria-label={`Alternativa ${i + 1} da pergunta ${idx + 1}`} value={option} maxLength={300} onChange={e => handleUpdateField(field.id, { options: field.options.map((v, n) => n === i ? e.target.value : v) })} /><Button variant="ghost" size="icon" aria-label={`Remover alternativa ${i + 1}`} onClick={() => handleUpdateField(field.id, { options: field.options.filter((_, n) => n !== i) })}><Trash2 className="size-3" /></Button></div>)}<Button variant="outline" size="sm" disabled={field.options.length >= 20} onClick={() => handleUpdateField(field.id, { options: [...field.options, ""] })}><Plus className="size-3" />Adicionar alternativa</Button></div>}
-                <div className="flex flex-wrap items-center gap-2 text-xs mt-1">
-                  <Button type="button" variant="ghost" size="icon-sm" disabled={fields.length >= 50} aria-label={`Duplicar pergunta ${idx + 1}`} onClick={() => { const next = [...fields]; next.splice(idx + 1, 0, { ...field, id: crypto.randomUUID(), options: [...field.options] }); onChange(next); }}><Copy className="size-3" /></Button>
-                  <div className="flex items-center gap-1.5 text-muted-foreground font-medium bg-muted/50 px-2 py-1 rounded-md">
-                    {field.type === "SHORT_TEXT" && <><Type className="size-3" /> Texto Curto</>}
-                    {field.type === "LONG_TEXT" && <><Menu className="size-3" /> Texto Longo</>}
-                    {field.type === "RATING" && <><Star className="size-3" /> Avaliação</>}
-                    {field.type === "BOOLEAN" && <><ListChecks className="size-3" /> Sim / Não</>}
-                    {field.type === "PHOTO" && <><Camera className="size-3" /> Foto</>}
-                    {field.type === "VIDEO" && <><Video className="size-3" /> Vídeo</>}
-                    {field.type === "FILE" && <><Paperclip className="size-3" /> Arquivos</>}
-                    {field.type === "MULTIPLE_CHOICE" && <><CopyX className="size-3" /> Múltipla escolha</>}
-                  </div>
+                {field.type === "MULTIPLE_CHOICE" && <div className="space-y-2"><p className="text-xs text-muted-foreground">Alternativas (mínimo de duas)</p>{field.options.map((option, i) => <div className="flex gap-1" key={i}><Input aria-label={`Alternativa ${i + 1} da pergunta ${idx + 1}`} className="text-xs!" value={option} maxLength={300} onChange={e => handleUpdateField(field.id, { options: field.options.map((v, n) => n === i ? e.target.value : v) })} /><Button variant="ghost" size="icon" aria-label={`Remover alternativa ${i + 1}`} onClick={() => handleUpdateField(field.id, { options: field.options.filter((_, n) => n !== i) })}><Trash2 className="size-3" /></Button></div>)}<Button variant="outline" size="sm" disabled={field.options.length >= 20} onClick={() => handleUpdateField(field.id, { options: [...field.options, ""] })}><Plus className="size-3" />Adicionar alternativa</Button></div>}
+                <div className="flex items-center gap-2 text-xs mt-1">
+                  <Button type="button" className={"font-medium! text-xs!"} variant="ghost" disabled={fields.length >= 50} aria-label={`Duplicar pergunta ${idx + 1}`} onClick={() => { const next = [...fields]; next.splice(idx + 1, 0, { ...field, id: crypto.randomUUID(), options: [...field.options] }); onChange(next); }}><Copy className="size-3" /> <p className="max-sm:hidden">Duplicar abaixo</p></Button>
                   <div className="flex gap-1"><Button type="button" variant="ghost" size="icon-sm" disabled={idx === 0} aria-label={`Subir pergunta ${idx + 1}`} onClick={() => { const next = [...fields];[next[idx - 1], next[idx]] = [next[idx], next[idx - 1]]; handleReorder(next); }}><ArrowUp className="size-3" /></Button><Button type="button" variant="ghost" size="icon-sm" disabled={idx === fields.length - 1} aria-label={`Descer pergunta ${idx + 1}`} onClick={() => { const next = [...fields];[next[idx + 1], next[idx]] = [next[idx], next[idx + 1]]; handleReorder(next); }}><ArrowDown className="size-3" /></Button></div>
                   <label className="flex items-center gap-1.5 cursor-pointer ml-auto">
                     <Checkbox

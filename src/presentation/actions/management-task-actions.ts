@@ -1,4 +1,5 @@
 "use server";
+import { notificationTransaction } from "@/infrastructure/notifications/transaction";
 import { operate as employeeOperate } from "@/application/mobile/operations";
 import {webTaskDetail} from '@/application/mobile/web-task-contract';
 import {publishSyncRequired} from '@/infrastructure/realtime/sync';
@@ -25,7 +26,7 @@ import {
   notifyTaskAssignees,
   notifyApprovers,
 } from "@/application/tasks/notify-managers";
-import { dispatchNotificationAsync } from "@/infrastructure/notifications/notification-service";
+
 import { prisma } from "@/infrastructure/database/prisma";
 import { getAuthenticatedContext } from "@/application/security/auth-context";
 import {
@@ -75,6 +76,7 @@ const CreateTaskSchema = z.object({
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).default("MEDIUM"),
   criticality: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).default("MEDIUM"),
   required: z.boolean().default(true),
+  scheduledDate: z.string().optional().nullable(),
   deadlineAt: z.string().optional().nullable(),
   toleranceMinutes: z.coerce.number().int().min(0).default(20),
   evidenceType: z
@@ -110,6 +112,7 @@ export async function createAdHocTaskAction(
     criticality: formData.get("criticality") || "MEDIUM",
     required:
       formData.get("required") === "true" || formData.get("required") === "on",
+    scheduledDate: formData.get("scheduledDate") || null,
     deadlineAt: formData.get("deadlineAt") || null,
     toleranceMinutes:
       formData.get("toleranceMinutes") !== null
@@ -136,6 +139,7 @@ export async function createAdHocTaskAction(
     priority,
     criticality,
     required,
+    scheduledDate,
     deadlineAt,
     toleranceMinutes,
     evidenceType,
@@ -193,17 +197,30 @@ export async function createAdHocTaskAction(
     return {
       error: "O responsável precisa pertencer à equipe e ter acesso à unidade.",
     };
+
+  const scheduledDateUtc = scheduledDate
+    ? parseLocalDateTimeToUtc(scheduledDate, location.timezone)
+    : null;
+  if (scheduledDate && (!scheduledDateUtc || Number.isNaN(scheduledDateUtc.getTime()))) {
+    return { error: "Horário de início agendado inválido." };
+  }
+
   const deadlineDate = deadlineAt
     ? parseLocalDateTimeToUtc(deadlineAt, location.timezone)
     : null;
   if (deadlineAt && (!deadlineDate || Number.isNaN(deadlineDate.getTime())))
     return { error: "Prazo inválido." };
-  const slaDueDate = deadlineDate;
 
+  if (scheduledDateUtc && deadlineDate && deadlineDate <= scheduledDateUtc) {
+    return { error: "O prazo final deve ser posterior ao horário de início agendado." };
+  }
+
+  const slaDueDate = deadlineDate;
   const now = new Date();
+  const isScheduledFuture = !!scheduledDateUtc && scheduledDateUtc > now;
   const isAssigned = !!primaryMemberId;
 
-  const task = await prisma.$transaction(async (tx) => {
+  const task = await notificationTransaction(async (tx) => {
     const newTask = await tx.task.create({
       data: {
         organizationId: context.organizationId,
@@ -213,8 +230,9 @@ export async function createAdHocTaskAction(
         title,
         description,
         instructions,
-        status: isAssigned ? "IN_PROGRESS" : "AVAILABLE",
-        startedAt: isAssigned ? now : null,
+        status: isScheduledFuture ? "AVAILABLE" : isAssigned ? "IN_PROGRESS" : "AVAILABLE",
+        startedAt: isScheduledFuture ? null : isAssigned ? now : null,
+        scheduledDate: scheduledDateUtc,
         priority: priority as Priority,
         criticality: criticality as Criticality,
         required,
@@ -230,7 +248,6 @@ export async function createAdHocTaskAction(
       },
     });
 
-    // Se houver responsável primário indicado, a tarefa já inicia imediatamente
     if (primaryMemberId) {
       await tx.taskAssignment.create({
         data: {
@@ -241,43 +258,45 @@ export async function createAdHocTaskAction(
         },
       });
 
-      await tx.taskExecutionSession.create({
-        data: {
-          taskId: newTask.id,
-          memberId: primaryMemberId,
-          startedAt: now,
-        },
-      });
-
-      const assignedMember = await tx.organizationMember.findFirst({
-        where: { id: primaryMemberId, organizationId: context.organizationId },
-        select: { userId: true },
-      });
-      if (assignedMember) {
-        await tx.notification.create({
+      // Se não for agendada para o futuro, inicia sessão imediatamente e notifica
+      if (!isScheduledFuture) {
+        await tx.taskExecutionSession.create({
           data: {
-            organizationId: context.organizationId,
-            userId: assignedMember.userId,
-            type: "TASK_ASSIGNED",
-            priority: priority as Priority,
-            title: "Você recebeu uma nova tarefa",
-            message: title,
-            data: { taskId: newTask.id },
+            taskId: newTask.id,
+            memberId: primaryMemberId,
+            startedAt: now,
           },
         });
 
-        void dispatchNotificationAsync({
-          organizationId: context.organizationId,
-          userIds: [assignedMember.userId],
-          type: "TASK_ASSIGNED",
-          priority: priority as Priority,
-          title: "Você recebeu uma nova tarefa",
-          message: title,
-          data: { taskId: newTask.id },
-          clickAction: `/tasks/${newTask.id}`,
-          forcePush: true,
+        const assignedMember = await tx.organizationMember.findFirst({
+          where: { id: primaryMemberId, organizationId: context.organizationId },
+          select: { userId: true },
         });
+        if (assignedMember) {
+          await tx.notification.create({
+            data: {
+              organizationId: context.organizationId,
+              userId: assignedMember.userId,
+              type: "TASK_ASSIGNED",
+              priority: priority as Priority,
+              title: "Você recebeu uma nova tarefa",
+              message: title,
+              data: { taskId: newTask.id },
+            },
+          });
+        }
       }
+    }
+
+    // Se a tarefa está agendada para o futuro, registra o sinal operacional para despertar o agendador no horário exato
+    if (isScheduledFuture) {
+      await tx.operationalSignal.create({
+        data: {
+          organizationId: context.organizationId,
+          phase: "TASKS",
+          availableAt: scheduledDateUtc,
+        },
+      });
     }
 
     // Se houver requisito de evidência configurado (e não for tarefa com perguntas)
@@ -307,6 +326,7 @@ export async function createAdHocTaskAction(
           priority,
           criticality,
           assignedTo: primaryMemberId,
+          scheduledDate: scheduledDateUtc?.toISOString() ?? null,
         },
       },
     });
@@ -351,7 +371,7 @@ async function operate(
   const c = await getAuthenticatedContext();
   if (!c || (management && !isManagement(c)))
     return { error: "Você não tem permissão para esta ação." };
-  const result = await prisma.$transaction(
+  const result = await notificationTransaction(
     async (tx) => {
       await lockTask(tx, c.organizationId, taskId);
       const task = await tx.task.findFirst({
@@ -559,8 +579,8 @@ export async function reassignTaskAction(
     parsed.data;
 
   return operate(taskId, true, async (tx, task, c) => {
-    if (terminal(task.status))
-      return { error: "Tarefas encerradas não podem ser reatribuídas." };
+    if (task.status === "CANCELLED")
+      return { error: "Tarefas canceladas não podem ser reatribuídas." };
     const member = await eligibleMember(
       c.organizationId,
       memberId,
@@ -597,11 +617,15 @@ export async function reassignTaskAction(
       }
     }
 
-    const current = task.assignments.find((a) => a.type === "PRIMARY");
+    const wasTerminal =
+      task.status === "COMPLETED" || task.status === "NOT_COMPLETED";
+    const current = task.assignments.find(
+      (a) => a.type === "PRIMARY" && a.removedAt === null,
+    );
     const isSameMember = current?.memberId === memberId;
 
-    if (!isSameMember) {
-      if (current) {
+    if (!isSameMember || wasTerminal) {
+      if (current && !isSameMember) {
         await tx.taskAssignment.updateMany({
           where: { taskId, memberId: current.memberId, removedAt: null },
           data: { removedAt: now },
@@ -615,26 +639,19 @@ export async function reassignTaskAction(
             message: `A tarefa “${task.title}” foi transferida para outro responsável.`,
           },
         });
-        void dispatchNotificationAsync({
-          organizationId: c.organizationId,
-          userIds: [current.member.userId],
-          type: "TASK_TRANSFERRED_OUT",
-          title: "Tarefa transferida",
-          message: `A tarefa “${task.title}” foi transferida para outro responsável.`,
-          clickAction: "/notifications",
-          forcePush: false,
-        });
       }
 
       await endSessions(tx, task);
 
-      await tx.taskAssignment.updateMany({
-        where: { taskId, memberId, removedAt: null },
-        data: { removedAt: now },
-      });
-      await tx.taskAssignment.create({
-        data: { taskId, memberId, type: "PRIMARY", assignedBy: c.memberId },
-      });
+      if (!isSameMember || !current) {
+        await tx.taskAssignment.updateMany({
+          where: { taskId, memberId, removedAt: null },
+          data: { removedAt: now },
+        });
+        await tx.taskAssignment.create({
+          data: { taskId, memberId, type: "PRIMARY", assignedBy: c.memberId },
+        });
+      }
     }
 
     const dependency = evaluateTaskDependencies(
@@ -656,7 +673,9 @@ export async function reassignTaskAction(
         ? "BLOCKED"
         : future
           ? "AVAILABLE"
-          : task.status === "BLOCKED" || task.status === "AVAILABLE"
+          : task.status === "BLOCKED" ||
+              task.status === "AVAILABLE" ||
+              wasTerminal
             ? "IN_PROGRESS"
             : task.status;
 
@@ -664,12 +683,13 @@ export async function reassignTaskAction(
       where: { id: task.id },
       data: {
         status: nextStatus,
+        completedAt: null,
         startedAt:
           task.managementBlocked || dependency.isBlocked || future
             ? future || renewed
               ? null
               : task.startedAt
-            : renewed
+            : renewed || wasTerminal
               ? now
               : (task.startedAt ?? now),
         ...(newDeadline
@@ -681,6 +701,33 @@ export async function reassignTaskAction(
           : {}),
       },
     });
+
+    if (task.status === "COMPLETED" && task.approvalWorkflow) {
+      await tx.approvalWorkflow.update({
+        where: { id: task.approvalWorkflow.id },
+        data: { status: "PENDING" },
+      });
+      await tx.approvalStep.updateMany({
+        where: { workflowId: task.approvalWorkflow.id },
+        data: { status: "PENDING" },
+      });
+    }
+
+    if (task.executionId) {
+      const parentExec = await tx.processExecution.findUnique({
+        where: { id: task.executionId },
+        select: { status: true },
+      });
+      if (
+        parentExec?.status === "NOT_COMPLETED" ||
+        parentExec?.status === "COMPLETED"
+      ) {
+        await tx.processExecution.update({
+          where: { id: task.executionId },
+          data: { status: "IN_PROGRESS", completedAt: null },
+        });
+      }
+    }
 
     if (nextStatus === "IN_PROGRESS") {
       const activeSession = await tx.taskExecutionSession.findFirst({
@@ -698,11 +745,19 @@ export async function reassignTaskAction(
       : null;
 
     const notifTitle = isSameMember
-      ? "Prazo da tarefa renovado"
+      ? wasTerminal
+        ? task.status === "NOT_COMPLETED"
+          ? "Impedimento resolvido / Tarefa liberada"
+          : "Tarefa reatribuída"
+        : "Prazo da tarefa renovado"
       : "Você recebeu uma tarefa";
     const notifMessage = isSameMember
       ? formattedTime
-        ? `O prazo da tarefa “${task.title}” foi renovado para às ${formattedTime}.`
+        ? wasTerminal
+          ? task.status === "NOT_COMPLETED"
+            ? `O impedimento da tarefa “${task.title}” foi resolvido e o prazo foi renovado até às ${formattedTime}.`
+            : `A tarefa “${task.title}” foi reatribuída a você com novo prazo até às ${formattedTime}.`
+          : `O prazo da tarefa “${task.title}” foi renovado para às ${formattedTime}.`
         : `A tarefa “${task.title}” foi reatribuída e liberada.`
       : formattedTime
         ? `A tarefa “${task.title}” foi atribuída a você com prazo até às ${formattedTime}.`
@@ -720,22 +775,19 @@ export async function reassignTaskAction(
       },
     });
 
-    void dispatchNotificationAsync({
-      organizationId: c.organizationId,
-      userIds: [member.userId],
-      type: "TASK_ASSIGNED",
-      priority: task.priority,
-      title: notifTitle,
-      message: notifMessage,
-      data: { taskId },
-      clickAction: `/tasks/${taskId}`,
-      forcePush: true,
-    });
+    if (task.status === "NOT_COMPLETED") {
+      await audit(tx, task, c, "TASK_IMPEDIMENT_RESOLVED", {
+        resolvedBy: c.memberId,
+        newMemberId: memberId,
+        reason: reason?.slice(0, 1000) ?? "",
+      });
+    }
 
     await audit(tx, task, c, "TASK_REASSIGNED", {
       previousMemberId: current?.memberId ?? null,
       newMemberId: memberId,
       isSameMember,
+      previousStatus: task.status,
       newDeadlineAt: newDeadline?.toISOString() ?? null,
       reason: reason?.slice(0, 1000) ?? "",
     });
@@ -774,7 +826,7 @@ export async function claimTaskAction(taskId: string): Promise<ActionResult> {
   }
   const c = await getAuthenticatedContext();
   if (!c) return { error: "Não autenticado." };
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await notificationTransaction(async (tx) => {
     await lockTask(tx, c.organizationId, taskId);
     const task = await tx.task.findFirst({
       where: { id: taskId, organizationId: c.organizationId, deletedAt: null },
@@ -923,6 +975,11 @@ export async function reportImpedimentAction(
       task,
       "Impedimento operacional",
       task.title + ": " + reason,
+      {
+        type: "IMPEDIMENT_REPORTED",
+        priority: "HIGH",
+        data: { taskId: task.id, taskTitle: task.title, locationId: task.locationId },
+      }
     );
     await audit(tx, task, c, "TASK_IMPEDIMENT_REPORTED", { category, reason });
     return { success: true };
@@ -1129,17 +1186,7 @@ export async function submitApprovalDecisionAction(
             data: { taskId: task.id },
           },
         });
-        void dispatchNotificationAsync({
-          organizationId: context.organizationId,
-          userIds: [owner.member.userId],
-          type: allApproved ? "APPROVAL_UPDATED" : "TASK_CORRECTION_REQUESTED",
-          priority: allApproved ? "LOW" : "HIGH",
-          title: allApproved ? "Entrega aprovada" : "Correção solicitada",
-          message: task.title + (note ? ": " + note : ""),
-          data: { taskId: task.id },
-          clickAction: `/tasks/${task.id}`,
-          forcePush: !allApproved, // Se necessita de correção, envia Push com alta prioridade!
-        });
+
       }
       if (allApproved) {
         await notifyManagers(

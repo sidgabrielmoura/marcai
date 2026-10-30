@@ -11,6 +11,8 @@
  */
 
 import { prisma } from "@/infrastructure/database/prisma";
+import { wahaClient } from "./waha-client";
+import { publicWhatsAppError } from "@/domain/whatsapp/contracts";
 
 export interface WahaConfig {
   endpoint: string;
@@ -114,76 +116,11 @@ export function formatOperationalAlertMessage(params: SendWhatsAppAlertParams): 
  * Dispara um alerta para o WhatsApp utilizando a API REST do WAHA.
  * Fail-safe: não propaga exceções que interrompam o fluxo principal.
  */
-export async function sendWahaTextMessage(
-  wahaConfig: WahaConfig,
-  recipientPhone: string,
-  text: string
-): Promise<WahaSendResult> {
-  if (!wahaConfig.endpoint || !recipientPhone) {
-    return {
-      success: false,
-      error: "WAHA Endpoint ou destinatário não configurados.",
-    };
-  }
-
-  const endpointUrl = wahaConfig.endpoint.replace(/\/+$/, "");
-  const session = wahaConfig.session || "default";
-  const chatId = normalizeWhatsAppNumber(recipientPhone);
-
-  const url = `${endpointUrl}/api/sendText`;
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
-
+export async function sendWahaTextMessage(wahaConfig: WahaConfig, recipientPhone: string, text: string): Promise<WahaSendResult> {
   try {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-
-    if (wahaConfig.apiKey) {
-      headers["X-Api-Key"] = wahaConfig.apiKey;
-      headers["Authorization"] = `Bearer ${wahaConfig.apiKey}`;
-    }
-
-    const payload = {
-      chatId,
-      text,
-      session,
-    };
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => "");
-      console.warn(`[WAHA Service] Falha ao enviar mensagem (Status ${response.status}):`, errorText.slice(0, 200));
-      return {
-        success: false,
-        error: `Servidor WAHA retornou erro HTTP ${response.status}`,
-      };
-    }
-
-    const data = (await response.json().catch(() => ({}))) as any;
-    return {
-      success: true,
-      messageId: data?.id || data?.messageId || "sent",
-    };
-  } catch (err: any) {
-    clearTimeout(timeoutId);
-    const isAbort = err?.name === "AbortError";
-    const errorMsg = isAbort ? "Timeout na conexão com o WAHA (8s)." : (err?.message || "Erro desconhecido");
-    console.warn(`[WAHA Service] Erro de rede na integração:`, errorMsg);
-    return {
-      success: false,
-      error: errorMsg,
-    };
-  }
+    const result = await wahaClient.sendText(wahaConfig.session, recipientPhone, text);
+    return { success: true, ...result };
+  } catch (error) { return { success: false, error: publicWhatsAppError(error).error }; }
 }
 
 /**
@@ -191,11 +128,11 @@ export async function sendWahaTextMessage(
  * ou configurações específicas caso informadas.
  */
 export function resolveWahaConfig(customConfig?: Partial<WahaConfig>): WahaConfig | null {
-  const endpoint = (customConfig?.endpoint || process.env.WAHA_API_URL || process.env.WAHA_ENDPOINT || "").trim();
+  const endpoint = (process.env.WAHA_BASE_URL || process.env.WAHA_API_URL || process.env.WAHA_ENDPOINT || "").trim();
   if (!endpoint) return null;
 
   const session = (customConfig?.session || process.env.WAHA_SESSION || "default").trim();
-  const apiKey = (customConfig?.apiKey || process.env.WAHA_API_KEY || "").trim() || undefined;
+  const apiKey = (process.env.WAHA_KEY || process.env.WAHA_API_KEY || "").trim() || undefined;
 
   return {
     endpoint,
@@ -207,56 +144,17 @@ export function resolveWahaConfig(customConfig?: Partial<WahaConfig>): WahaConfi
 /**
  * Verifica o status da sessão no servidor WAHA
  */
-export async function checkWahaSessionStatus(
-  wahaConfig?: Partial<WahaConfig>
-): Promise<{ status: string; connected: boolean; error?: string }> {
-  const resolved = resolveWahaConfig(wahaConfig);
-  if (!resolved || !resolved.endpoint) {
-    return { status: "NOT_CONFIGURED", connected: false, error: "WAHA_API_URL não configurada no servidor." };
-  }
-
-  const endpointUrl = resolved.endpoint.replace(/\/+$/, "");
-  const session = resolved.session || "default";
-  const url = `${endpointUrl}/api/sessions/${session}`;
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5000);
-
+export async function checkWahaSessionStatus(wahaConfig?: Partial<WahaConfig>): Promise<{ status: string; connected: boolean; error?: string }> {
   try {
-    const headers: Record<string, string> = {};
-    if (resolved.apiKey) {
-      headers["X-Api-Key"] = resolved.apiKey;
-      headers["Authorization"] = `Bearer ${resolved.apiKey}`;
-    }
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers,
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      return { status: `HTTP_${response.status}`, connected: false };
-    }
-
-    const data = (await response.json().catch(() => ({}))) as any;
-    const status = data?.status || "UNKNOWN";
-    const connected = status === "WORKING" || status === "SCAN_QR_CODE" || status === "STARTING";
-
-    return { status, connected };
-  } catch (err: any) {
-    clearTimeout(timeoutId);
-    return {
-      status: "UNREACHABLE",
-      connected: false,
-      error: err?.message || "Servidor WAHA inacessível",
-    };
-  }
+    const session = await wahaClient.getSession(wahaConfig?.session || process.env.WAHA_SESSION || "default");
+    return { status: session?.status || "NOT_FOUND", connected: session?.status === "WORKING" };
+  } catch (error) { return { status: "UNREACHABLE", connected: false, error: publicWhatsAppError(error).error }; }
 }
 
 export interface MaybeDispatchWhatsAppAlertParams {
+  taskId?: string;
+  executionId?: string;
+  locationId?: string;
   organizationId: string;
   type: string;
   title: string;
@@ -277,80 +175,15 @@ export async function maybeDispatchWhatsAppAlert(
   params: MaybeDispatchWhatsAppAlertParams
 ): Promise<WahaSendResult | null> {
   try {
-    const org = await prisma.organization.findUnique({
-      where: { id: params.organizationId },
-      select: { name: true, settings: true },
-    });
-
-    if (!org) return null;
-
-    const settings = (org.settings as any) || {};
-    const whatsappAlerts: WhatsAppAlertSettings | undefined = settings.whatsappAlerts;
-
-    if (!whatsappAlerts?.enabled || !whatsappAlerts?.recipientPhone) {
-      return null;
-    }
-
-    const waha = resolveWahaConfig(settings.waha);
-    if (!waha || !waha.endpoint) {
-      return null;
-    }
-
-    const isCritical = params.priority === "CRITICAL";
-    const isHigh = params.priority === "HIGH";
-
-    // 1. Filtro de tipos de notificações
-    if (
-      Array.isArray(whatsappAlerts.notificationTypes) &&
-      whatsappAlerts.notificationTypes.length > 0 &&
-      !whatsappAlerts.notificationTypes.includes(params.type)
-    ) {
-      if (!(isCritical && whatsappAlerts.alwaysUrgent)) {
-        return null;
-      }
-    }
-
-    // 2. Filtro de Criticidade
-    const filter = whatsappAlerts.criticalityFilter || "CRITICAL_ONLY";
-    if (filter === "CRITICAL_ONLY" && !isCritical) {
-      return null;
-    }
-    if (filter === "HIGH_AND_CRITICAL" && !isCritical && !isHigh) {
-      return null;
-    }
-
-    // 3. Filtro de Marco / Passo do Alerta (para atrasos e escalações)
-    if (
-      params.milestoneStep !== undefined &&
-      whatsappAlerts.triggerStep > 0 &&
-      params.milestoneStep < whatsappAlerts.triggerStep
-    ) {
-      if (!(isCritical && whatsappAlerts.alwaysUrgent)) {
-        return null;
-      }
-    }
-
-    // 4. Silenciamento fora do horário comercial (Não perturbar)
-    if (whatsappAlerts.businessHoursOnly) {
-      const now = new Date();
-      const brTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-      const hours = brTime.getHours();
-      const day = brTime.getDay(); // 0 = Domingo, 6 = Sábado
-      const isWeekend = day === 0 || day === 6;
-      const isOutsideHours = hours < 8 || hours >= 19;
-
-      if ((isWeekend || isOutsideHours) && !(isCritical && whatsappAlerts.alwaysUrgent)) {
-        return null;
-      }
-    }
-
-    // 5. Formatação do Alerta Operacional
-    const text = formatOperationalAlertMessage({
-      organizationName: org.name,
-      recipientPhone: whatsappAlerts.recipientPhone,
+    const { registerOperationalAlert } = await import("@/application/whatsapp/alerts");
+    const result = await registerOperationalAlert({
+      organizationId: params.organizationId,
+      locationId: params.locationId,
+      taskId: params.taskId,
+      executionId: params.executionId,
+      type: params.type,
       title: params.title,
       message: params.message,
-      type: params.type,
       priority: params.priority,
       milestoneStep: params.milestoneStep,
       taskTitle: params.taskTitle,
@@ -358,11 +191,13 @@ export async function maybeDispatchWhatsAppAlert(
       teamName: params.teamName,
       actionUrl: params.actionUrl,
     });
-
-    return await sendWahaTextMessage(waha, whatsappAlerts.recipientPhone, text);
+    return result ? { success: true } : null;
   } catch (err: any) {
-    console.warn("[WAHA Service] Falha ao processar despacho de alerta WhatsApp:", err?.message || err);
+    console.warn("[whatsapp] Alert dispatch failed", { code: "ALERT_DISPATCH_FAILED" });
     return null;
   }
 }
+
+export { WHATSAPP_EVENT_TYPES } from "@/domain/whatsapp/contracts";
+
 

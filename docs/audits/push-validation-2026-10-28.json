@@ -1,0 +1,77 @@
+{
+  "checkedAt": "2026-10-28T19:31:40.383Z",
+  "database": "Disposable PostgreSQL 18.4 on 127.0.0.1:56433",
+  "productionDatabaseModified": false,
+  "firebaseTransport": "simulated; no real push sent",
+  "site": {
+    "fullSuite": "PASS: domain, operational, workflow regressions, task history, database efficiency, selective scheduler, push integration, schema diff",
+    "targetedPush": [
+      {
+        "name": "generate",
+        "success": true
+      },
+      {
+        "name": "types",
+        "success": true
+      },
+      {
+        "name": "verify-push-notifications",
+        "success": true
+      },
+      {
+        "name": "verify-push-database",
+        "success": true
+      }
+    ],
+    "build": [
+      {
+        "name": "generate",
+        "success": true
+      },
+      {
+        "name": "types",
+        "success": true
+      },
+      {
+        "name": "build",
+        "success": true
+      }
+    ]
+  },
+  "app": {
+    "tests": 322,
+    "passed": 322,
+    "failed": 0,
+    "workflow": "PASS",
+    "types": "PASS",
+    "snapshotDirection": "site-to-app",
+    "snapshotFiles": 207
+  },
+  "files": [
+    {
+      "file": "src/infrastructure/notifications/transaction.ts",
+      "sha256": "5ab46e703b61b4d375c1699f7fead901558b8a278c86fd470f9ef42068345837"
+    },
+    {
+      "file": "src/infrastructure/notifications/notification-service.ts",
+      "sha256": "f2545ad0e9252101c2ba4a03123d3f7f701c7310cfa6f7bb02847d3f56195c8c"
+    },
+    {
+      "file": "src/infrastructure/security/session.ts",
+      "sha256": "402e43b653d1cf80875ddb0e4ccdbf7431644cd339248ed2e471d172d4c8a4a9"
+    },
+    {
+      "file": "public/firebase-messaging-sw.js",
+      "sha256": "8ff54b469db5328dfedb11321fff75bed74518c5a3386819632e262da6ed312d"
+    },
+    {
+      "file": "prisma/migrations/20261028190000_push_session_binding/migration.sql",
+      "sha256": "a17f16c4638d675f8524ad9e63090f53fc028d0c9414949f42a25e616e8dca52"
+    }
+  ],
+  "deployment": {
+    "migration": "20261028190000_push_session_binding",
+    "appliedInProduction": false,
+    "required": "Apply migration before backend deployment; configure build VAPID and server Admin credentials; validate real browser/native delivery after deployment."
+  }
+}

@@ -4,6 +4,10 @@ Antes de alterar acesso a dados, tempo real ou cache, consulte o [contrato de ar
 
 Registro da implementação de 27/10/2026: [redução de consultas no site e app](docs/audits/database-efficiency/implementacao-2026-10-27.md).
 
+Para receber webhooks WAHA no localhost e carregar o QR automaticamente: [WhatsApp no desenvolvimento local](docs/whatsapp-local-development.md).
+
+Entrega técnica e planejamento do disparo automático de alertas: [WAHA + Ably — continuidade](docs/whatsapp-handoff.md).
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { chromium } from "@playwright/test";
-import { SignJWT } from "jose";
+import { encryptSession } from "../src/infrastructure/security/session";
 import { prisma } from "../src/infrastructure/database/prisma";
 
 
@@ -12,16 +12,20 @@ async function main() {
   const key = randomUUID(); let orgId = ""; let userId = ""; const errors: string[] = [];
   const browser = await chromium.launch({ channel: "msedge", headless: true });
   try {
-    const org = await prisma.organization.create({ data: { name: "Operação de teste", slug: "template-ui-" + key } }); orgId = org.id;
-    const user = await prisma.user.create({ data: { name: "Admin de teste" } }); userId = user.id;
-    const member = await prisma.organizationMember.create({ data: { organizationId: org.id, userId: user.id, role: "OWNER" } });
-    const location = await prisma.location.create({ data: { organizationId: org.id, name: "Unidade Centro" } });
-    const team = await prisma.team.create({ data: { organizationId: org.id, name: "Equipe da loja" } });
-    const token = await new SignJWT({ userId: user.id, name: user.name, email: null, activeOrgId: org.id, activeMemberId: member.id, role: "OWNER" }).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("1h").sign(new TextEncoder().encode(process.env.AUTH_SECRET));
+    const org = await prisma.organization.create({ data: { name: "Operação de teste", slug: "template-ui-" + key, status: "ACTIVE" } }); orgId = org.id;
+    const user = await prisma.user.create({ data: { name: "Admin de teste", status: "ACTIVE" } }); userId = user.id;
+    const member = await prisma.organizationMember.create({ data: { organizationId: org.id, userId: user.id, role: "OWNER", status: "ACTIVE" } });
+    const location = await prisma.location.create({ data: { organizationId: org.id, name: "Unidade Centro", status: "ACTIVE" } });
+    const team = await prisma.team.create({ data: { organizationId: org.id, name: "Equipe da loja", status: "ACTIVE" } });
+    const token = await encryptSession({ userId: user.id, name: user.name, email: null, activeOrgId: org.id, activeMemberId: member.id, role: "OWNER" });
     const context = await browser.newContext({ viewport: { width: 1440, height: 980 } });
     await context.addCookies([{ name: "gestao_session", value: token, domain: "localhost", path: "/" }]);
     const page = await context.newPage(); page.on("pageerror", e => errors.push(e.message));
     page.setDefaultTimeout(45000);
+    await page.addInitScript(() => {
+      sessionStorage.setItem("dismiss_push_prompt", "true");
+      sessionStorage.setItem("tarefai_push_banner_dismissed", "true");
+    });
     await page.goto("http://localhost:3000/management/templates", { timeout: 180000 });
     await page.getByRole("heading", { name: "Templates", exact: true }).waitFor();
     assert.equal(await page.locator("article").count(), 15);

@@ -25,7 +25,9 @@ import {
   Timer,
   ChevronDown,
   Info,
+  Copy,
 } from "lucide-react";
+import { copyTaskToClipboard } from "@/presentation/utils/task-clipboard";
 import { SaveProcessTemplateButton } from "@/presentation/components/templates/save-process-template";
 import { PageHeader, StatusBadge, Modal, EmptyState } from "../shared";
 import {
@@ -109,6 +111,13 @@ export interface ProcessDetailProps {
     id: string;
     title: string;
     description: string;
+    taskType?: string;
+    priority?: string;
+    criticality?: string;
+    evidenceType?: string;
+    evidenceRequired?: boolean;
+    formFields?: any[];
+    checklistItems?: string[];
     teamName: string | null;
     toleranceMinutes: number;
     required: boolean;
@@ -459,7 +468,7 @@ export function ProcessDetailClient({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <Link
           href="/management/processes"
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--brand-900)] transition-colors"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-(--text-secondary) hover:text-brand-900 transition-colors"
         >
           <ArrowLeft className="size-3.5" />
           <span>Voltar para Processos</span>
@@ -473,7 +482,7 @@ export function ProcessDetailClient({
               variant="outline"
               nativeButton={false}
               render={<Link href={`/management/processes/${proc.id}/edit`} />}
-              className="text-xs h-8 gap-1.5 border-[var(--border-subtle)] text-[var(--text-primary)] hover:bg-[var(--canvas)]"
+              className="text-xs h-8 gap-1.5 border-(--border-subtle) text-(--text-primary) hover:bg-canvas"
             >
               <Pencil className="size-3.5" />
               Editar processo
@@ -719,8 +728,8 @@ export function ProcessDetailClient({
                   {activeRoutine.pendingPreviousPolicy === "SKIP_IF_PENDING"
                     ? "Pular se houver pendente"
                     : activeRoutine.pendingPreviousPolicy === "BLOCK_NEW"
-                    ? "Bloquear até finalizar"
-                    : "Criar normalmente"}
+                      ? "Bloquear até finalizar"
+                      : "Criar normalmente"}
                 </span>
               </div>
 
@@ -1141,6 +1150,36 @@ export function ProcessDetailClient({
                       )}
                     </div>
                   </div>
+                </div>
+
+                <div className="shrink-0 flex items-center pt-0.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      copyTaskToClipboard({
+                        title: task.title,
+                        instructions: task.description,
+                        description: task.description,
+                        taskType: (task.taskType as any) || "STANDARD",
+                        priority: (task.priority as any) || "MEDIUM",
+                        criticality: (task.criticality as any) || "MEDIUM",
+                        toleranceMinutes: task.toleranceMinutes,
+                        evidenceType: task.evidenceType,
+                        evidenceRequired: task.evidenceRequired,
+                        formFields: task.formFields,
+                        checklistItems: task.checklistItems,
+                        sourceType: "PROCESS_TASK",
+                        sourceTitle: `${proc.name} › ${task.title}`,
+                      });
+                    }}
+                    className="h-8 px-2.5 text-xs font-semibold gap-1.5 border border-slate-200 dark:border-slate-800 text-[var(--brand-900)] hover:bg-[var(--canvas)] hover:border-slate-300 dark:hover:border-slate-700 cursor-pointer rounded-lg shadow-2xs"
+                    title="Copiar dados desta tarefa para colar em nova tarefa ou processo"
+                  >
+                    <Copy className="size-3.5 text-slate-500" />
+                    <span>Copiar tarefa</span>
+                  </Button>
                 </div>
               </div>
             ))}

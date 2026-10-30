@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { WhatsAppAlertSettings } from "./whatsapp-alert-settings";
+import { WhatsAppInstances } from "./whatsapp-instances";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -71,12 +73,6 @@ export function SettingsClient({
 
   const [whatsappEnabled, setWhatsappEnabled] = useState<boolean>(
     Boolean(whatsappConfig.enabled)
-  );
-  const [recipientPhone, setRecipientPhone] = useState<string>(
-    whatsappConfig.recipientPhone || ""
-  );
-  const [recipientName, setRecipientName] = useState<string>(
-    whatsappConfig.recipientName || ""
   );
   const [notificationTypes, setNotificationTypes] = useState<string[]>(
     Array.isArray(whatsappConfig.notificationTypes)
@@ -425,215 +421,15 @@ export function SettingsClient({
               </CardContent>
             </Card>
 
-            {/* Seção: Alertas pelo WhatsApp (Integração WAHA) */}
-            <Card className="p-5 sm:p-6 mt-4">
-              <CardContent className="p-0 flex flex-col gap-5">
-                {/* Cabeçalho Minimalista */}
-                <div className="flex items-center justify-between gap-4 pb-4 border-b border-[var(--border-subtle)]">
-                  <div>
-                    <h3 className="text-[var(--text-primary)] text-base font-bold">
-                      Alertas via WhatsApp
-                    </h3>
-                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                      Encaminhe avisos operacionais críticos e incidentes diretamente ao WhatsApp.
-                    </p>
-                  </div>
-
-                  <label className="relative inline-flex items-center cursor-pointer select-none shrink-0">
-                    <input
-                      type="checkbox"
-                      checked={whatsappEnabled}
-                      onChange={(e) => setWhatsappEnabled(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-10 h-5.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-[var(--brand-900)]"></div>
-                    <span className="ml-2.5 text-xs font-semibold text-[var(--text-primary)] hidden sm:inline">
-                      {whatsappEnabled ? "Ativado" : "Desativado"}
-                    </span>
-                  </label>
-                </div>
-
-                <input type="hidden" name="hasWhatsappSettings" value="true" />
-                <input
-                  type="hidden"
-                  name="whatsappAlertsEnabled"
-                  value={whatsappEnabled ? "true" : "false"}
-                />
-                <input
-                  type="hidden"
-                  name="whatsappNotificationTypes"
-                  value={notificationTypes.join(",")}
-                />
-                <input
-                  type="hidden"
-                  name="whatsappBusinessHoursOnly"
-                  value={businessHoursOnly ? "true" : "false"}
-                />
-                <input
-                  type="hidden"
-                  name="whatsappAlwaysUrgent"
-                  value={alwaysUrgent ? "true" : "false"}
-                />
-
-                {/* 1. Destinatário */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field>
-                    <FieldLabel className="text-sm font-semibold text-[var(--text-primary)]">
-                      Número do WhatsApp ou Grupo
-                    </FieldLabel>
-                    <Input
-                      name="whatsappRecipientPhone"
-                      placeholder="5511999999999 ou id-do-grupo@g.us"
-                      value={recipientPhone}
-                      onChange={(e) => setRecipientPhone(e.target.value)}
-                      className="h-10 text-sm bg-[var(--canvas)] border-[var(--border-subtle)]"
-                    />
-                  </Field>
-
-                  <Field>
-                    <FieldLabel className="text-sm font-semibold text-[var(--text-primary)]">
-                      Identificação (opcional)
-                    </FieldLabel>
-                    <Input
-                      name="whatsappRecipientName"
-                      placeholder="Ex: Plantão Operacional / Supervisão"
-                      value={recipientName}
-                      onChange={(e) => setRecipientName(e.target.value)}
-                      className="h-10 text-sm bg-[var(--canvas)] border-[var(--border-subtle)]"
-                    />
-                  </Field>
-                </div>
-
-                {/* 2. Tipos de Notificações Selecionáveis (Chips Minimalistas) */}
-                <div className="flex flex-col gap-2">
-                  <FieldLabel className="text-sm font-semibold text-[var(--text-primary)]">
-                    Eventos notificados
-                  </FieldLabel>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { id: "TASK_OVERDUE", label: "Atraso de SLA / Prazo" },
-                      { id: "IMPEDIMENT_REPORTED", label: "Impedimento operacional" },
-                      { id: "APPROVAL_PENDING", label: "Aguardando aprovação" },
-                      { id: "DEADLINE_WARNING", label: "Aviso preventivo" },
-                      { id: "PROCESS_STALLED", label: "Processos parados" },
-                    ].map((item) => {
-                      const isChecked = notificationTypes.includes(item.id);
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => {
-                            setNotificationTypes((prev) =>
-                              prev.includes(item.id)
-                                ? prev.filter((t) => t !== item.id)
-                                : [...prev, item.id]
-                            );
-                          }}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors cursor-pointer ${isChecked
-                            ? "bg-[var(--brand-900)] text-white border-[var(--brand-900)]"
-                            : "bg-[var(--canvas)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:text-[var(--text-primary)] hover:border-[var(--text-secondary)]"
-                            }`}
-                        >
-                          {isChecked ? "✓ " : "+ "}
-                          {item.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* 3. Regras de Disparo e Criticidade */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <Field>
-                    <FieldLabel className="text-sm font-semibold text-[var(--text-primary)]">
-                      Filtro de criticidade
-                    </FieldLabel>
-                    <NativeSelect
-                      name="whatsappCriticalityFilter"
-                      value={criticalityFilter}
-                      onChange={(e) => setCriticalityFilter(e.target.value)}
-                      className="w-full h-10 bg-[var(--canvas)] border-[var(--border-subtle)] text-sm"
-                    >
-                      <NativeSelectOption value="CRITICAL_ONLY">
-                        Apenas críticas (urgentes)
-                      </NativeSelectOption>
-                      <NativeSelectOption value="HIGH_AND_CRITICAL">
-                        Alta prioridade e críticas
-                      </NativeSelectOption>
-                      <NativeSelectOption value="ALL">
-                        Todas as tarefas
-                      </NativeSelectOption>
-                    </NativeSelect>
-                  </Field>
-
-                  <Field>
-                    <FieldLabel className="text-sm font-semibold text-[var(--text-primary)]">
-                      Disparar no marco
-                    </FieldLabel>
-                    <NativeSelect
-                      name="whatsappTriggerStep"
-                      value={triggerStep}
-                      onChange={(e) => setTriggerStep(Number(e.target.value))}
-                      className="w-full h-10 bg-[var(--canvas)] border-[var(--border-subtle)] text-sm"
-                    >
-                      <NativeSelectOption value={1}>1º Marco (Início do atraso)</NativeSelectOption>
-                      <NativeSelectOption value={2}>2º Marco (Atenção moderada)</NativeSelectOption>
-                      <NativeSelectOption value={3}>3º Marco (Gestores — Recomendado)</NativeSelectOption>
-                      <NativeSelectOption value={4}>4º Marco (Incidente grave)</NativeSelectOption>
-                      <NativeSelectOption value={0}>Todos os marcos</NativeSelectOption>
-                    </NativeSelect>
-                  </Field>
-
-                  <Field>
-                    <FieldLabel className="text-sm font-semibold text-[var(--text-primary)]">
-                      Repetição
-                    </FieldLabel>
-                    <NativeSelect
-                      name="whatsappRepeatInterval"
-                      value={repeatInterval}
-                      onChange={(e) => setRepeatInterval(Number(e.target.value))}
-                      className="w-full h-10 bg-[var(--canvas)] border-[var(--border-subtle)] text-sm"
-                    >
-                      <NativeSelectOption value={0}>Apenas 1 vez</NativeSelectOption>
-                      <NativeSelectOption value={15}>A cada 15 min</NativeSelectOption>
-                      <NativeSelectOption value={30}>A cada 30 min</NativeSelectOption>
-                      <NativeSelectOption value={60}>A cada 1 hora</NativeSelectOption>
-                    </NativeSelect>
-                  </Field>
-                </div>
-
-                {/* 4. Opções / Checkboxes */}
-                <div className="flex flex-col sm:flex-row sm:items-center gap-4 pt-1">
-                  <label className="flex items-center gap-2 cursor-pointer text-sm text-[var(--text-primary)]">
-                    <input
-                      type="checkbox"
-                      checked={alwaysUrgent}
-                      onChange={(e) => setAlwaysUrgent(e.target.checked)}
-                      className="rounded text-[var(--brand-900)] focus:ring-0 cursor-pointer"
-                    />
-                    <span>Notificar incidentes urgentes imediatamente</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer text-sm text-[var(--text-primary)]">
-                    <input
-                      type="checkbox"
-                      checked={businessHoursOnly}
-                      onChange={(e) => setBusinessHoursOnly(e.target.checked)}
-                      className="rounded text-[var(--brand-900)] focus:ring-0 cursor-pointer"
-                    />
-                    <span>Silenciar fora do horário comercial</span>
-                  </label>
-                </div>
-
-                {/* Canal Oficial de Envio Tarefaí */}
-                <div className="pt-3 border-t border-[var(--border-subtle)] flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-                  <span className="size-2 rounded-full bg-emerald-500 shrink-0" />
-                  <span>
-                    Os alertas são disparados automaticamente pelo canal oficial do Tarefaí no WhatsApp.
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
+            {userRole === "OWNER" ? <><WhatsAppAlertSettings
+              enabled={whatsappEnabled} onEnabledChange={setWhatsappEnabled}
+              events={notificationTypes} onEventsChange={setNotificationTypes}
+              criticality={criticalityFilter} onCriticalityChange={setCriticalityFilter}
+              trigger={triggerStep} onTriggerChange={setTriggerStep}
+              repeat={repeatInterval} onRepeatChange={setRepeatInterval}
+              businessHours={businessHoursOnly} onBusinessHoursChange={setBusinessHoursOnly}
+              urgent={alwaysUrgent} onUrgentChange={setAlwaysUrgent}
+            /><WhatsAppInstances key={organization.id} /></> : <p className="mt-4 text-sm text-[var(--text-secondary)]">Somente o proprietário pode gerenciar o WhatsApp e seus destinatários.</p>}
           </TabsContent>
 
           {/* Aba Segurança */}

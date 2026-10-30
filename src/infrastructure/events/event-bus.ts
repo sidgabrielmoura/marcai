@@ -68,16 +68,51 @@ class OperationalEventBus {
       this.emitter.off(channel, listener);
     };
   }
+
+  /**
+   * Assina todos os eventos do barramento.
+   */
+  public subscribeAll(listener: (event: DomainEvent) => void): () => void {
+    this.emitter.on("all", listener);
+    return () => {
+      this.emitter.off("all", listener);
+    };
+  }
 }
 
 // Singleton isolado em memória (Item 36)
 const globalForEvents = globalThis as unknown as {
   operationalEventBus?: OperationalEventBus;
+  whatsappAlertsSubscribed?: boolean;
 };
 
 export const eventBus =
   globalForEvents.operationalEventBus ?? new OperationalEventBus();
 
+if (!globalForEvents.whatsappAlertsSubscribed) {
+  globalForEvents.whatsappAlertsSubscribed = true;
+  eventBus.subscribeAll(async (event) => {
+    try {
+      if (event.type === "TASK_COMPLETED" || event.type === "TASK_CANCELLED") {
+        const taskId = (event.payload as { taskId?: string })?.taskId;
+        if (taskId && event.organizationId) {
+          const { resolveAlertsForTask } = await import("@/application/whatsapp/alerts");
+          await resolveAlertsForTask(taskId, event.organizationId);
+        }
+      } else if (event.type === "EXECUTION_COMPLETED" || event.type === "EXECUTION_CANCELLED") {
+        const executionId = (event.payload as { executionId?: string })?.executionId;
+        if (executionId && event.organizationId) {
+          const { resolveAlertsForExecution } = await import("@/application/whatsapp/alerts");
+          await resolveAlertsForExecution(executionId, event.organizationId);
+        }
+      }
+    } catch (err) {
+      // fail-safe: alert resolution failure never breaks event bus delivery
+    }
+  });
+}
+
 if (process.env.NODE_ENV !== "production") {
   globalForEvents.operationalEventBus = eventBus;
 }
+

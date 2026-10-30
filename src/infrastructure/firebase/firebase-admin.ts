@@ -24,7 +24,7 @@ function getServiceAccount(): ServiceAccount | null {
       const jsonStr = raw.startsWith("{") ? raw : Buffer.from(raw, "base64").toString("utf-8");
       return JSON.parse(jsonStr);
     } catch (e) {
-      console.error("[Firebase Admin] Erro ao ler FIREBASE_SERVICE_ACCOUNT_KEY:", e);
+      console.error("[Firebase Admin] FIREBASE_SERVICE_ACCOUNT_KEY inválida.");
     }
   }
 
@@ -42,7 +42,7 @@ function getServiceAccount(): ServiceAccount | null {
       const raw = fs.readFileSync(resolvedPath, "utf-8");
       return JSON.parse(raw);
     } catch (e) {
-      console.error("[Firebase Admin] Erro ao ler arquivo de credenciais:", e);
+      console.error("[Firebase Admin] Arquivo de credenciais inválido.");
     }
   }
 
@@ -79,7 +79,7 @@ export function getFirebaseAdminApp(): App {
   if (serviceAccount) {
     adminApp = initializeApp({
       credential: cert(serviceAccount),
-      projectId: serviceAccount.projectId,
+      projectId: serviceAccount.projectId || (serviceAccount as { project_id?: string }).project_id,
     });
   } else {
     console.warn(
@@ -97,6 +97,8 @@ export function getFirebaseAdminMessaging(): Messaging {
 }
 
 export interface SendPushPayload {
+  platform?: "web" | "native";
+  addressType?: "token" | "fid";
   tokens: string[];
   title: string;
   body: string;
@@ -125,10 +127,8 @@ export async function sendWebPushNotification(
     return { successCount: 0, failureCount: 0, invalidTokens: [], errors: [] };
   }
 
-  const messaging = getFirebaseAdminMessaging();
-
   // FCM data só aceita strings
-  const stringData: Record<string, string> = {
+  const stringData: Record<string, string> = payload.platform === "web" ? {} : {
     title: payload.title,
     body: payload.body,
     message: payload.body,
@@ -136,6 +136,7 @@ export async function sendWebPushNotification(
   };
   if (payload.data) {
     for (const [key, value] of Object.entries(payload.data)) {
+      if (payload.platform === "web" && !["notificationId", "changeId", "sessionId"].includes(key)) continue;
       if (value !== undefined && value !== null) {
         stringData[key] = String(value);
       }
@@ -144,10 +145,10 @@ export async function sendWebPushNotification(
 
   const multicastMessage: MulticastMessage = {
     tokens: uniqueTokens,
-    notification: {
+    ...(payload.platform === "web" ? {} : { notification: {
       title: payload.title,
       body: payload.body,
-    },
+    } }),
     data: stringData,
     android: {
       priority: "high",
@@ -173,31 +174,38 @@ export async function sendWebPushNotification(
       },
     },
     webpush: {
-      notification: {
+      headers: { TTL: "300" },
+      ...(payload.platform === "web" ? {} : { notification: {
         title: payload.title,
         body: payload.body,
         icon: payload.icon || "/brand-icon.svg",
         badge: "/brand-icon.svg",
         vibrate: [200, 100, 200],
         requireInteraction: false,
-      },
-      fcmOptions: {
-        link: payload.clickAction || "/",
-      },
+      } }),
+      ...(payload.platform === "web" ? {} : securePushLink(payload.clickAction)),
     },
   };
 
+  const invalidTokens: string[] = [];
+  const errors: string[] = [];
+  let successCount = 0;
+  let failureCount = 0;
   try {
-    const response = await messaging.sendEachForMulticast(multicastMessage);
-
-    const invalidTokens: string[] = [];
-    const errors: string[] = [];
-
+    const messaging = getFirebaseAdminMessaging();
+    for (let offset = 0; offset < uniqueTokens.length; offset += 500) {
+    const tokens = uniqueTokens.slice(offset, offset + 500);
+    const { tokens: unused, ...baseMessage } = multicastMessage;
+    const response = payload.addressType === "fid"
+      ? await messaging.sendEach(tokens.map(fid => ({...baseMessage,fid})))
+      : await messaging.sendEachForMulticast({ ...multicastMessage, tokens });
+    successCount += response.successCount;
+    failureCount += response.failureCount;
     response.responses.forEach((resp: SendResponse, index: number) => {
       if (!resp.success && resp.error) {
-        const token = uniqueTokens[index];
+        const token = tokens[index];
         const code = resp.error.code;
-        errors.push(`${code}: ${resp.error.message}`);
+        errors.push(code);
 
         // Identifica tokens inválidos/expirados para higienização no banco de dados
         if (
@@ -208,20 +216,29 @@ export async function sendWebPushNotification(
         }
       }
     });
+    }
 
     return {
-      successCount: response.successCount,
-      failureCount: response.failureCount,
+      successCount,
+      failureCount,
       invalidTokens,
       errors,
     };
   } catch (error: any) {
-    console.error("[Firebase Admin] Erro ao disparar multicast Push:", error);
+    const code = typeof error?.code === "string" ? error.code : "messaging/provider-unavailable";
+    console.error("[Firebase Admin] Falha no envio:", code);
     return {
-      successCount: 0,
-      failureCount: uniqueTokens.length,
-      invalidTokens: [],
-      errors: [error?.message || "Unknown error"],
+      successCount,
+      failureCount: uniqueTokens.length - successCount,
+      invalidTokens,
+      errors: [...errors, code],
     };
   }
+}
+
+function securePushLink(destination?: string) {
+  const base = new URL(process.env.NEXT_PUBLIC_APP_URL || "https://tarefai.com.br");
+  const target = new URL(destination || "/notifications", base);
+  const safe = target.origin === base.origin ? target : new URL("/notifications", base);
+  return safe.protocol === "https:" ? { fcmOptions: { link: safe.href } } : {};
 }

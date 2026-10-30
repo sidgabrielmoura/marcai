@@ -1,3 +1,4 @@
+import { notificationTransaction } from "@/infrastructure/notifications/transaction";
 import type { OperationalOptions, OperationalPhase } from './operational-phases';
 import { lockTask } from "@/application/tasks/task-lock";
 import { prisma } from "@/infrastructure/database/prisma";
@@ -7,10 +8,11 @@ import { evaluateTaskDependencies } from "@/domain/rules/dependency-rules";
 import { pendingSlaMilestone } from "@/domain/rules/operational-work";
 import { recordWorkFailure, retryStates, clearWorkFailure } from "@/application/jobs/scheduled-job";
 import { notifyManagers } from "@/application/tasks/notify-managers";
-import { dispatchNotificationAsync } from "@/infrastructure/notifications/notification-service";
+
 import { synchronizeExecution } from "@/application/tasks/synchronize-execution";
 import { sendScheduledReportEmail } from "@/infrastructure/email";
 import { publishSyncRequired } from "@/infrastructure/realtime/sync";
+import { releaseDueScheduledTasks } from "@/application/tasks/release-scheduled-tasks";
 // Called by a protected scheduler, never as a side effect of viewing a page.
 export async function operationalTick(now = new Date(), options: OperationalOptions = {}) {
     const stopAt = options.stopAt ?? Date.now() + 45000;
@@ -86,7 +88,7 @@ export async function operationalTick(now = new Date(), options: OperationalOpti
                 if (Date.now() >= stopAt)
                     break;
                 try {
-                    const released = await prisma.$transaction(async (tx) => {
+                    const released = await notificationTransaction(async (tx) => {
                         await tx.$executeRaw `SELECT pg_advisory_xact_lock(hashtext(${"execution:" + execution.id}))`;
                         const released = await tx.processExecution.updateMany({ where: { id: execution.id, organizationId: execution.organizationId, status: "SCHEDULED", availableAt: { lte: now } }, data: { status: "IN_PROGRESS", startedAt: now } });
                         if (!released.count)
@@ -170,7 +172,7 @@ export async function operationalTick(now = new Date(), options: OperationalOpti
                         continue;
                     synchronized.add(item.executionId);
                     try {
-                        const changed = await prisma.$transaction(tx => synchronizeExecution(tx, item.organizationId, item.executionId, now));
+                        const changed = await notificationTransaction(tx => synchronizeExecution(tx, item.organizationId, item.executionId, now));
                         if (changed)
                             changedOrganizations.add(item.organizationId);
                     }
@@ -194,6 +196,15 @@ export async function operationalTick(now = new Date(), options: OperationalOpti
         }
     }
     if (enabled('TASKS')) {
+        try {
+            const releasedScheduled = await releaseDueScheduledTasks({ organizationId, now });
+            if (releasedScheduled > 0) {
+                if (organizationId) changedOrganizations.add(organizationId);
+                releasedCount += releasedScheduled;
+            }
+        } catch {
+            failures.push({ kind: "scheduled_tasks_release", id: "query" });
+        }
         if (process.env.MOBILE_OUTBOX_ENABLED !== "1") {
             let taskCursor = "";
             while (Date.now() < stopAt) {
@@ -214,7 +225,7 @@ export async function operationalTick(now = new Date(), options: OperationalOpti
                     if ((retry?.nextAttemptAt?.getTime() ?? 0) > Date.now() && candidate.updatedAt <= retry!.updatedAt)
                         continue;
                     try {
-                        const newAlerts = await prisma.$transaction(async (tx) => {
+                        const newAlerts = await notificationTransaction(async (tx) => {
                             let count = 0;
                             await lockTask(tx, candidate.organizationId, candidate.id);
                             const task = await tx.task.findFirst({ where: { id: candidate.id, organizationId: candidate.organizationId, deletedAt: null, slaDueAt: { lt: now }, status: { in: ["AVAILABLE", "IN_PROGRESS", "PAUSED", "SUBMITTED", "NEEDS_CORRECTION"] }, organization: { status: "ACTIVE" } }, include: { organization: { select: { settings: true } } } });
@@ -268,17 +279,7 @@ export async function operationalTick(now = new Date(), options: OperationalOpti
                                     assigneeUserIds.push(a.member.userId);
                                 }
                                 if (assigneeUserIds.length > 0) {
-                                    void dispatchNotificationAsync({
-                                        organizationId: task.organizationId,
-                                        userIds: assigneeUserIds,
-                                        type: "TASK_OVERDUE",
-                                        priority: task.priority,
-                                        title: notifTitle,
-                                        message: `${task.title} (${reason})`,
-                                        data: { taskId: task.id },
-                                        clickAction: `/tasks/${task.id}`,
-                                        forcePush: true,
-                                    });
+
                                 }
                                 await tx.activityLog.create({
                                     data: {
@@ -335,7 +336,7 @@ export async function operationalTick(now = new Date(), options: OperationalOpti
                     if ((retry?.nextAttemptAt?.getTime() ?? 0) > Date.now() && candidate.updatedAt <= retry!.updatedAt)
                         continue;
                     try {
-                        const changed = await prisma.$transaction(async (tx) => {
+                        const changed = await notificationTransaction(async (tx) => {
                             await lockTask(tx, candidate.organizationId, candidate.id);
                             const task = await tx.task.findFirst({
                                 where: {
@@ -384,17 +385,7 @@ export async function operationalTick(now = new Date(), options: OperationalOpti
                                 });
                             }
                             if (assigneeUserIds.length > 0) {
-                                void dispatchNotificationAsync({
-                                    organizationId: task.organizationId,
-                                    userIds: assigneeUserIds,
-                                    type: "TASK_EXPIRING_SOON",
-                                    priority: "HIGH",
-                                    title: "Tarefa próxima do vencimento",
-                                    message: `A tarefa “${task.title}” vence em ${remainingMin} minutos.`,
-                                    data: { taskId: task.id },
-                                    clickAction: `/tasks/${task.id}`,
-                                    forcePush: true,
-                                });
+
                             }
                             if (task.criticality === "CRITICAL" || task.priority === "CRITICAL") {
                                 await notifyManagers(tx, task, "Tarefa crítica próxima do vencimento", `A tarefa urgente “${task.title}” vence em ${remainingMin} minutos.`, { type: "CRITICAL_TASK_ALERT", priority: "HIGH" });
@@ -443,7 +434,7 @@ export async function operationalTick(now = new Date(), options: OperationalOpti
                 if ((retry?.nextAttemptAt?.getTime() ?? 0) > Date.now() && task.updatedAt <= retry!.updatedAt)
                     continue;
                 try {
-                    const changed = await prisma.$transaction(async (tx) => {
+                    const changed = await notificationTransaction(async (tx) => {
                         await lockTask(tx, task.organizationId, task.id);
                         const stillUnassigned = await tx.task.findFirst({ where: { id: task.id, organizationId: task.organizationId, status: 'AVAILABLE', deletedAt: null, assignments: { none: { removedAt: null } }, createdAt: { lte: new Date(now.getTime() - 15 * 60000) }, organization: { status: 'ACTIVE' } }, select: { id: true } });
                         if (!stillUnassigned)
@@ -520,7 +511,7 @@ export async function operationalTick(now = new Date(), options: OperationalOpti
                     break;
                 try {
                     const task = step.workflow.task;
-                    const changed = await prisma.$transaction(async (tx) => {
+                    const changed = await notificationTransaction(async (tx) => {
                         await tx.$executeRaw `SELECT pg_advisory_xact_lock(hashtext(${'approval:' + step.id}))`;
                         const stillPending = await tx.approvalStep.findFirst({ where: { id: step.id, status: 'PENDING', deadlineAt: { lte: now }, workflow: { status: 'PENDING', task: { organizationId: task.organizationId, status: 'SUBMITTED', deletedAt: null, organization: { status: 'ACTIVE' } } } }, select: { id: true } });
                         if (!stillPending)
@@ -564,17 +555,7 @@ export async function operationalTick(now = new Date(), options: OperationalOpti
                                         data: { taskId: task.id, stepId: step.id },
                                     },
                                 });
-                                void dispatchNotificationAsync({
-                                    organizationId: task.organizationId,
-                                    userIds: [fallbackMember.userId],
-                                    type: "APPROVAL_REQUESTED",
-                                    priority: "HIGH",
-                                    title: "Aprovação pendente (Substituto)",
-                                    message: `A tarefa “${task.title}” expirou o prazo do titular e aguarda sua aprovação.`,
-                                    data: { taskId: task.id, stepId: step.id },
-                                    clickAction: `/tasks/${task.id}`,
-                                    forcePush: true,
-                                });
+
                             }
                         }
                         await notifyManagers(tx, task, "Prazo de aprovação expirado", `A aprovação da tarefa “${task.title}” (etapa ${step.sequence}) excedeu o prazo limite.`, { type: "APPROVAL_OVERDUE", priority: "HIGH" });
@@ -620,7 +601,7 @@ export async function operationalTick(now = new Date(), options: OperationalOpti
                     break;
                 try {
                     const nextDate = new Date(now.getTime() + (report.frequency === "WEEKLY" ? 7 : 30) * 86400000);
-                    const advanced = await prisma.$transaction(async (tx) => {
+                    const advanced = await notificationTransaction(async (tx) => {
                         const updated = await tx.scheduledReport.updateMany({
                             where: { id: report.id, organizationId: report.organizationId, status: "ACTIVE", nextRunAt: report.nextRunAt, organization: { status: "ACTIVE" } },
                             data: {
@@ -690,6 +671,13 @@ export async function operationalTick(now = new Date(), options: OperationalOpti
     // All interactive transactions have committed before subscribers are told
     // to recover. No-op ticks publish nothing and never create refresh loops.
     await Promise.allSettled([...changedOrganizations].map(organizationId => publishSyncRequired(organizationId)));
+    try {
+        const { processDueRepeatAlerts, dispatchPendingWhatsAppAlerts } = await import("@/application/whatsapp/alerts");
+        await processDueRepeatAlerts({ organizationId, limit: 10 });
+        await dispatchPendingWhatsAppAlerts({ organizationId, limit: 20 });
+    } catch {
+        // fail-safe: whatsapp processing never disrupts core operational engine
+    }
     return {
         nextRoutineAt, routineMore, dependencyMore, incomplete: Date.now() >= stopAt,
         generated,

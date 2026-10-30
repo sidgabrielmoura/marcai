@@ -14,6 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PushNotificationBanner } from "@/presentation/components/shared/push-notification-banner";
+import { getSession } from "@/infrastructure/security/session";
 
 export default async function NotificationsPage({
   searchParams,
@@ -81,7 +82,7 @@ export default async function NotificationsPage({
           }
         />
 
-        <PushNotificationBanner />
+        <PushNotificationBanner sessionId={(await getSession())?.sessionId} />
 
         <nav className="flex gap-2 max-w-lg" aria-label="Filtrar avisos">
           {[

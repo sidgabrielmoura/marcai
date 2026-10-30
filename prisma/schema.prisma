@@ -33,6 +33,10 @@ model User {
 }
 
 model Organization {
+  whatsappInstances WhatsAppInstance[]
+  whatsappRecipients WhatsAppRecipient[]
+  whatsappOccurrences WhatsAppAlertOccurrence[]
+  whatsappDeliveries WhatsAppAlertDelivery[]
   operationalAgenda OperationalAgenda[]
   operationalSignals OperationalSignal[]
   nativeInstallations NativeInstallation[]
@@ -126,6 +130,9 @@ model OrganizationMember {
 }
 
 model Location {
+  whatsappInstances WhatsAppInstance[]
+  whatsappOccurrences WhatsAppAlertOccurrence[]
+  whatsappDeliveries WhatsAppAlertDelivery[]
   id             String                 @id @default(cuid())
   organizationId String
   name           String
@@ -428,6 +435,7 @@ model Task {
   organization         Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   process              Process?                  @relation(fields: [processId], references: [id])
   team                 Team?                     @relation(fields: [teamId], references: [id])
+  whatsappOccurrences  WhatsAppAlertOccurrence[]
 
   @@index([organizationId, status])
   @@index([organizationId, deadlineAt])
@@ -725,10 +733,146 @@ model PasswordResetToken {
   @@map("password_reset_tokens")
 }
 
+model WhatsAppInstance {
+  id String @id @default(cuid())
+  organizationId String
+  locationId String
+  name String
+  session String @unique
+  status String @default("PENDING")
+  connectedPhone String?
+  connectedName String?
+  statusEventAt DateTime? @db.Timestamptz(6)
+  revision Int @default(0)
+  operationToken String? @db.Uuid
+  operationUntil DateTime? @db.Timestamptz(6)
+  configHash String?
+  webhookEvents WhatsAppWebhookEvent[]
+  deliveries WhatsAppAlertDelivery[]
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Cascade)
+  location Location @relation(fields:[locationId],references:[id],onDelete:Cascade)
+  createdAt DateTime @default(now())
+  @@unique([organizationId,locationId])
+  @@map("whatsapp_instances")
+}
+
+model WhatsAppRecipient {
+  id String @id @default(cuid())
+  organizationId String
+  phone String
+  name String
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Cascade)
+  @@unique([organizationId,phone])
+  @@map("whatsapp_recipients")
+}
+
+model WhatsAppWebhookEvent {
+  id String @id
+  instanceId String
+  event String
+  occurredAt DateTime @db.Timestamptz(6)
+  data Json
+  publishedAt DateTime? @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  instance WhatsAppInstance @relation(fields:[instanceId],references:[id],onDelete:Cascade)
+  @@index([instanceId,publishedAt,createdAt])
+  @@index([createdAt])
+  @@map("whatsapp_webhook_events")
+}
+
+model WhatsAppAlertOccurrence {
+  id             String    @id @default(cuid())
+  organizationId String
+  locationId     String?
+  taskId         String?
+  executionId    String?
+
+  incidentKey    String
+
+  eventType      String
+  priority       String?
+  milestoneStep  Int       @default(0)
+
+  title          String
+  message        String
+  actionUrl      String?
+
+  status         String    @default("ACTIVE")
+  isResolved     Boolean   @default(false)
+  resolvedAt     DateTime? @db.Timestamptz(6)
+
+  repeatInterval Int       @default(0)
+  repeatCount    Int       @default(0)
+  nextRepeatAt   DateTime? @db.Timestamptz(6)
+
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(6)
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  location       Location?    @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  task           Task?        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  deliveries     WhatsAppAlertDelivery[]
+
+  @@unique([organizationId, incidentKey])
+  @@index([organizationId, status, nextRepeatAt])
+  @@index([taskId, status])
+  @@map("whatsapp_alert_occurrences")
+}
+
+model WhatsAppAlertDelivery {
+  id                    String    @id @default(cuid())
+  occurrenceId          String
+  organizationId        String
+  locationId            String?
+  instanceId            String?
+  session               String?
+
+  recipientPhone        String
+  recipientName         String?
+  chatId                String?
+
+  round                 Int       @default(0)
+
+  status                String    @default("PENDING")
+  suppressionReason     String?
+
+  scheduledFor          DateTime? @db.Timestamptz(6)
+  sentAt                DateTime? @db.Timestamptz(6)
+  deliveredAt           DateTime? @db.Timestamptz(6)
+  readAt                DateTime? @db.Timestamptz(6)
+
+  attempts              Int       @default(0)
+  lastAttemptAt         DateTime? @db.Timestamptz(6)
+  lastError             String?
+
+  providerMessageId     String?
+  providerMessageIdHash String?
+  providerAck           Int?
+
+  leaseToken            String?   @db.Uuid
+  leaseUntil            DateTime? @db.Timestamptz(6)
+
+  createdAt             DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt             DateTime  @updatedAt @db.Timestamptz(6)
+
+  occurrence            WhatsAppAlertOccurrence @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+  organization          Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  location              Location?               @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  instance              WhatsAppInstance?       @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+
+  @@unique([occurrenceId, recipientPhone, round])
+  @@index([organizationId, status, scheduledFor])
+  @@index([providerMessageIdHash])
+  @@index([status, leaseUntil])
+  @@map("whatsapp_alert_deliveries")
+}
+
 model UserDeviceToken {
   id         String   @id @default(cuid())
   userId     String
   token      String   @unique
+  sessionId  String?  @map("session_id") @db.Uuid
+  session    WebAuthSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   userAgent  String?
   lastUsedAt DateTime @default(now())
   createdAt  DateTime @default(now())
@@ -736,6 +880,7 @@ model UserDeviceToken {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([sessionId])
   @@map("user_device_tokens")
 }
 
@@ -1109,6 +1254,7 @@ model MobileJobCursor {
 }
 
 model WebAuthSession {
+ deviceTokens UserDeviceToken[]
  id String @id @db.Uuid
  userId String @map("user_id")
  memberId String @map("member_id")

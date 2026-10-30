@@ -1426,7 +1426,7 @@ export function TaskDetailClient({
               e.preventDefault();
               if (!reason.trim()) return;
               run(
-                () => reportImpedimentAction(task.id, reason.trim(), category),
+                () => reportImpedimentAction(task.id, category, reason.trim()),
                 {
                   successNotice:
                     "Impedimento registrado. A gestão foi notificada.",

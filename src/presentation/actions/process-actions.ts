@@ -1,4 +1,5 @@
 "use server";
+import { notificationTransaction } from "@/infrastructure/notifications/transaction";
 import { completeExecution } from "@/application/mobile/execution-operations";
 import { execution as employeeExecution } from "@/application/mobile/data";
 import { webTaskDetail } from "@/application/mobile/web-task-contract";
@@ -21,7 +22,7 @@ import {
 } from "@/domain/rules/process-definition";
 import { generateRoutineExecution } from "@/application/processes/generate-execution";
 import { changeExecutionState } from "@/application/processes/execution-lifecycle";
-import { dispatchNotificationAsync } from "@/infrastructure/notifications/notification-service";
+
 import { readable } from "@/application/mobile/data";
 import { taskScope } from "@/application/security/operational-scope";
 import { evaluateTaskDependencies } from "@/domain/rules/dependency-rules";
@@ -58,7 +59,7 @@ export async function createProcessAction(
     return { error: "Apenas gestores podem salvar processos." };
   try {
     const input = JSON.parse(String(formData.get("definition")));
-    const result = await prisma.$transaction(
+    const result = await notificationTransaction(
       (tx) =>
         saveProcessInTransaction(tx, context, input, {
           processId: String(formData.get("processId") || "") || undefined,
@@ -69,8 +70,7 @@ export async function createProcessAction(
         }),
       { timeout: 30000 },
     );
-    for (const notification of result.notifications)
-      void dispatchNotificationAsync(notification);
+
     if (result.routineId)
       await generateRoutineExecution(
         result.routineId,
@@ -120,7 +120,7 @@ export async function toggleProcessStatusAction(
         "Somente proprietários e administradores podem restaurar processos.",
     };
   const target = process.status === "ARCHIVED" ? "PAUSED" : newStatus;
-  await prisma.$transaction(async (tx) => {
+  await notificationTransaction(async (tx) => {
     await tx.process.update({
       where: { id: process.id, organizationId: context.organizationId },
       data: { status: target },
@@ -224,7 +224,7 @@ export async function createRoutineAction(
     generationLeadTime: s.generationLeadTime,
     pendingPreviousPolicy: s.pendingPreviousPolicy,
   };
-  const routine = await prisma.$transaction(async (tx) => {
+  const routine = await notificationTransaction(async (tx) => {
     const r = id
       ? await tx.routine.update({ where: { id }, data })
       : await tx.routine.create({ data: { ...data, processId: process.id } });
@@ -258,7 +258,7 @@ export async function toggleRoutineAction(id: string): Promise<ActionResult> {
     )?.tasks.some((t) => !context.scope?.teamIds.includes(t.teamId))
   )
     return { error: "Equipe fora do seu escopo." };
-  await prisma.$transaction(async (tx) => {
+  await notificationTransaction(async (tx) => {
     await tx.routine.update({
       where: { id },
       data: { status: routine.status === "ACTIVE" ? "PAUSED" : "ACTIVE" },
@@ -317,7 +317,7 @@ async function updateExecution(
       error:
         "Selecione a categoria e descreva o motivo com 5 a 1000 caracteres.",
     };
-  const result = await prisma.$transaction(
+  const result = await notificationTransaction(
     (tx) =>
       changeExecutionState(
         tx,
@@ -365,7 +365,7 @@ export async function instantiateProcessFromTemplateAction(
   )
     return { error: "Escolha unidades diferentes." };
   try {
-    const results = await prisma.$transaction(
+    const results = await notificationTransaction(
       async (tx) => {
         const version = await tx.processTemplateVersion.findFirst({
           where: {
@@ -390,7 +390,7 @@ export async function instantiateProcessFromTemplateAction(
       { timeout: 60000 },
     );
     for (const r of results) {
-      for (const n of r.notifications) void dispatchNotificationAsync(n);
+
       if (r.routineId)
         await generateRoutineExecution(
           r.routineId,
@@ -418,7 +418,7 @@ export async function updateProcessToTemplateVersionAction(
   const context = await getAuthenticatedContext(false);
   if (!context || !isManagement(context)) return { error: "Acesso negado." };
   try {
-    await prisma.$transaction(
+    await notificationTransaction(
       async (tx) => {
         const p = await tx.process.findFirst({
           where: { ...processScope(context), id: processId },

@@ -1,6 +1,6 @@
 # Contrato de acesso a dados e tempo real — Tarefaí
 
-Atualizado em 27/10/2026. Este documento orienta pessoas e IAs que alterem o site `marcai` ou o aplicativo `marcai-emp-app`. Leia também [database-cost-controls.md](database-cost-controls.md) e as auditorias em `docs/audits/database-efficiency/`.
+Atualizado em 28/10/2026. Este documento orienta pessoas e IAs que alterem o site `marcai` ou o aplicativo `marcai-emp-app`. Leia também [database-cost-controls.md](database-cost-controls.md) e as auditorias em `docs/audits/database-efficiency/`.
 
 ## Objetivo e limites
 
@@ -82,6 +82,36 @@ O shell atualiza contadores separadamente. Alteração apenas de aviso busca som
 A aba líder libera a lease quando fica oculta ou é encerrada. A próxima assume, renova uma autorização antiga antes de conectar e reconcilia o intervalo quando necessário. Nenhum token é compartilhado. Navegadores sem as duas APIs mantêm um transporte por aba visível, com o mesmo isolamento e limpeza. Compartilhar transporte não elimina a leitura autorizada de recursos que estão efetivamente visíveis em duas abas.
 
 ## Aplicativo
+
+### Instâncias WhatsApp (28/10/2026)
+
+O contrato das rotas, segurança, ciclo de sessão e operação está em [whatsapp-instances-backend.md](whatsapp-instances-backend.md). WAHA segue [waha-instancias.md](../waha-instancias.md); a implementação não introduz um backend paralelo.
+
+Instâncias e até cinco destinatários por organização são exclusivos de OWNER, autorizado a cada action/rota. A unidade deve pertencer à organização e estar ativa. Criação local começa em PENDING; nomes remotos novos são INSTANCE- mais 96 bits aleatórios. Uma unidade tem uma instância. O client WAHA é único, somente no servidor, com X-Api-Key, timeout, limite de resposta e erro sanitizado. Configuração completa (NOWEB store, metadata, webhooks assinados) é aplicada com PUT quando muda. Logout precede DELETE para excluir uma sessão.
+
+Webhooks em /api/whatsapp/webhooks/[session] verificam HMAC-SHA512 do corpo original antes de processar JSON. Recibos persistentes por ID tornam o processamento idempotente; timestamp/revisão evitam regressão de status e me:null preserva a última identidade. Admissão e estado são gravados na mesma transação; Ably é publicado depois da resposta com after. Pendências são reconciliadas na próxima oportunidade da instância, sem cron de polling novo. A manutenção existente remove somente recibos publicados com mais de sete dias, até 500 por execução.
+
+O canal whatsapp:{organizationId}:{locationId}:{instanceId} é assinado somente pelo proprietário, com token de dois minutos e capability subscribe no canal exato. Carrega somente status, revisão e indicação de QR disponível; nunca imagem, telefone ou mensagens privadas. A conexão do modal fecha ao ocultar/sair. Somente enquanto SCAN_QR_CODE e com modal e página visíveis, a imagem PNG é renovada por action autenticada ao atingir qrExpiresAt (estimativa de 18 segundos, sem antecipar um segundo). O provedor troca QR a cada aproximadamente 20 segundos; esse prazo não é configurável pelo contrato documentado. Essa é a exceção restrita, sem polling de status, listas ou quadros. QR não é persistido.
+
+O modal mantém até 20 imagens em memória da própria tela, isoladas por instância/revisão, com expiração original preservada ao fechar/reabrir. Após a inscrição Ably, reabrir uma instância já inicializada reconcilia o snapshot local autorizado, sem WAHA/lease/escritas de operação; a imagem válida é reaproveitada. Uma nova revisão/status, desconexão, erro de autorização, vencimento ou desmontagem remove o cache; mudança de organização remonta a tela. Leituras de QR concorrentes compartilham a requisição. Página/modal inativos não renovam a imagem. Testes de custo desse fluxo: scripts/verify-whatsapp-ui.cjs, com transportes sintéticos e relógio controlado.
+
+As operações usam lease por instância e limites persistentes reaproveitando mobile_rate_limits, sem rede dentro de transações. Consultas de status idêntico e renovação de QR não materializam novos eventos de status. GET do snapshot não chama WAHA nem publica invalidação. Envio usa a sessão da unidade da tarefa/execução e contatos da própria organização; check-exists resolve o chatId antes do envio. Nenhuma sessão global serve como fallback entre unidades.
+
+A migração 20261029020000_whatsapp_webhooks deve preceder o backend atualizado. BASE_URL (ou NEXT_PUBLIC_APP_URL) é a origem pública deste próprio backend; WAHA_BASE_URL e WAHA_KEY configuram o provedor. Segredos nunca chegam ao navegador. Testes de ciclo, autorização, deduplicação, custo e canais: scripts/verify-whatsapp.ts, incluído no executor descartável com --whatsapp-only e na suíte geral.
+
+### Entrega de push e sessões (28/10/2026)
+
+As transações que criam notificações usam `notificationTransaction`. O wrapper captura os IDs retornados por `create`/`createManyAndReturn` e agenda a entrega com `after` somente depois do commit; fora do Next, aguarda o processamento. Rollback não dispara. Não adicionar um disparo separado ao lado de `tx.notification.create` nem transformar avisos em queries periódicas. Novos pontos de escrita precisam usar o wrapper, inclusive quando chamam `notifyManagers`, `materializeProcessTasks` ou `synchronizeExecution` indiretamente.
+
+O disparo reclama apenas esses IDs na outbox existente. A atualização condicional impede dois processadores de entregarem o mesmo aviso; não varre a fila histórica, não reativa `/api/jobs/mobile` e não adiciona cron/retry periódico. `processPushBatch` é uma entrada descontinuada sem processamento. A aceitação pelo provedor vira `PROVIDER_ACCEPTED`, falhas parciais e erros têm estados próprios, e ausência de aparelho vira `SKIPPED_NO_DEVICES` com zero tentativas de transporte. Recebimento/abertura nativos continuam dependentes de ACK. Falha no transporte não transforma uma mutação já confirmada em erro da ação.
+
+Tokens web ficam vinculados a `web_auth_sessions` por `user_device_tokens.session_id`. Registro e logout disputam a mesma linha de sessão; logout remove somente as inscrições dessa sessão. Troca de conta substitui e revoga a sessão anterior; registro exige que a sessão esperada pelo cliente coincida com a autenticada. O envio filtra organização, sessão vigente, status e versão de credenciais. Tokens legados sem sessão não são elegíveis até a próxima inscrição ao reabrir o site.
+
+O registrador pertence aos layouts autenticados e muda com `sessionId`. Permissão não equivale a inscrição: o estado ativo exige token gravado. O consentimento é solicitado pelo clique do usuário; permissão previamente concedida permite sincronização automática no login. Não há consulta extra por foco/reconexão nem polling de inscrição.
+
+No web, FCM envia indicação com IDs e texto genérico. Primeiro plano e background usam o mesmo Service Worker, que busca o conteúdo em `/api/push/notification` antes de exibir e novamente antes de navegar. O endpoint exige a mesma sessão e projeta o aviso conforme a autorização atual, com `private, no-store`. Essa leitura acontece por entrega/clique, não refaz quadros. Avisos pendentes de sessão encerrada são descartados; a saída do layout fecha os alertas exibidos da própria sessão. Tokens e textos privados não são publicados em canais compartilhados de abas.
+
+A migração `20261028190000_push_session_binding` deve preceder o código novo. `NEXT_PUBLIC_FIREBASE_VAPID_KEY` precisa estar no ambiente de build; a credencial Admin fica somente no servidor. A cobertura está em `scripts/verify-push-notifications.cjs` (fontes reais com transportes simulados) e `scripts/verify-push-database.ts` (PostgreSQL 18 descartável, incluindo concorrência de logout/registro). O teste de banco integra o executor de eficiência. Validar a entrega real e as credenciais da hospedagem depois da publicação.
 
 `src/core/query.ts` centraliza validade e invalidação. Chaves começam por `[userId, organizationId, family, ...]`. O provedor de sessão limpa queries e filas na troca de contexto. As telas desabilitam queries quando fora de foco. Não reinstalar refetch automático por foco/rede em cada tela: a reconciliação central já trata a retomada.
 

@@ -52,7 +52,13 @@ async function main() {
     }
     await client.query(fs.readFileSync(path.join(root,'prisma/migrations/20261021230000_database_efficiency/migration.sql'),'utf8'));
     await client.query(fs.readFileSync(path.join(root,'prisma/migrations/20261027180000_selective_operational/migration.sql'),'utf8'));
+    await client.query(fs.readFileSync(path.join(root,'prisma/migrations/20261028190000_push_session_binding/migration.sql'),'utf8'));
+    if (!(await client.query("SELECT to_regclass('public.whatsapp_instances') AS relation")).rows[0].relation)
+      await client.query(fs.readFileSync(path.join(root,'prisma/migrations/20261028210000_whatsapp_instances/migration.sql'),'utf8'));
     report.migrationAppliedLocally=true;
+    if (!(await client.query("SELECT to_regclass('public.whatsapp_webhook_events') AS relation")).rows[0].relation)
+      await client.query(fs.readFileSync(path.join(root,'prisma/migrations/20261029020000_whatsapp_webhooks/migration.sql'),'utf8'));
+    await client.query('CREATE INDEX IF NOT EXISTS "whatsapp_webhook_events_createdAt_idx" ON whatsapp_webhook_events("createdAt")');
   } finally { await client.end(); }
   if (process.argv.includes('--setup')) return;
   const cli=path.join(root,'node_modules/prisma/build/index.js');
@@ -62,7 +68,17 @@ async function main() {
     run('build',[path.join(root,'node_modules/next/dist/bin/next'),'build',...(process.argv.includes('--webpack')?['--webpack']:[])],{timeout:1200000});
     return;
   }
-  for (const script of ['verify-domain-rules.ts','verify-operational-rules.ts','verify-workflow-regressions.ts','verify-task-history.ts','verify-database-efficiency.ts','verify-selective-operational.ts']) {
+  if (process.argv.includes('--push-only')) {
+    run('verify-push-notifications',[path.join(workspace,'scripts/verify-push-notifications.cjs')]);
+    run('verify-push-database',['--import','tsx',path.join(workspace,'scripts/verify-push-database.ts')]);
+    return;
+  }
+  if (process.argv.includes('--whatsapp-only')) {
+    run('verify-whatsapp',['--import','tsx',path.join(workspace,'scripts/verify-whatsapp.ts')]);
+    run('schema-diff',[cli,'migrate','diff','--from-config-datasource','--to-schema','prisma/schema.prisma','--exit-code']);
+    return;
+  }
+  for (const script of ['verify-domain-rules.ts','verify-operational-rules.ts','verify-workflow-regressions.ts','verify-task-history.ts','verify-database-efficiency.ts','verify-selective-operational.ts','verify-push-database.ts','verify-whatsapp.ts']) {
     run(script.replace('.ts',''),['--import','tsx',path.join(workspace,'scripts',script)]);
   }
   // CLI diff ignores trigger bodies but must find no missing/extra ORM schema objects.

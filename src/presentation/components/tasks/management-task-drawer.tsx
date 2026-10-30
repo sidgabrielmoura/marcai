@@ -77,7 +77,9 @@ import {
   Paperclip,
   Download,
   Star,
+  Copy,
 } from "lucide-react";
+import { copyTaskToClipboard } from "@/presentation/utils/task-clipboard";
 
 interface ManagementTaskDrawerProps {
   taskId: string | null;
@@ -85,6 +87,7 @@ interface ManagementTaskDrawerProps {
   onOpenChange: (open: boolean) => void;
   onTaskUpdated?: () => void;
   userRole: string;
+  initialReassign?: boolean;
 }
 
 import { TaskActivityHistory } from "./task-activity-history";
@@ -176,6 +179,7 @@ export function ManagementTaskDrawer({
   onOpenChange,
   onTaskUpdated,
   userRole,
+  initialReassign = false,
 }: ManagementTaskDrawerProps) {
   const router = useRouter();
   const [task, setTask] = useState<ManagementTaskDrawerResult | null>(null);
@@ -228,9 +232,8 @@ export function ManagementTaskDrawer({
     return `${isToday ? "Hoje" : dateStr} às ${timeStr} (daqui a ${diffMinutes} min)`;
   }
 
-  async function handleOpenReassignModal() {
-    if (!task) return;
-    const current = task.assignments.find((a) => a.type === "PRIMARY")?.memberId || "";
+  async function openReassignForTask(t: ManagementTaskDrawerResult) {
+    const current = t.assignments.find((a) => a.type === "PRIMARY")?.memberId || "";
     setReassignMemberId(current);
     setReassignDeadlineType("60");
     setReassignReason("");
@@ -239,7 +242,7 @@ export function ManagementTaskDrawer({
 
     setLoadingMembers(true);
     try {
-      const res = await getEligibleMembersForTaskAction(task.id);
+      const res = await getEligibleMembersForTaskAction(t.id);
       if (res.success && Array.isArray(res.data)) {
         setEligibleMembers(res.data);
         if (!current && res.data.length > 0) {
@@ -251,6 +254,11 @@ export function ManagementTaskDrawer({
     } finally {
       setLoadingMembers(false);
     }
+  }
+
+  async function handleOpenReassignModal() {
+    if (!task) return;
+    await openReassignForTask(task);
   }
 
   async function handleConfirmReassign() {
@@ -280,6 +288,13 @@ export function ManagementTaskDrawer({
       deadlineMinutes = Number(reassignDeadlineType);
     }
 
+    const successMsg =
+      task.status === "NOT_COMPLETED"
+        ? "Impedimento resolvido e tarefa reatribuída com sucesso!"
+        : task.status === "COMPLETED"
+          ? "Tarefa reatribuída com sucesso!"
+          : "Tarefa reatribuída e prazo renovado com sucesso!";
+
     await runAction(
       () =>
         reassignTaskAction({
@@ -289,7 +304,7 @@ export function ManagementTaskDrawer({
           customDeadlineAt,
           reason: reassignReason.trim() || undefined,
         }),
-      "Tarefa reatribuída e prazo renovado com sucesso!"
+      successMsg
     );
     setShowReassignModal(false);
   }
@@ -307,6 +322,9 @@ export function ManagementTaskDrawer({
         setTask(null);
       } else if (res.task) {
         setTask(res.task);
+        if (initialReassign) {
+          void openReassignForTask(res.task);
+        }
       }
     } catch {
       toast.add({
@@ -508,6 +526,26 @@ export function ManagementTaskDrawer({
                   </div>
                 )}
 
+                {task.status === "NOT_COMPLETED" && (
+                  <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-900 dark:text-rose-200 flex items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="size-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                      <span>
+                        Tarefa com impedimento relatado pelo colaborador. Reatribua para outro responsável ou renove o prazo para reiniciar a execução.
+                      </span>
+                    </div>
+                    {userRole !== "EMPLOYEE" && (
+                      <Button
+                        size="sm"
+                        className="h-7 text-xs bg-rose-900 hover:bg-rose-800 text-white shrink-0 font-medium"
+                        onClick={handleOpenReassignModal}
+                      >
+                        Destravar / Reatribuir
+                      </Button>
+                    )}
+                  </div>
+                )}
+
                 <Card className="shrink-0 rounded-xl p-0 border border-(--border-subtle) bg-surface shadow-none overflow-hidden">
                   <div className="px-4 py-3 bg-slate-50/80 dark:bg-muted/30 border-b border-(--border-subtle) flex items-center gap-2">
                     <ListTodo className="size-4 text-brand-900 dark:text-primary" />
@@ -536,7 +574,7 @@ export function ManagementTaskDrawer({
                             {primaryAssignee?.memberName || <span className="text-amber-700">Sem responsável</span>}
                           </span>
                         </div>
-                        {userRole !== "EMPLOYEE" && !["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status) && (
+                        {userRole !== "EMPLOYEE" && task.status !== "CANCELLED" && (
                           <Button
                             type="button"
                             variant="outline"
@@ -1022,7 +1060,7 @@ export function ManagementTaskDrawer({
           {task && userRole !== "EMPLOYEE" && (
             <DrawerFooter className="px-4 sm:px-6 py-3.5 border-t border-(--border-subtle) bg-surface shrink-0 flex flex-col gap-2">
               <div className="flex gap-2">
-                {!["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status) && (
+                {task.status !== "CANCELLED" && (
                   <Button
                     type="button"
                     variant="default"
@@ -1031,7 +1069,11 @@ export function ManagementTaskDrawer({
                     onClick={handleOpenReassignModal}
                   >
                     <UserCheck className="size-4" />
-                    Reatribuir / Renovar prazo
+                    {task.status === "COMPLETED"
+                      ? "Reatribuir tarefa"
+                      : task.status === "NOT_COMPLETED"
+                        ? "Reatribuir / Resolver"
+                        : "Reatribuir / Renovar prazo"}
                   </Button>
                 )}
 
@@ -1047,6 +1089,33 @@ export function ManagementTaskDrawer({
                     Cancelar
                   </Button>
                 )}
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 px-3 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-800 text-[var(--brand-900)] hover:bg-[var(--canvas)] cursor-pointer flex items-center gap-1.5 shrink-0 shadow-2xs"
+                  onClick={() => {
+                    const evidenceReq = task.evidenceRequirements?.[0];
+                    copyTaskToClipboard({
+                      title: task.title,
+                      description: task.description || "",
+                      instructions: task.instructions || task.description || "",
+                      taskType: (task.taskType as any) || "STANDARD",
+                      priority: (task.priority as any) || "MEDIUM",
+                      criticality: (task.criticality as any) || "MEDIUM",
+                      toleranceMinutes: 20,
+                      evidenceType: evidenceReq?.type || "NONE",
+                      evidenceRequired: evidenceReq?.required ?? false,
+                      formFields: task.formFields || [],
+                      sourceType: task.origin === "AD_HOC" ? "ADHOC" : "PROCESS_TASK",
+                      sourceTitle: task.title,
+                    });
+                  }}
+                  title="Copiar tarefa para colar em nova tarefa ou processo"
+                >
+                  <Copy className="size-3.5 text-slate-500" />
+                  <span>Copiar tarefa</span>
+                </Button>
 
                 <Button
                   type="button"
@@ -1068,10 +1137,20 @@ export function ManagementTaskDrawer({
         <DialogContent className="sm:max-w-lg p-7!">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="">Reatribuir tarefa & renovar prazo</span>
+              <span className="">
+                {task?.status === "COMPLETED"
+                  ? "Reatribuir tarefa concluída"
+                  : task?.status === "NOT_COMPLETED"
+                    ? "Reatribuir / Resolver impedimento"
+                    : "Reatribuir tarefa & renovar prazo"}
+              </span>
             </DialogTitle>
             <DialogDescription>
-              Selecione o colaborador responsável e defina o novo prazo para conclusão.
+              {task?.status === "COMPLETED"
+                ? "Selecione o colaborador e defina o novo prazo para reexecução da tarefa."
+                : task?.status === "NOT_COMPLETED"
+                  ? "Selecione o colaborador e defina o novo prazo para reiniciar a tarefa e resolver o impedimento."
+                  : "Selecione o colaborador responsável e defina o novo prazo para conclusão."}
             </DialogDescription>
           </DialogHeader>
 
@@ -1190,7 +1269,11 @@ export function ManagementTaskDrawer({
               className="bg-brand-900 hover:bg-brand-800 text-white font-semibold"
             >
               {actionBusy && <Spinner data-icon="inline-start" />}
-              <span>Confirmar e renovar prazo</span>
+              <span>
+                {task?.status === "NOT_COMPLETED"
+                  ? "Resolver impedimento e reatribuir"
+                  : "Confirmar e renovar prazo"}
+              </span>
             </Button>
           </DialogFooter>
         </DialogContent>

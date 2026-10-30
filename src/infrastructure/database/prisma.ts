@@ -26,6 +26,7 @@ if (
     !("platformBusinessSegment" in globalForPrisma.prisma) ||
     !("scheduledJobState" in globalForPrisma.prisma) ||
     !("operationalAgenda" in globalForPrisma.prisma) ||
+    !("whatsAppWebhookEvent" in globalForPrisma.prisma) ||
     !("platformTemplate" in globalForPrisma.prisma))
 ) {
   globalForPrisma.prisma = undefined;

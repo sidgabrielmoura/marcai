@@ -1,42 +1,83 @@
+/* Session-bound presentation: FCM carries only IDs, never private notice text. */
+const presenting = new Map();
+const endedSessions = new Set();
+// Reject legacy queued notification payloads before Firebase can auto-display
+// them. Only session-bound data messages may reach the presentation handler.
+self.addEventListener('push', event => {
+  try {
+    const payload = event.data?.json();
+    if (!payload?.data?.sessionId || !payload?.data?.notificationId || payload.notification) {
+      event.stopImmediatePropagation();
+    }
+  } catch { event.stopImmediatePropagation(); }
+});
+async function readNotice(data) {
+  if (!data || !/^[a-zA-Z0-9_-]{1,128}$/.test(data.notificationId || '') ||
+      !/^[0-9a-f-]{36}$/.test(data.sessionId || '')) return null;
+  const query = new URLSearchParams({ notificationId:data.notificationId, sessionId:data.sessionId });
+  try {
+    const response = await fetch('/api/push/notification?' + query, { credentials:'same-origin', cache:'no-store' });
+    return response.ok ? await response.json() : null;
+  } catch { return null; }
+}
+function showPush(data) {
+  const key = data?.notificationId;
+  if (presenting.has(key)) return presenting.get(key);
+  const pending = (async () => {
+    const notice = await readNotice(data);
+    if (!notice || endedSessions.has(notice.sessionId)) return;
+    const existing = await self.registration.getNotifications({ tag:notice.notificationId });
+    if (existing.length) return;
+    if (endedSessions.has(notice.sessionId)) return;
+    await self.registration.showNotification(notice.title, {
+      body:notice.body, icon:'/web-app-manifest-192x192.png', badge:'/web-app-manifest-192x192.png',
+      tag:notice.notificationId, renotify:false,
+      data:{notificationId:notice.notificationId,sessionId:notice.sessionId},
+    });
+  })().finally(()=>presenting.delete(key));
+  presenting.set(key,pending);
+  return pending;
+}
 self.addEventListener('notificationclick', event => {
   event.stopImmediatePropagation();
   event.notification.close();
-  const data = event.notification.data || {};
-  const remote = data.FCM_MSG || {};
-  const payload = remote.data || data;
-
-  const targetUrl = payload.url || data.url || payload.clickAction || remote.fcmOptions?.link || remote.notification?.click_action;
-  let destination = '/notifications';
-
-  if (typeof targetUrl === 'string' && targetUrl.trim().length > 0) {
-    try {
-      const link = new URL(targetUrl, self.location.origin);
-      if (link.origin === self.location.origin) {
-        destination = link.pathname + link.search + link.hash;
+  event.waitUntil((async () => {
+    const notice = await readNotice(event.notification.data);
+    if (!notice) return;
+    const target = new URL(notice.url, self.location.origin);
+    if (target.origin !== self.location.origin) return;
+    const windows = await clients.matchAll({type:'window',includeUncontrolled:true});
+    for (const client of windows) {
+      if (new URL(client.url).origin===self.location.origin && 'focus' in client) {
+        await client.focus(); return client.navigate(target.href);
       }
-    } catch {}
-  } else if (typeof payload.taskId === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(payload.taskId)) {
-    destination = '/tasks/' + payload.taskId;
-  } else if (typeof payload.executionId === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(payload.executionId)) {
-    destination = '/executions/' + payload.executionId;
-  }
-
-  const target = new URL(destination, self.location.origin).href;
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async windows => {
-      for (const client of windows) {
-        if (new URL(client.url).origin === self.location.origin && 'focus' in client) {
-          await client.focus();
-          return client.navigate(target);
-        }
-      }
-      return clients.openWindow(target);
-    })
-  );
+    }
+    return clients.openWindow(target.href);
+  })());
 });
+self.addEventListener('message', event => {
+  if (event.data?.type==='DISPLAY_PUSH') event.waitUntil(showPush(event.data.data));
+  if (event.data?.type==='PUSH_SESSION_ENDED') {
+    const sessionId = event.data.sessionId;
+    endedSessions.add(sessionId);
+    if (endedSessions.size>100) endedSessions.delete(endedSessions.values().next().value);
+    // Leaving a layout or closing one tab is not necessarily a logout.
+    // Block pending presentation immediately, then check the shared cookie.
+    event.waitUntil((async () => {
+      try {
+        const response = await fetch('/api/push/session', {credentials:'same-origin',cache:'no-store'});
+        const current = response.ok ? await response.json() : null;
+        if (current?.sessionId===sessionId) endedSessions.delete(sessionId);
+      } catch { /* Keep pending private content hidden while offline. */ }
+    })());
+  }
+  if (event.data?.type==='PUSH_SESSION_STARTED') endedSessions.delete(event.data.sessionId);
+});
+self.addEventListener('install', event => event.waitUntil(self.skipWaiting()));
+self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
 /* eslint-disable no-undef */
-importScripts("https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js");
-importScripts("https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/12.19.0/firebase-messaging-compat.js");
 
 firebase.initializeApp({
   apiKey: "AIzaSyAUILwMtEmoo-Cw6Cv3dA5BDa5ytu3hs9I",
@@ -49,18 +90,4 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
-messaging.onBackgroundMessage(payload => {
-  // FCM owns presentation of notification payloads. No second local alert.
-  if (payload.notification) return;
-  const data = payload.data || {};
-  const safeId = typeof data.notificationId === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(data.notificationId) ? data.notificationId : undefined;
-  const url = data.url || data.clickAction || payload.fcmOptions?.link || '/notifications';
-  return self.registration.showNotification(data.title || 'Tarefaí', {
-    body: data.body || data.message || 'Há uma atualização para você.',
-    icon: '/brand-icon.svg',
-    badge: '/brand-icon.svg',
-    data: { ...data, url },
-    tag: safeId,
-    renotify: false,
-  });
-});
+messaging.onBackgroundMessage(payload => showPush(payload.data));

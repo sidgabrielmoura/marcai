@@ -3,6 +3,8 @@ import { prisma } from "@/infrastructure/database/prisma";
 import { ManagementShell } from "@/presentation/components/mobile/management-shell";
 import { SettingsClient } from "@/presentation/components/organization/settings-client";
 
+export const maxDuration = 60;
+
 export default async function ManagementSettingsPage() {
   const context = await getManagementContext();
   if (!context) return null;
@@ -25,7 +27,7 @@ export default async function ManagementSettingsPage() {
           name: org.name,
           slug: org.slug,
           status: org.status,
-          settings: org.settings,
+          settings: (() => { const {waha, whatsappAlerts, ...safe} = (org.settings || {}) as Record<string,unknown>; return context.role === "OWNER" ? {...safe,whatsappAlerts} : safe; })(),
         }}
         userRole={context.role}
       />

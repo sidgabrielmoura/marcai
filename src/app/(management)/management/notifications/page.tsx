@@ -14,6 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PushNotificationBanner } from "@/presentation/components/shared/push-notification-banner";
+import { getSession } from "@/infrastructure/security/session";
 import { redirect } from "next/navigation";
 
 export default async function ManagementNotificationsPage({
@@ -82,7 +83,7 @@ export default async function ManagementNotificationsPage({
           }
         />
 
-        <PushNotificationBanner />
+        <PushNotificationBanner sessionId={(await getSession())?.sessionId} />
 
         <nav className="flex gap-2 max-w-lg" aria-label="Filtrar notificações">
           {[

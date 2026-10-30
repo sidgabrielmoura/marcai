@@ -1,3 +1,4 @@
+import { notificationTransaction } from "@/infrastructure/notifications/transaction";
 import { materializeProcessTasks } from "./materialize-tasks";
 import type { DispatchNotificationAsyncParams } from "@/infrastructure/notifications/notification-service";
 import { Prisma } from "@prisma/client";
@@ -7,7 +8,7 @@ import { processScope } from "@/application/security/operational-scope";
 import { readProcessDefinition } from "@/domain/rules/process-definition";
 import { canGenerateExecutionForRoutine, resolveExecutionInitialStatus } from "@/domain/rules/routine-generator";
 import { nextOccurrence } from "@/domain/rules/schedule";
-import { dispatchNotificationAsync } from "@/infrastructure/notifications/notification-service";
+
 
 export function routineScheduledAt(routine: {
   updatedAt: Date; recurrenceRule: string; startsAt: Date; endsAt: Date | null; timezone: string;
@@ -21,7 +22,7 @@ export function routineScheduledAt(routine: {
 
 export async function generateRoutineExecution(routineId: string, context: AuthenticatedContext, now = new Date(), automatic = false, recoverSince?: Date) {
   const notifications: DispatchNotificationAsyncParams[] = [];
-  const result = await prisma.$transaction(async tx => {
+  const result = await notificationTransaction(async tx => {
     // Serialize generation by routine so concurrent clicks cannot duplicate occurrences.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${routineId}))`;
     const routine = await tx.routine.findFirst({ where: { id: routineId, process: { ...processScope(context), organization: { status: 'ACTIVE' } } }, include: {
@@ -59,6 +60,6 @@ export async function generateRoutineExecution(routineId: string, context: Authe
     await tx.activityLog.create({ data: { organizationId: context.organizationId, actorId: context.memberId || null, action: "EXECUTION_GENERATED", entityType: "EXECUTION", entityId: execution.id, metadata: { scheduledAt: scheduledAt.toISOString(), templateVersion: routine.process.sourceTemplateVersion?.version ?? 1 } } });
     return { success: true, generated: true, data: { id: execution.id } };
   }, { timeout: 30000 });
-  for (const n of notifications) void dispatchNotificationAsync(n);
+
   return result;
 }

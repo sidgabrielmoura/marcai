@@ -5,9 +5,9 @@ import { Bell, BellRing } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 
-export function PushNotificationBanner() {
-  const { permission, isSubscribing, isSubscribed, subscribe, isSupported } =
-    usePushNotifications();
+export function PushNotificationBanner({ sessionId }: { sessionId?: string }) {
+  const { permission, isSubscribing, isSubscribed, subscribe, isSupported, error } =
+    usePushNotifications(sessionId);
 
   if (!isSupported || isSubscribed) {
     return null;
@@ -30,6 +30,7 @@ export function PushNotificationBanner() {
           <p className="text-[var(--text-secondary)] mt-0.5 leading-relaxed">
             Receba alertas imediatos de novas tarefas atribuídas e avisos operacionais mesmo com o aplicativo fechado.
           </p>
+          {error && <p role="alert" className="mt-2 text-xs text-red-700">{error}</p>}
         </div>
       </div>
 

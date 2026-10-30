@@ -24,8 +24,10 @@ import {
   Star,
   Menu,
   Copy,
+  ClipboardPaste,
   Image as ImageIcon
 } from "lucide-react";
+import { getCopiedTask } from "@/presentation/utils/task-clipboard";
 import { Reorder, motion } from "framer-motion";
 import { createProcessAction } from "@/presentation/actions/process-actions";
 import {
@@ -647,12 +649,16 @@ export function ProcessEditorWizard({
           savedValue.current = JSON.stringify(value);
           allowLeave.current = true;
           toast.add({
-            title: publish ? "Template publicado com sucesso" : "Rascunho salvo com sucesso",
-            description: "Redirecionando para a biblioteca de templates…",
+            title: publish ? "Template publicado" : "Rascunho salvo",
+            description: publish
+              ? "Redirecionando para a biblioteca de templates…"
+              : "Suas alterações foram salvas como rascunho.",
             type: "success",
           });
-          router.push(returnUrl || "/management/templates");
-          router.refresh();
+          if (publish) {
+            router.push(returnUrl || "/management/templates");
+            router.refresh();
+          }
         }
       } catch {
         toast.add({ title: "Não foi possível salvar. Tente novamente.", type: "error" });
@@ -751,8 +757,8 @@ export function ProcessEditorWizard({
           <p className="text-caption text-muted-foreground">Etapa {step + 1} de 6</p>
         </nav>
 
-        <Card className="min-w-0 flex-1 p-8">
-          <CardHeader>
+        <Card className="min-w-0 flex-1 p-8 max-sm:bg-transparent! max-sm:p-0! max-sm:shadow-none! max-sm:outline-none! max-sm:ring-0! max-sm:border-t-2 max-sm:rounded-none! max-sm:pt-4!">
+          <CardHeader className="px-1!">
             <CardTitle>
               <h2 ref={heading} tabIndex={-1}>
                 {steps[step]}
@@ -761,7 +767,7 @@ export function ProcessEditorWizard({
             <CardDescription>{descriptions[step]}</CardDescription>
           </CardHeader>
 
-          <CardContent className="flex flex-col gap-6 p-0">
+          <CardContent className="flex flex-col gap-6 p-0 px-1!">
             {step === 0 && (
               <FieldGroup className="gap-4">
                 <Field>
@@ -814,7 +820,6 @@ export function ProcessEditorWizard({
               </FieldGroup>
             )}
 
-            {/* ETAPA 1: TAREFAS (COM ACCORDION E SELETORES DE TEMPO) */}
             {step === 1 && (
               <div className="flex flex-col gap-4">
                 {!value.tasks.length && (
@@ -847,9 +852,8 @@ export function ProcessEditorWizard({
                           : "border-(--border-subtle) bg-canvas hover:border-brand-300",
                       )}
                     >
-                      {/* Accordion Header */}
                       <div
-                        className="p-3.5 flex items-center justify-between gap-3 cursor-pointer select-none"
+                        className="p-3.5 flex flex-col items-start gap-3 cursor-pointer select-none"
                         onClick={() => setExpandedTaskId(isExpanded ? null : t.id)}
                       >
                         <div className="flex items-center gap-2.5 min-w-0 flex-1">
@@ -869,32 +873,104 @@ export function ProcessEditorWizard({
                           </Badge>
                         </div>
 
-                        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                          <Button type="button" variant="ghost" size="icon" aria-label={`Duplicar tarefa ${i + 1}`} onClick={() => {
-                            const copy = { ...t, id: crypto.randomUUID(), title: (t.title + " — cópia").slice(0, 200), formFields: t.formFields.map(f => ({ ...f, id: crypto.randomUUID() })) };
-                            const next = [...value.tasks]; next.splice(i + 1, 0, copy); handleReorder(next); setExpandedTaskId(copy.id);
-                          }}><Copy className="size-4" /></Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                            aria-label={`Remover tarefa ${i + 1}`}
-                            onClick={() => removeTask(t.id)}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground"
-                            onClick={() => setExpandedTaskId(isExpanded ? null : t.id)}
-                            aria-label={isExpanded ? "Fechar detalhes" : "Abrir detalhes"}
-                          >
-                            {isExpanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
-                          </Button>
-                        </div>
+                        <section className="flex justify-between items-center w-full">
+                          <div className="flex items-center gap-1 w-full">
+                            <Button
+                              type="button"
+                              aria-label={`Duplicar tarefa ${i + 1}`}
+                              title="Duplicar esta tarefa no processo"
+                              onClick={() => {
+                                const copy = { ...t, id: crypto.randomUUID(), title: (t.title + " — cópia").slice(0, 200), formFields: t.formFields.map(f => ({ ...f, id: crypto.randomUUID() })) };
+                                const next = [...value.tasks];
+                                next.splice(i + 1, 0, copy);
+                                handleReorder(next);
+                                setExpandedTaskId(copy.id);
+                                toast.add({ title: "Tarefa duplicada", description: "Uma cópia foi adicionada logo abaixo.", type: "success" });
+                              }}
+                              className="flex max-sm:flex-col flex-1! items-center justify-center px-2 py-1 min-w-13 rounded-lg text-emerald-800 bg-emerald-50 hover:bg-emerald-100 hover:text-emerald-900 border border-emerald-300/70 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60 transition-all cursor-pointer shadow-2xs group"
+                            >
+                              <Copy className="size-3.5 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
+                              <span className="max-sm:text-[10px] text-[13px] font-bold leading-none mt-0.5 tracking-tight text-emerald-800 dark:text-emerald-300">Duplicar</span>
+                            </Button>
+                            <Button
+                              type="button"
+                              aria-label="Colar tarefa copiada"
+                              title="Colar tarefa copiada logo após esta etapa"
+                              onClick={() => {
+                                const copied = getCopiedTask();
+                                if (!copied) {
+                                  toast.add({
+                                    title: "Nenhuma tarefa copiada",
+                                    description: "Copie uma tarefa avulsa ou etapa de processo antes de colar.",
+                                    type: "info",
+                                  });
+                                  return;
+                                }
+                                const validEvidenceTypes = ["PHOTO", "VIDEO", "FILE", "TEXT", "NUMBER", "SIGNATURE", "LOCATION"] as const;
+                                const evidenceType = copied.evidenceType && validEvidenceTypes.includes(copied.evidenceType as any)
+                                  ? (copied.evidenceType as typeof validEvidenceTypes[number])
+                                  : "";
+                                const pastedTask: ProcessTaskDefinition = {
+                                  id: crypto.randomUUID(),
+                                  title: copied.title || "Tarefa colada",
+                                  objective: "",
+                                  instructions: copied.instructions || copied.description || "",
+                                  taskType: copied.taskType === "FORM" ? "FORM" : "STANDARD",
+                                  priority: (copied.priority as any) || "MEDIUM",
+                                  criticality: (copied.criticality as any) || "MEDIUM",
+                                  toleranceMinutes: copied.toleranceMinutes ?? 20,
+                                  deadlineAt: "",
+                                  slaMinutes: 60,
+                                  evidenceType,
+                                  formFields: copied.formFields ? copied.formFields.map(f => ({ ...f, id: crypto.randomUUID() })) : [],
+                                  required: true,
+                                  teamId: t.teamId || (teams.length === 1 ? teams[0].id : ""),
+                                  primaryMemberId: "",
+                                  dependsOn: [],
+                                  dependencyType: "BLOCKING",
+                                  dependencyLogic: "AND",
+                                  approverIds: [],
+                                  approvalMode: "SEQUENTIAL",
+                                };
+                                const next = [...value.tasks];
+                                next.splice(i + 1, 0, pastedTask);
+                                handleReorder(next);
+                                setExpandedTaskId(pastedTask.id);
+                                toast.add({
+                                  title: "Tarefa colada com sucesso!",
+                                  description: `"${pastedTask.title}" inserida como etapa ${i + 2}.`,
+                                  type: "success",
+                                });
+                              }}
+                              className="flex max-sm:flex-col flex-1! items-center justify-center px-2 py-1 min-w-16 rounded-lg text-brand-900 bg-brand-soft hover:bg-brand-soft/80 border border-brand-200/70 dark:bg-slate-800 dark:text-slate-200 transition-all cursor-pointer shadow-2xs group"
+                            >
+                              <ClipboardPaste className="size-3.5 text-brand-700 dark:text-brand-400 group-hover:scale-110 transition-transform" />
+                              <span className="max-sm:text-[10px] text-[13px] font-bold leading-none mt-0.5 tracking-tight text-brand-900 dark:text-slate-200">Colar tarefa</span>
+                            </Button>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              aria-label={`Remover tarefa ${i + 1}`}
+                              onClick={() => removeTask(t.id)}
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground"
+                              onClick={() => setExpandedTaskId(isExpanded ? null : t.id)}
+                              aria-label={isExpanded ? "Fechar detalhes" : "Abrir detalhes"}
+                            >
+                              {isExpanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+                            </Button>
+                          </div>
+                        </section>
                       </div>
 
                       {/* Accordion Body */}
@@ -1086,7 +1162,6 @@ export function ProcessEditorWizard({
                             )}
                           </div>
 
-                          {/* 3. SEÇÃO: Prazos e prioridade (Colapsada por padrão) */}
                           <div className="rounded-xl border border-(--border-subtle) bg-surface overflow-hidden shadow-2xs">
                             <button
                               type="button"
@@ -1219,7 +1294,6 @@ export function ProcessEditorWizard({
                             )}
                           </div>
 
-                          {/* 4. SEÇÃO: Evidências e conformidade (Oculta para tarefas com perguntas) */}
                           {t.taskType !== "FORM" && (
                             <div className="rounded-xl border border-(--border-subtle) bg-surface overflow-hidden shadow-2xs">
                               <button
@@ -1342,6 +1416,59 @@ export function ProcessEditorWizard({
                     <ListChecks className="size-4" />
                     Adicionar tarefa com perguntas
                   </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      const copied = getCopiedTask();
+                      if (!copied) {
+                        toast.add({
+                          title: "Nenhuma tarefa copiada",
+                          description: "Copie uma tarefa avulsa ou etapa de processo antes de colar.",
+                          type: "info",
+                        });
+                        return;
+                      }
+                      const validEvidenceTypes = ["PHOTO", "VIDEO", "FILE", "TEXT", "NUMBER", "SIGNATURE", "LOCATION"] as const;
+                      const evidenceType = copied.evidenceType && validEvidenceTypes.includes(copied.evidenceType as any)
+                        ? (copied.evidenceType as typeof validEvidenceTypes[number])
+                        : "";
+                      const pastedTask: ProcessTaskDefinition = {
+                        id: crypto.randomUUID(),
+                        title: copied.title || "Tarefa colada",
+                        objective: "",
+                        instructions: copied.instructions || copied.description || "",
+                        taskType: copied.taskType === "FORM" ? "FORM" : "STANDARD",
+                        priority: (copied.priority as any) || "MEDIUM",
+                        criticality: (copied.criticality as any) || "MEDIUM",
+                        toleranceMinutes: copied.toleranceMinutes ?? 20,
+                        deadlineAt: "",
+                        slaMinutes: 60,
+                        evidenceType,
+                        formFields: copied.formFields ? copied.formFields.map(f => ({ ...f, id: crypto.randomUUID() })) : [],
+                        required: true,
+                        teamId: teams.length === 1 ? teams[0].id : "",
+                        primaryMemberId: "",
+                        dependsOn: [],
+                        dependencyType: "BLOCKING",
+                        dependencyLogic: "AND",
+                        approverIds: [],
+                        approvalMode: "SEQUENTIAL",
+                      };
+                      const next = [...value.tasks, pastedTask];
+                      handleReorder(next);
+                      setExpandedTaskId(pastedTask.id);
+                      toast.add({
+                        title: "Tarefa colada com sucesso!",
+                        description: `"${pastedTask.title}" adicionada ao processo.`,
+                        type: "success",
+                      });
+                    }}
+                    className="h-11 w-full sm:w-auto rounded-xl border border-emerald-600/30 text-emerald-800 bg-emerald-50/50 hover:bg-emerald-100 hover:text-emerald-900 dark:text-emerald-300 dark:bg-emerald-950/40 dark:hover:bg-emerald-950/60 font-semibold text-sm gap-2"
+                  >
+                    <ClipboardPaste className="size-4 text-emerald-600 dark:text-emerald-400" />
+                    Colar tarefa
+                  </Button>
                 </div>
               </div>
             )}
@@ -1350,13 +1477,12 @@ export function ProcessEditorWizard({
               <div className="flex flex-col gap-6">
                 <Alert className="bg-canvas border-(--border-subtle) rounded-[16px] p-4">
                   <HelpCircle className="size-4 text-brand-700 shrink-0 mt-0.5" />
-                  <AlertDescription className="text-xs leading-relaxed text-[var(--brand-900)]">
+                  <AlertDescription className="text-xs leading-relaxed text-brand-900">
                     Defina o que precisa terminar antes de outra tarefa começar. O sistema bloqueia dependências circulares.
                   </AlertDescription>
                 </Alert>
 
                 <div className="flex flex-col md:flex-row gap-6 items-start">
-                  {/* Sidebar */}
                   <div className="w-full md:w-64 shrink-0 flex flex-col gap-2">
                     <div className="text-sm font-semibold text-brand-900 mb-2">Modo de Sequência</div>
                     <button

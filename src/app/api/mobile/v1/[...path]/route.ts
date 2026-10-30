@@ -1,3 +1,4 @@
+import { notificationTransaction } from "@/infrastructure/notifications/transaction";
 import { z } from "zod";
 import { recordTaskView } from "@/application/mobile/task-views";
 import { eventStream } from "@/application/mobile/event-stream";
@@ -430,7 +431,7 @@ async function handle(req: Request, ctx: Context) {
           );
         if (method === "POST" && route === "installations/test") {
           await rateRequest(req, "push-test", c.userId);
-          const notice = await prisma.notification.create({
+          const notice = await notificationTransaction(tx=>tx.notification.create({
             data: {
               organizationId: c.organizationId,
               userId: c.userId,
@@ -440,7 +441,7 @@ async function handle(req: Request, ctx: Context) {
               message: "Este é o teste solicitado neste aparelho.",
               data: { testInstallationId: auth.session.installation_id },
             },
-          });
+          }));
           return json({ notificationId: notice.id, status: "QUEUED" });
         }
         if (method === "GET" && route === "events")

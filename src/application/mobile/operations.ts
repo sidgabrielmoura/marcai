@@ -170,7 +170,15 @@ export async function operate(
           task,
           "Impedimento operacional",
           task.title + ": " + b.reason,
-          { type: "OPERATIONAL_ALERT", priority: "HIGH" },
+          {
+            type: "IMPEDIMENT_REPORTED",
+            priority: "HIGH",
+            data: {
+              taskId: task.id,
+              taskTitle: task.title,
+              locationId: task.locationId,
+            },
+          },
         );
       } else fail(404, "ACTION_UNKNOWN", "Ação indisponível.");
     }

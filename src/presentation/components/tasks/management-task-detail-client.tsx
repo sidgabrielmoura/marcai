@@ -409,9 +409,12 @@ export function ManagementTaskDetailClient({
           type: "error",
         });
       } else {
+        const isImpediment = task.status === "NOT_COMPLETED";
         toast.add({
-          title: "Tarefa reatribuída",
-          description: "Responsável atualizado e prazo renovado com sucesso.",
+          title: isImpediment ? "Impedimento resolvido" : "Tarefa reatribuída",
+          description: isImpediment
+            ? "Impedimento resolvido, responsável atualizado e prazo renovado com sucesso."
+            : "Responsável atualizado e prazo renovado com sucesso.",
           type: "success",
         });
         setShowTransferModal(false);
@@ -551,9 +554,7 @@ export function ManagementTaskDetailClient({
                   blocked={!!task.managementBlocked}
                 />
               ) : null}
-              {!["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(
-                task.status,
-              ) && (
+              {task.status !== "CANCELLED" && (
                 <Button
                   type="button"
                   variant="default"
@@ -568,7 +569,11 @@ export function ManagementTaskDetailClient({
                   className="h-10 px-3.5 rounded-[12px] bg-brand-900 text-white text-(length:--type-label) font-semibold hover:bg-brand-900/80 flex items-center gap-1.5 shadow-xs"
                 >
                   <UserCheck className="size-4" />
-                  Reatribuir / Destravar
+                  {task.status === "COMPLETED"
+                    ? "Reatribuir tarefa"
+                    : task.status === "NOT_COMPLETED"
+                      ? "Reatribuir / Resolver"
+                      : "Reatribuir / Destravar"}
                 </Button>
               )}
               {canEditTaskDefinition(task) && (
@@ -650,6 +655,34 @@ export function ManagementTaskDetailClient({
             )}
           </div>
         )}
+
+      {task.status === "NOT_COMPLETED" && (
+        <div className="p-4 rounded-[16px] bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-900 dark:text-rose-200 flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="size-4 text-rose-600 dark:text-rose-400 shrink-0" />
+            <span>
+              {isForm
+                ? "Esta tarefa com perguntas foi marcada com impedimento pelo colaborador. Você pode reatribuí-la a outro responsável ou renovar o prazo para destravar e reiniciar o preenchimento."
+                : "Esta tarefa foi marcada com impedimento pelo colaborador. Você pode reatribuí-la a outro responsável ou renovar o prazo para destravar e reiniciar a execução."}
+            </span>
+          </div>
+          {userRole !== "EMPLOYEE" && (
+            <Button
+              size="sm"
+              className="h-8 text-xs bg-rose-900 hover:bg-rose-800 text-white shrink-0 font-medium px-3 rounded-lg"
+              onClick={() => {
+                setSelectedMemberId(primaryAssignment?.memberId || "");
+                setReassignDeadlineType("60");
+                setReassignCustomDate("");
+                setReassignReason("");
+                setShowTransferModal(true);
+              }}
+            >
+              Destravar / Reatribuir
+            </Button>
+          )}
+        </div>
+      )}
 
       <Card className="bg-[var(--surface)] rounded-[18px] p-5 shadow-none border-[var(--border-subtle)]">
         <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
@@ -754,10 +787,7 @@ export function ManagementTaskDetailClient({
           <h3 className="text-[var(--text-secondary)] text-[length:var(--type-card-title)] font-bold">
             {isForm ? "Responsável pelo preenchimento" : "Responsáveis"}
           </h3>
-          {userRole !== "EMPLOYEE" &&
-            !["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(
-              task.status,
-            ) && (
+          {userRole !== "EMPLOYEE" && task.status !== "CANCELLED" && (
               <Button
                 type="button"
                 variant="link"
@@ -1532,11 +1562,20 @@ export function ManagementTaskDetailClient({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <UserCheck className="size-5 text-[var(--brand-900)]" />
-              <span>Reatribuir tarefa & renovar prazo</span>
+              <span>
+                {task.status === "COMPLETED"
+                  ? "Reatribuir tarefa concluída"
+                  : task.status === "NOT_COMPLETED"
+                    ? "Reatribuir / Resolver impedimento"
+                    : "Reatribuir tarefa & renovar prazo"}
+              </span>
             </DialogTitle>
             <DialogDescription>
-              Selecione o colaborador responsável e defina o novo prazo para
-              conclusão.
+              {task.status === "COMPLETED"
+                ? "Selecione o colaborador e defina o novo prazo para reexecução da tarefa."
+                : task.status === "NOT_COMPLETED"
+                  ? "Selecione o colaborador e defina o novo prazo para reiniciar a tarefa e resolver o impedimento."
+                  : "Selecione o colaborador responsável e defina o novo prazo para conclusão."}
             </DialogDescription>
           </DialogHeader>
 
@@ -1646,7 +1685,11 @@ export function ManagementTaskDetailClient({
               className="bg-[var(--brand-900)] hover:bg-[var(--brand-800)] text-white font-semibold"
             >
               {loading ? <Spinner data-icon="inline-start" /> : null}
-              <span>Confirmar e renovar prazo</span>
+              <span>
+                {task.status === "NOT_COMPLETED"
+                  ? "Resolver impedimento e reatribuir"
+                  : "Confirmar e renovar prazo"}
+              </span>
             </Button>
           </DialogFooter>
         </DialogContent>

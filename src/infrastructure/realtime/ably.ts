@@ -20,9 +20,9 @@ export function getAblyRest(): Ably.Rest | null {
   }
 
   try {
-    globalForAbly.ablyRest = new Ably.Rest(key.trim());
+    globalForAbly.ablyRest = new Ably.Rest({ key: key.trim(), logLevel: 0 });
   } catch (err) {
-    console.error("[Ably REST] Erro ao instanciar cliente Ably:", err);
+    console.error("[Ably REST] Erro ao instanciar cliente Ably.", { code: "ABLY_INIT_FAILED" });
     globalForAbly.ablyRest = null;
   }
 

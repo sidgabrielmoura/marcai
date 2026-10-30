@@ -1,6 +1,6 @@
 import type { Prisma, Priority } from "@prisma/client";
 import { eligibleMember } from "@/application/security/operational-scope";
-import { dispatchNotificationAsync } from "@/infrastructure/notifications/notification-service";
+
 
 export interface NotifyOptions {
   type?: string;
@@ -19,6 +19,7 @@ export async function notifyManagers(
     locationId: string | null;
     teamId: string | null;
     id: string;
+    title?: string;
   },
   title: string,
   message: string,
@@ -63,7 +64,15 @@ export async function notifyManagers(
   if (recipientUserIds.length > 0) {
     const type = options?.type ?? "OPERATIONAL_ALERT";
     const priority = options?.priority ?? "HIGH";
-    const data = (options?.data ?? { taskId: task.id }) as Prisma.InputJsonValue;
+    const defaultData: Record<string, unknown> = {
+      taskId: task.id,
+      ...(task.locationId ? { locationId: task.locationId } : {}),
+      ...(task.title ? { taskTitle: task.title } : {}),
+    };
+    const data = ({
+      ...defaultData,
+      ...(options?.data || {}),
+    }) as Prisma.InputJsonValue;
 
     await tx.notification.createMany({
       data: recipientUserIds.map((userId) => ({
@@ -77,16 +86,7 @@ export async function notifyManagers(
       })),
     });
 
-    void dispatchNotificationAsync({
-      organizationId: task.organizationId,
-      userIds: recipientUserIds,
-      type,
-      priority,
-      title,
-      message,
-      data: (options?.data ?? { taskId: task.id }) as Record<string, unknown>,
-      clickAction: `/tasks/${task.id}`,
-    });
+
   }
 }
 
@@ -132,7 +132,14 @@ export async function notifyTaskAssignees(
   if (recipientUserIds.length > 0) {
     const type = options?.type ?? "TASK_NOTIFICATION";
     const priority = options?.priority ?? task.priority ?? "MEDIUM";
-    const data = (options?.data ?? { taskId: task.id }) as Prisma.InputJsonValue;
+    const defaultData: Record<string, unknown> = {
+      taskId: task.id,
+      taskTitle: task.title,
+    };
+    const data = ({
+      ...defaultData,
+      ...(options?.data || {}),
+    }) as Prisma.InputJsonValue;
 
     await tx.notification.createMany({
       data: recipientUserIds.map((userId) => ({
@@ -146,16 +153,7 @@ export async function notifyTaskAssignees(
       })),
     });
 
-    void dispatchNotificationAsync({
-      organizationId: task.organizationId,
-      userIds: recipientUserIds,
-      type,
-      priority,
-      title,
-      message,
-      data: (options?.data ?? { taskId: task.id }) as Record<string, unknown>,
-      clickAction: `/tasks/${task.id}`,
-    });
+
   }
 }
 
@@ -231,7 +229,13 @@ export async function notifyApprovers(
         ...options,
         type: options?.type ?? "APPROVAL_REQUESTED",
         priority: options?.priority ?? "HIGH",
-        data: { taskId: task.id, stepId: step.id },
+        data: {
+          taskId: task.id,
+          stepId: step.id,
+          taskTitle: task.title,
+          locationId: task.locationId,
+          ...(options?.data || {}),
+        },
       }
     );
     return;
@@ -240,7 +244,13 @@ export async function notifyApprovers(
   const approverUserIds = Array.from(recipientUserIds);
   const type = options?.type ?? "APPROVAL_REQUESTED";
   const priority = options?.priority ?? "HIGH";
-  const data = (options?.data ?? { taskId: task.id, stepId: step.id }) as Prisma.InputJsonValue;
+  const data = ({
+    taskId: task.id,
+    stepId: step.id,
+    taskTitle: task.title,
+    locationId: task.locationId,
+    ...(options?.data || {}),
+  }) as Prisma.InputJsonValue;
 
   await tx.notification.createMany({
     data: approverUserIds.map((userId) => ({
@@ -254,15 +264,5 @@ export async function notifyApprovers(
     })),
   });
 
-  void dispatchNotificationAsync({
-    organizationId: task.organizationId,
-    userIds: approverUserIds,
-    type,
-    priority,
-    title,
-    message,
-    data: (options?.data ?? { taskId: task.id, stepId: step.id }) as Record<string, unknown>,
-    clickAction: `/tasks/${task.id}`,
-    forcePush: true, // O processamento persistente revalida destinatários antes do envio.
-  });
+
 }

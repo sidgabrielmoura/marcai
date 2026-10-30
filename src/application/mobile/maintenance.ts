@@ -6,6 +6,7 @@ export async function maintainMobile(){
  const requests=await tx.$executeRaw`DELETE FROM mobile_requests WHERE ctid IN (SELECT ctid FROM mobile_requests WHERE created_at<now()-interval '30 days' ORDER BY created_at LIMIT 500)`;
  const challenges=await tx.$executeRaw`DELETE FROM mobile_challenges WHERE id IN (SELECT id FROM mobile_challenges WHERE expires_at<now()-interval '1 day' LIMIT 500)`;
  const limits=await tx.$executeRaw`DELETE FROM mobile_rate_limits WHERE key IN (SELECT key FROM mobile_rate_limits WHERE window_at<now()-interval '1 day' LIMIT 500)`;
+ const whatsappReceipts=await tx.$executeRaw`DELETE FROM whatsapp_webhook_events WHERE id IN (SELECT id FROM whatsapp_webhook_events WHERE "publishedAt" IS NOT NULL AND "createdAt"<now()-interval '7 days' ORDER BY "createdAt" LIMIT 500)`;
  const retrySecrets=await tx.$executeRaw`UPDATE mobile_refresh_tokens SET response=NULL WHERE hash IN (SELECT hash FROM mobile_refresh_tokens WHERE consumed_at<now()-interval '15 minutes' AND response IS NOT NULL LIMIT 500)`;
  const sessions=await tx.$executeRaw`DELETE FROM mobile_sessions WHERE id IN (SELECT id FROM mobile_sessions WHERE expires_at<now()-interval '7 days' LIMIT 100)`;
  const webSessions=await tx.$executeRaw`DELETE FROM web_auth_sessions WHERE id IN (SELECT id FROM web_auth_sessions WHERE expires_at<now()-interval '7 days' LIMIT 100)`;
@@ -27,6 +28,6 @@ export async function maintainMobile(){
  AND NOT EXISTS(SELECT 1 FROM mobile_uploads u WHERE u.attachment->>'storageKey'=candidate.key::text)
  AND NOT EXISTS(SELECT 1 FROM tasks t WHERE t."formAnswers" IS NOT NULL AND EXISTS(SELECT 1 FROM jsonb_each(CASE WHEN jsonb_typeof(t."formAnswers")='object' THEN t."formAnswers" ELSE '{}'::jsonb END) a WHERE a.value->>'storageKey'=candidate.key::text))
  LIMIT 25)`;
- return {requests,challenges,limits,retrySecrets,sessions,webSessions,webChallenges,qrBindings,passkeyChallenges,authQrSessions,retryStates,uploads,events:events.length,blobs};
+ return {requests,challenges,limits,whatsappReceipts,retrySecrets,sessions,webSessions,webChallenges,qrBindings,passkeyChallenges,authQrSessions,retryStates,uploads,events:events.length,blobs};
  },{timeout:20000});
 }

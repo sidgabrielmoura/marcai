@@ -66,6 +66,8 @@ export async function decryptSession(token: string): Promise<SessionData | null>
 }
 
 export async function createSession(data: SessionData): Promise<void> {
+  // Replacing a browser account invalidates its old push binding first.
+  await clearSession();
   const token = await encryptSession(data);
   const cookieStore = await cookies();
 
@@ -99,7 +101,12 @@ export async function clearSession(): Promise<void> {
   cookieStore.delete(COOKIE_NAME);
   if(token){
     try{const {payload}=await jwtVerify(token,sessionSecret(),{algorithms:["HS256"]});
-      if(typeof payload.sessionId==="string"&&/^[0-9a-f-]{36}$/.test(payload.sessionId))await prisma.$executeRaw`UPDATE web_auth_sessions SET revoked_at=COALESCE(revoked_at,now()) WHERE id=${payload.sessionId}::uuid`;
+      if(typeof payload.sessionId==="string"&&/^[0-9a-f-]{36}$/.test(payload.sessionId))await prisma.$transaction(async tx=>{
+        // The same row lock is taken by token registration. A late registration
+        // can neither survive logout nor recreate a binding to a revoked session.
+        await tx.$executeRaw`UPDATE web_auth_sessions SET revoked_at=COALESCE(revoked_at,now()) WHERE id=${payload.sessionId as string}::uuid`;
+        await tx.userDeviceToken.deleteMany({where:{sessionId:payload.sessionId as string}});
+      });
     }catch(error){if(error instanceof Error&&error.name.startsWith("JWT"))return;throw error;}
   }
 }
