@@ -91,6 +91,21 @@ export function useRealtimeEvents(onEvent?: RealtimeEventHandler, enabled = true
       sseRetryTimeout = null;
     }
 
+    function endSession(replaced = true) {
+      if (isDisposed || unauthorized) return;
+      unauthorized = true;
+      sharing?.publish({ kinds: ["ALL"], ...(replaced ? { sessionRevoked: true as const } : {}) });
+      sharing?.close(); sharing = null;
+      closeSSE();
+      const client = ablyClient; ablyClient = null; client?.close();
+      for (const authorization of authorizations) authorization.abort();
+      pendingChanges.clear();
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = null;
+      // A document navigation also discards prefetched routes and private state.
+      window.location.replace(`/login?reason=${replaced ? 'session-replaced' : 'session-ended'}`);
+    }
+
     function handleEvent(eventType: string, payload: any) {
       if (isDisposed || document.hidden) return;
       checkpoint(payload);
@@ -116,7 +131,7 @@ export function useRealtimeEvents(onEvent?: RealtimeEventHandler, enabled = true
         const response = await fetch('/api/ably/token?protocol=2',{cache:'no-store',signal:authorization.signal});
         if(isDisposed || document.hidden || authorization.signal.aborted)throw Error('Inactive');
         if(!response.ok){
-          if(response.status===401||response.status===403){unauthorized=true;sharing?.publish({kinds:['ALL']});closeSSE();queueRefresh();}
+          if(response.status===401||response.status===403)endSession(false);
           throw Error('Authorization unavailable');
         }
         const value: Authorization | Ably.TokenRequest = await response.json();
@@ -151,6 +166,7 @@ export function useRealtimeEvents(onEvent?: RealtimeEventHandler, enabled = true
         };
         if('contextKey' in value){
           sharing=shareTabTransport(value.contextKey,start,hint=>{
+            if(hint.sessionRevoked){endSession();return;}
             if(acceptResourceChange(hint.changeId))handleEvent('SYNC_REQUIRED',hint);
           });
         }else start(); // Rolling deployment with an older backend.
@@ -177,7 +193,7 @@ export function useRealtimeEvents(onEvent?: RealtimeEventHandler, enabled = true
         client.connection.on('connected',()=>{
           if(isDisposed||document.hidden||ablyClient!==client)return;
           closeSSE();sseFailures=0;
-          if(connectedBefore)queueRefresh();
+          if(connectedBefore){queueRefresh();void authorize().catch(()=>{});}
           connectedBefore=true;
           const clientId=client.auth.clientId||initial.clientId;
           const channels=Object.keys(capability);
@@ -193,6 +209,10 @@ export function useRealtimeEvents(onEvent?: RealtimeEventHandler, enabled = true
             });
             void channel.subscribe(message=>{
               if(ablyClient!==client||isDisposed||document.hidden)return;
+              if(name.startsWith('user:') && name.includes(':session:')){
+                if(message.name==='session:revoked')endSession();
+                return;
+              }
               const payload=message.data;
               if(payload?.organizationId&&!orgs.has(payload.organizationId))return;
               if(payload?.userId&&payload.userId!==clientId)return;
@@ -200,12 +220,16 @@ export function useRealtimeEvents(onEvent?: RealtimeEventHandler, enabled = true
               if(!acceptResourceChange(id))return;
               const type=message.name==='notification:new'?'NOTIFICATION_CREATED':message.name||'SYNC_REQUIRED';
               handleEvent(type,{...payload,changeId:id});
+            }).then(()=>{
+              // Close the gap between issuing a token and attaching its security channel.
+              if(name.startsWith('user:') && name.includes(':session:') && ablyClient===client && !isDisposed && !document.hidden)
+                void authorize().catch(()=>{});
             }).catch(()=>{subscribed.delete(name);if(ablyClient===client&&!isDisposed)connectSSE();});
           }
         });
         const fallback=()=>{
           if(ablyClient!==client||isDisposed||document.hidden)return;
-          if([401,403].includes(client.connection.errorReason?.statusCode??0)){unauthorized=true;closeSSE();queueRefresh();return;}
+          if([401,403].includes(client.connection.errorReason?.statusCode??0)){endSession(false);return;}
           connectSSE();
         };
         client.connection.on('failed',fallback);client.connection.on('suspended',fallback);
@@ -230,9 +254,7 @@ export function useRealtimeEvents(onEvent?: RealtimeEventHandler, enabled = true
           try { checkpoint(JSON.parse(e.data)); if (sseOpenedAt !== null && Date.now() - sseOpenedAt >= 10_000) sseFailures = 0; } catch { /* Invalid checkpoint. */ }
         }) as EventListener);
         sseSource.addEventListener("revoked", () => {
-          unauthorized = true;
-          closeSSE();
-          queueRefresh();
+          endSession(false);
         });
 
         sseSource.onmessage = (e) => {

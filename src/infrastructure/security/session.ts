@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 import { Role } from "@/domain/types";
 import { cache } from "react";
 import { requestRead } from "@/infrastructure/database/request-memo";
+import { deviceLoginTransaction, lockDeviceLogin, replaceDeviceSessions } from "./device-sessions";
 
 const COOKIE_NAME = "gestao_session";
 function sessionSecret() {
@@ -27,16 +28,20 @@ export interface SessionData {
 }
 
 export async function encryptSession(payload: SessionData): Promise<string> {
-  const user=await prisma.user.findUnique({where:{id:payload.userId}});
-  const member=payload.activeMemberId?await prisma.organizationMember.findFirst({where:{id:payload.activeMemberId,userId:payload.userId,organizationId:payload.activeOrgId}}):null;
+  return deviceLoginTransaction(async tx => {
+  await lockDeviceLogin(tx, payload.userId);
+  const user=await tx.user.findUnique({where:{id:payload.userId}});
+  const member=payload.activeMemberId?await tx.organizationMember.findFirst({where:{id:payload.activeMemberId,userId:payload.userId,organizationId:payload.activeOrgId}}):null;
   if(!user||user.status!=="ACTIVE"||(payload.role!=="SUPERADMIN"&&(!member||member.status!=="ACTIVE")))throw new Error("Acesso inválido.");
   const sessionId=randomUUID(),version=createHash("sha256").update((user.passwordHash??"")+":"+(member?.pinHash??"")).digest("hex");
-  await prisma.$executeRaw`INSERT INTO web_auth_sessions(id,user_id,member_id,organization_id,credential_version,expires_at) VALUES(${sessionId}::uuid,${payload.userId},${payload.activeMemberId},${payload.activeOrgId},${version},${new Date(Date.now()+7*86400000)})`;
+  await replaceDeviceSessions(tx, user, payload.activeOrgId);
+  await tx.$executeRaw`INSERT INTO web_auth_sessions(id,user_id,member_id,organization_id,credential_version,expires_at) VALUES(${sessionId}::uuid,${payload.userId},${payload.activeMemberId},${payload.activeOrgId},${version},${new Date(Date.now()+7*86400000)})`;
   return new SignJWT({ ...payload,sessionId })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
     .sign(sessionSecret());
+  });
 }
 
 export async function decryptSession(token: string): Promise<SessionData | null> {

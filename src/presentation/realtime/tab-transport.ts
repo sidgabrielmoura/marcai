@@ -1,10 +1,11 @@
 import { CHANGE_KINDS, type ResourceChange } from './resource-events';
+export type TabHint = ResourceChange & { sessionRevoked?: true };
 /** Shares only invalidation hints. Credentials, DTOs and notification contents
  * never cross the BroadcastChannel. Context is a server-generated identity hash. */
-export function shareTabTransport(contextKey: string, start: () => () => void, receive: (hint: ResourceChange) => void) {
+export function shareTabTransport(contextKey: string, start: () => () => void, receive: (hint: TabHint) => void) {
     if (typeof BroadcastChannel === 'undefined' || typeof navigator === 'undefined' || !navigator.locks) {
         const stop = start();
-        return { publish: (_hint: ResourceChange) => { }, close: stop };
+        return { publish: (_hint: TabHint) => { }, close: stop };
     }
     const channel = new BroadcastChannel(`tarefai:realtime:v2:${contextKey}`);
     const abort = new AbortController();
@@ -12,10 +13,11 @@ export function shareTabTransport(contextKey: string, start: () => () => void, r
     let release: (() => void) | undefined;
     channel.onmessage = event => {
         const value = event.data;
-        if (closed || leader || !value || !Array.isArray(value.kinds) || !value.kinds.length ||
+        if (closed || !value || (leader && value.sessionRevoked !== true) || !Array.isArray(value.kinds) || !value.kinds.length ||
             !value.kinds.every((k: unknown) => CHANGE_KINDS.includes(k as typeof CHANGE_KINDS[number])))
             return;
-        receive({ kinds: value.kinds, changeId: typeof value.changeId === 'string' ? value.changeId.slice(0, 160) : undefined });
+        receive({ kinds: value.kinds, changeId: typeof value.changeId === 'string' ? value.changeId.slice(0, 160) : undefined,
+            ...(value.sessionRevoked === true ? { sessionRevoked: true as const } : {}) });
     };
     void navigator.locks.request(`tarefai:realtime:v2:${contextKey}`, { signal: abort.signal }, async () => {
         if (closed)
@@ -38,10 +40,11 @@ export function shareTabTransport(contextKey: string, start: () => () => void, r
         }
     });
     return {
-        publish(hint: ResourceChange) {
+        publish(hint: TabHint) {
             if (!leader || closed)
                 return;
-            channel.postMessage({ kinds: hint.kinds.filter(k => CHANGE_KINDS.includes(k as typeof CHANGE_KINDS[number])), changeId: hint.changeId?.slice(0, 160) });
+            channel.postMessage({ kinds: hint.kinds.filter(k => CHANGE_KINDS.includes(k as typeof CHANGE_KINDS[number])), changeId: hint.changeId?.slice(0, 160),
+                ...(hint.sessionRevoked ? { sessionRevoked: true } : {}) });
         },
         close() { closed = true; abort.abort(); release?.(); channel.close(); },
     };

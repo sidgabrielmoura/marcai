@@ -32,6 +32,7 @@ export function contextFromMember(member: AuthenticatedMember, now = new Date())
 }
 
 export interface AuthenticatedContext {
+  sessionId?: string;
   userId: string;
   userName: string;
   userEmail: string | null;
@@ -88,7 +89,7 @@ async function loadAuthenticatedContext(): Promise<AuthenticatedContext | null> 
     return null;
   }
 
-  return contextFromMember(member);
+  return { ...contextFromMember(member), sessionId: session.sessionId };
 }
 
 const getRenderContext = cache(loadAuthenticatedContext);
@@ -110,7 +111,7 @@ export async function getManagementContext() {
  */
 export async function getSuperadminContext(
   redirectOnFailure: boolean = true
-): Promise<{ userId: string; userName: string; email: string } | null> {
+): Promise<{ userId: string; userName: string; email: string; sessionId?: string } | null> {
   const session = await getSession();
 
   if (!session) {
@@ -148,5 +149,6 @@ export async function getSuperadminContext(
     userId: user.id,
     userName: user.name,
     email: user.email || "",
+    sessionId: session.sessionId,
   };
 }

@@ -130,7 +130,7 @@ async function handle(req: Request, ctx: Context) {
         if (method === "GET" && route === "session")
           return json(identity(auth.member));
         if (method === "GET" && route === "realtime/token") {
-          const token = await realtimeAuthorization(c, url.searchParams.get("protocol"));
+          const token = await realtimeAuthorization(c, url.searchParams.get("protocol"), c.sessionId);
           if (!token) fail(503, "REALTIME_UNAVAILABLE", "Tempo real temporariamente indisponível.");
           return json(token);
         }

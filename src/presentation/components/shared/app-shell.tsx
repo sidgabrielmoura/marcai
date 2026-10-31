@@ -371,7 +371,7 @@ export function AppShell({
         }
       }
     }
-  }, mode !== "platform");
+  });
 
   useEffect(() => {
     let current = true;

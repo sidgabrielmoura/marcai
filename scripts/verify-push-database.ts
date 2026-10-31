@@ -43,6 +43,7 @@ const logout=sourceModule('src/infrastructure/security/session.ts',{
   '@/infrastructure/database/prisma':{prisma},'./mobile-context':{mobileSessionContext:{}},
   jose:{jwtVerify:async()=>({payload:authSession})},'next/headers':{cookies:async()=>({get:()=>({value:'synthetic-cookie'}),delete(){}})},
   '@/domain/types':{},react:{cache:(fn:unknown)=>fn},'@/infrastructure/database/request-memo':{},
+  './device-sessions':{},
 });
 async function check(name:string,work:()=>Promise<void>){await work();console.log('PASS: '+name);}
 
@@ -52,7 +53,10 @@ async function main(){
   const member=await prisma.organizationMember.create({data:{organizationId:org.id,userId:user.id,role:'OWNER',pinHash:'synthetic-pin'}});
   const base={userId:user.id,name:user.name,email:null,activeOrgId:org.id,activeMemberId:member.id,role:'OWNER' as const};
   const sessionA=String(decodeJwt(await encryptSession(base)).sessionId);
-  const sessionB=String(decodeJwt(await encryptSession(base)).sessionId);
+  // A legacy extra session is seeded directly; a real second login now revokes A.
+  const sessionB=randomUUID();
+  const stored=await prisma.webAuthSession.findUniqueOrThrow({where:{id:sessionA}});
+  await prisma.webAuthSession.create({data:{...stored,id:sessionB}});
   authSession={...base,sessionId:sessionA};
   const client=new Client({connectionString:process.env.DATABASE_URL});
   await client.connect();

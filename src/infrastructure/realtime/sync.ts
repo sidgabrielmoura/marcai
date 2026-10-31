@@ -14,19 +14,19 @@ export function realtimeScopeVersion(context: AuthenticatedContext) {
     .digest("hex");
 }
 
-export function realtimeContextKey(context: AuthenticatedContext) {
-  return createHash("sha256").update([context.userId, context.memberId, context.organizationId, realtimeScopeVersion(context)].join(":")).digest("hex");
+export function realtimeContextKey(context: AuthenticatedContext, sessionId?: string) {
+  return createHash("sha256").update([context.userId, context.memberId, context.organizationId, realtimeScopeVersion(context), ...(sessionId ? [sessionId] : [])].join(":")).digest("hex");
 }
 
 // Opt-in protocol: old installed clients still receive a plain TokenRequest.
-export async function realtimeAuthorization(context: AuthenticatedContext, protocol: string | null) {
-  const tokenRequest = await realtimeToken(context);
+export async function realtimeAuthorization(context: AuthenticatedContext, protocol: string | null, sessionId?: string) {
+  const tokenRequest = await realtimeToken(context, sessionId);
   return tokenRequest && protocol === "2"
-    ? { protocol: 2 as const, tokenRequest, scopeVersion: realtimeScopeVersion(context), contextKey: realtimeContextKey(context) }
+    ? { protocol: 2 as const, tokenRequest, scopeVersion: realtimeScopeVersion(context), contextKey: realtimeContextKey(context, sessionId) }
     : tokenRequest;
 }
 
-export async function realtimeToken(context: AuthenticatedContext) {
+export async function realtimeToken(context: AuthenticatedContext, sessionId?: string) {
   const client = getAblyRest();
   if (!client) return null;
   // Subscribe only. The organization channel carries invalidation hints, never
@@ -34,9 +34,12 @@ export async function realtimeToken(context: AuthenticatedContext) {
   return client.auth.createTokenRequest({
     clientId: context.userId,
     capability: JSON.stringify({
+      ...(context.organizationId ? {
       [`user:${context.userId}:notifications`]: ["subscribe"],
       [`org:${context.organizationId}:notifications`]: ["subscribe"],
       [`org:${context.organizationId}:sync`]: ["subscribe"],
+      } : {}),
+      ...(sessionId ? { [`user:${context.userId}:session:${sessionId}`]: ["subscribe"] } : {}),
     }),
     ttl: 10 * 60 * 1000,
   });

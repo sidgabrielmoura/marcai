@@ -16,6 +16,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test:push": "node scripts/verify-push-notifications.cjs",
+    "test:sessions": "node scripts/verify-device-sessions.cjs",
     "test:domain": "tsx scripts/verify-domain-rules.ts",
     "test:operational": "tsx scripts/verify-operational-rules.ts",
     "test:timezone": "tsx scripts/verify-date-time-timezone.ts",

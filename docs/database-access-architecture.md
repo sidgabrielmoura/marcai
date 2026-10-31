@@ -45,7 +45,7 @@ O DTO retornado pela ação é autoritativo para aquele recurso. Não inventar u
 
 ## Autorização do Ably e compatibilidade
 
-Endpoints: `/api/ably/token` para web e `/api/mobile/v1/realtime/token` para app. A API key fica somente no servidor, que usa `Ably.Rest` singleton. Os tokens duram dez minutos e permitem somente `subscribe` nos três canais autorizados.
+Endpoints: `/api/ably/token` para web e `/api/mobile/v1/realtime/token` para app. A API key fica somente no servidor, que usa `Ably.Rest` singleton. Os tokens duram dez minutos e permitem somente `subscribe` nos três canais de recursos autorizados e no canal privado da própria sessão. Superadmin sem organização recebe apenas o canal da sessão.
 
 Clientes novos solicitam `?protocol=2` e recebem:
 
@@ -100,6 +100,18 @@ As operações usam lease por instância e limites persistentes reaproveitando m
 A migração 20261029020000_whatsapp_webhooks deve preceder o backend atualizado. BASE_URL (ou NEXT_PUBLIC_APP_URL) é a origem pública deste próprio backend; WAHA_BASE_URL e WAHA_KEY configuram o provedor. Segredos nunca chegam ao navegador. Testes de ciclo, autorização, deduplicação, custo e canais: scripts/verify-whatsapp.ts, incluído no executor descartável com --whatsapp-only e na suíte geral.
 
 ### Entrega de push e sessões (28/10/2026)
+
+#### Sessão única por conta (31/10/2026)
+
+O login web antes apenas inseria `web_auth_sessions`; a substituição de aparelho existia somente no mobile e não emitia um comando Ably para o navegador sair. `deviceLoginTransaction` agora serializa logins pela linha de `users`, inclusive quando ainda não há sessões. Cada login revoga as sessões anteriores de sua plataforma e insere a nova na mesma transação: web e app nativo preservam seus ciclos independentes. A regra de um navegador por vez vale também para superadmin; contas sem organização recebem o aviso na tela de login e não criam notificação vinculada a tenant. Falha/rollback preserva a sessão anterior e não envia alertas. Logout continua limitado à sessão corrente.
+
+`notificationTransaction` persiste o alerta de segurança e agenda sua entrega após commit. A revogação remove os tokens web antigos e revoga instalações nativas; o push nativo de desconexão também ocorre somente após commit, acompanhado por `after`. Não há promessa solta dentro da transação.
+
+Tokens Ably de sessão autenticada incluem somente `subscribe` no canal exato `user:{userId}:session:{sessionId}`, além dos três canais de recursos existentes. O evento `session:revoked` carrega apenas o motivo genérico. O navegador o processa antes da deduplicação/invalidação de recursos, encerra os transportes e navega para `/login?reason=session-replaced`, que exibe o motivo. O cookie revogado não autoriza outra requisição, mesmo se o transporte falhar. Clientes nativos já instalados continuam usando o push de desconexão e a validação de acesso/refresh; a assinatura desse canal adicional requer suporte do cliente nativo.
+
+O hash de compartilhamento entre abas inclui a sessão autenticada. Abas dessa mesma sessão compartilham o controle booleano `sessionRevoked`, sem identificadores de sessão, tokens ou conteúdo privado no BroadcastChannel. Um novo login usa outro grupo. Conexão/reconexão e retorno de página oculta revalidam autorização; uma leitura adicional após assinar o canal cobre o intervalo entre emissão do token e attach. Não há consulta periódica nova, replay por mensagem saudável ou refresh de quadros para processar a desconexão. Um 401/403 encerra o transporte sem retry e apresenta o aviso genérico de sessão encerrada quando o evento com motivo foi perdido.
+
+Cobertura: `npm run test:sessions`, `node scripts/test-database-efficiency.cjs --sessions-only` e a suíte geral. Os testes usam fontes reais, transportes sintéticos e PostgreSQL 18 descartável: troca 1 → 2 → 1, logins simultâneos inclusive sem sessões prévias, concorrência de logins nativos, rollback, remoção de push, isolamento de contas/sessões, aviso persistido, recuperação e limite de uma query para validar sessão. `node scripts/verify-device-sessions-browser.cjs` executa o hook, o compartilhamento entre abas e o aviso reais no Chromium, com Ably/autorização simulados, dois contextos isolados e capturas em 1440/1024/768/390px. Não exigem migração nova. Publicar o backend/site e reabrir os navegadores para carregar o cliente atualizado; uma aba com JavaScript anterior não aprende um novo protocolo sem carregar a versão nova.
 
 As transações que criam notificações usam `notificationTransaction`. O wrapper captura os IDs retornados por `create`/`createManyAndReturn` e agenda a entrega com `after` somente depois do commit; fora do Next, aguarda o processamento. Rollback não dispara. Não adicionar um disparo separado ao lado de `tx.notification.create` nem transformar avisos em queries periódicas. Novos pontos de escrita precisam usar o wrapper, inclusive quando chamam `notifyManagers`, `materializeProcessTasks` ou `synchronizeExecution` indiretamente.
 

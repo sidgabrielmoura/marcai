@@ -1,5 +1,6 @@
 "use client";
 import { clearEmployeeDrafts } from "@/presentation/lib/employee-drafts";
+import { SessionEndedNotice } from "@/presentation/components/shared/session-ended-notice";
 
 import { useState, useActionState, useEffect } from "react";
 import Link from "next/link";
@@ -290,6 +291,8 @@ export default function LoginPage() {
               Entre para acompanhar suas tarefas e sua operação.
             </p>
           </div>
+
+          <SessionEndedNotice />
 
           <ToggleGroup
             value={[tab]}

@@ -76,6 +76,7 @@ async function main() {
       '@/infrastructure/database/prisma':{prisma},'./mobile-context':{mobileSessionContext:{getStore:()=>null}},
       jose:{jwtVerify:async()=>({payload:{sessionId}})},'next/headers':{cookies:async()=>({get:()=>({value:'signed-cookie'}),delete:()=>{cookieDeleted=true;}})},
       '@/domain/types':{},react:{cache:fn=>fn},'@/infrastructure/database/request-memo':{requestRead:(_,fn)=>fn()},
+      './device-sessions':{},
     },{process:{env:{AUTH_SECRET:'synthetic-secret-with-at-least-32-characters'}}});
     await session.clearSession();assert.equal(cookieDeleted,true);assert.equal(deleted.where.sessionId,sessionId);assert.equal(Object.keys(deleted.where).length,1);
   });
