@@ -1,1 +1,4 @@
-export { GET, POST, runtime, dynamic } from "@/app/api/push/test/route";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export { GET, POST } from "@/app/api/push/test/route";
