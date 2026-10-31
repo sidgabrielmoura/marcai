@@ -20,11 +20,32 @@ function getServiceAccount(): ServiceAccount | null {
   // 1. Tenta carregar por JSON string ou base64 na variável de ambiente (ideal para Vercel / CI / Produção)
   if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
     try {
-      const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY.trim();
-      const jsonStr = raw.startsWith("{") ? raw : Buffer.from(raw, "base64").toString("utf-8");
-      return JSON.parse(jsonStr);
+      let raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY.trim();
+      if (
+        (raw.startsWith('"') && raw.endsWith('"')) ||
+        (raw.startsWith("'") && raw.endsWith("'"))
+      ) {
+        raw = raw.slice(1, -1).trim();
+      }
+      const jsonStr = raw.startsWith("{")
+        ? raw
+        : Buffer.from(raw, "base64").toString("utf-8");
+      const parsed = JSON.parse(jsonStr);
+      const privateKey = (parsed.privateKey || parsed.private_key || "").replace(
+        /\\n/g,
+        "\n"
+      );
+      return {
+        ...parsed,
+        projectId: parsed.projectId || parsed.project_id,
+        project_id: parsed.projectId || parsed.project_id,
+        clientEmail: parsed.clientEmail || parsed.client_email,
+        client_email: parsed.clientEmail || parsed.client_email,
+        privateKey,
+        private_key: privateKey,
+      };
     } catch (e) {
-      console.error("[Firebase Admin] FIREBASE_SERVICE_ACCOUNT_KEY inválida.");
+      console.error("[Firebase Admin] FIREBASE_SERVICE_ACCOUNT_KEY inválida:", e);
     }
   }
 
@@ -40,9 +61,22 @@ function getServiceAccount(): ServiceAccount | null {
   if (fs.existsSync(resolvedPath)) {
     try {
       const raw = fs.readFileSync(resolvedPath, "utf-8");
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      const privateKey = (parsed.privateKey || parsed.private_key || "").replace(
+        /\\n/g,
+        "\n"
+      );
+      return {
+        ...parsed,
+        projectId: parsed.projectId || parsed.project_id,
+        project_id: parsed.projectId || parsed.project_id,
+        clientEmail: parsed.clientEmail || parsed.client_email,
+        client_email: parsed.clientEmail || parsed.client_email,
+        privateKey,
+        private_key: privateKey,
+      };
     } catch (e) {
-      console.error("[Firebase Admin] Arquivo de credenciais inválido.");
+      console.error("[Firebase Admin] Arquivo de credenciais inválido:", e);
     }
   }
 
@@ -225,8 +259,16 @@ export async function sendWebPushNotification(
       errors,
     };
   } catch (error: any) {
-    const code = typeof error?.code === "string" ? error.code : "messaging/provider-unavailable";
-    console.error("[Firebase Admin] Falha no envio:", code);
+    const isCredentialError =
+      error?.message?.includes("Could not load the default credentials") ||
+      error?.message?.includes("credential") ||
+      error?.code === "app/invalid-credential";
+    const code = isCredentialError
+      ? "messaging/credentials-missing"
+      : typeof error?.code === "string"
+      ? error.code
+      : "messaging/provider-unavailable";
+    console.error("[Firebase Admin] Falha no envio:", code, error?.message || "");
     return {
       successCount,
       failureCount: uniqueTokens.length - successCount,

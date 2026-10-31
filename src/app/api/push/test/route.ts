@@ -323,7 +323,14 @@ export async function POST(request: Request) {
     } else if (status === "PARTIAL_FAILURE") {
       summary = "Enviado com falha parcial para alguns dispositivos.";
     } else if (status === "FAILED") {
-      summary = `Falha no envio de push: ${delivery?.error || "Erro no provedor"}`;
+      let detail = delivery?.error || "Erro no provedor";
+      if (
+        detail === "messaging/provider-unavailable" ||
+        detail === "messaging/credentials-missing"
+      ) {
+        detail += " (As credenciais da conta de serviço do Firebase [FIREBASE_SERVICE_ACCOUNT_KEY] não foram encontradas no servidor de produção/Vercel)";
+      }
+      summary = `Falha no envio de push: ${detail}`;
     } else {
       summary = `Status de entrega: ${status}`;
     }

@@ -31,7 +31,7 @@ const credential=(u:{passwordHash:string|null},m:{pinHash:string|null})=>hash((u
 type DbSession={id:string;user_id:string;member_id:string;installation_id:string;proof:string|null;credential_version:string;expires_at:Date;revoked_at:Date|null};
 async function activeMember(memberId:string,userId:string,proof:string|null,version:string,db:Pick<Prisma.TransactionClient,'organizationMember'>=prisma) {
  const m=await db.organizationMember.findFirst({where:{id:memberId,userId,status:'ACTIVE',user:{status:'ACTIVE'},organization:{status:'ACTIVE'}},select:authenticatedMemberSelect});
- if(!m || m.user.platformRole==='SUPERADMIN' || !hasSecondFactorProof(m.user,proof??undefined) || credential(m.user,m)!==version)fail(401,'SESSION_REVOKED','Seu acesso mudou. Entre novamente.');
+ if(!m || !hasSecondFactorProof(m.user,proof??undefined) || credential(m.user,m)!==version)fail(401,'SESSION_REVOKED','Seu acesso mudou. Entre novamente.');
  return m;
 }
 export function identity(m:Awaited<ReturnType<typeof activeMember>>) {
@@ -45,14 +45,141 @@ async function sessionResponse(s:DbSession,refreshToken:string,db:Pick<Prisma.Tr
  const accessToken=await new SignJWT({sid:s.id}).setProtectedHeader({alg:'HS256'}).setSubject(s.user_id).setAudience('marcai-mobile').setIssuer('https://marcai-coral.vercel.app').setIssuedAt().setExpirationTime('5m').sign(accessKey());
  return {accessToken,accessExpiresAt,refreshToken,identity:identity(m)};
 }
+async function dispatchSessionRevokedPush(params: {
+  tokens: string[];
+  userId: string;
+  organizationId: string;
+}) {
+  try {
+    const { sendWebPushNotification } = await import(
+      "@/infrastructure/firebase/firebase-admin"
+    );
+    const result = await sendWebPushNotification({
+      tokens: params.tokens,
+      title: "Desconexão de segurança",
+      body: "Outro dispositivo conectou-se à sua conta. Sua sessão neste aparelho foi encerrada.",
+      platform: "native",
+      data: {
+        type: "SESSION_REVOKED",
+        reason: "CONCURRENT_DEVICE_LOGIN",
+        organizationId: params.organizationId,
+      },
+    });
+    console.log(
+      `[Security] Push de desconexão enviado para ${params.tokens.length} token(s). Sucessos: ${result.successCount}, Falhas: ${result.failureCount}`
+    );
+  } catch (error) {
+    console.error("[Security] Erro ao disparar push de desconexão de sessão:", error);
+  }
+}
+
+async function enforceSingleDeviceConcurrency(
+  user: { id: string; platformRole?: string | null },
+  currentInstallationId: string,
+  organizationId: string,
+  db: Prisma.TransactionClient
+) {
+  // Superadmin é isento do limite de 1 celular logado por vez
+  if (user.platformRole === "SUPERADMIN") {
+    return;
+  }
+
+  // 1. Busca sessões móveis ativas com row lock para prevenir race condition em logins simultâneos
+  const activeSessions = await db.$queryRaw<Array<{ id: string; installation_id: string }>>`
+    SELECT id::text, installation_id::text
+    FROM mobile_sessions
+    WHERE user_id = ${user.id}
+      AND revoked_at IS NULL
+      AND expires_at > now()
+    FOR UPDATE
+  `;
+
+  if (activeSessions.length === 0) {
+    return;
+  }
+
+  // Identifica sessões que estavam em outro aparelho (diferente do atual)
+  const otherDeviceSessions = activeSessions.filter(
+    (s) => s.installation_id !== currentInstallationId
+  );
+
+  // Revoga todas as sessões móveis ativas anteriores do usuário
+  await db.$executeRaw`
+    UPDATE mobile_sessions
+    SET revoked_at = now()
+    WHERE user_id = ${user.id}
+      AND revoked_at IS NULL
+      AND expires_at > now()
+  `;
+
+  if (otherDeviceSessions.length > 0) {
+    const otherSessionUuids = otherDeviceSessions.map((s) => s.id);
+    const otherInstallationUuids = [
+      ...new Set(otherDeviceSessions.map((s) => s.installation_id)),
+    ];
+
+    // Busca push tokens dos aparelhos anteriores que foram desconectados
+    const tokensToRevoke = await db.$queryRaw<
+      Array<{
+        id: string;
+        token: string;
+        platform: string;
+      }>
+    >`
+      SELECT id::text, token, platform
+      FROM mobile_installations
+      WHERE (session_id = ANY(${otherSessionUuids}::uuid[]) OR id = ANY(${otherInstallationUuids}::uuid[]))
+        AND user_id = ${user.id}
+        AND revoked_at IS NULL
+        AND token IS NOT NULL
+    `;
+
+    // Revoga as instalações anteriores
+    await db.$executeRaw`
+      UPDATE mobile_installations
+      SET revoked_at = now()
+      WHERE (session_id = ANY(${otherSessionUuids}::uuid[]) OR id = ANY(${otherInstallationUuids}::uuid[]))
+        AND user_id = ${user.id}
+    `;
+
+    // Registra alerta de segurança no histórico de notificações do usuário
+    await db.notification.create({
+      data: {
+        organizationId,
+        userId: user.id,
+        title: "Desconexão de segurança",
+        message:
+          "Outro dispositivo conectou-se à sua conta. A sessão no aparelho anterior foi encerrada por segurança.",
+        type: "SECURITY_ALERT",
+        priority: "HIGH",
+      },
+    });
+
+    // Envia a notificação push para os aparelhos desconectados fora da transação
+    if (tokensToRevoke.length > 0) {
+      const uniqueTokens = [...new Set(tokensToRevoke.map((t) => t.token))];
+      void dispatchSessionRevokedPush({
+        tokens: uniqueTokens,
+        userId: user.id,
+        organizationId,
+      });
+    }
+  }
+}
+
 export async function issue(memberId:string,installationId:string,proof:string|null=null,db:Prisma.TransactionClient=prisma) {
- const m=await db.organizationMember.findFirst({where:{id:memberId,status:'ACTIVE',user:{status:'ACTIVE'},organization:{status:'ACTIVE'}},include:identityInclude});
- if(!m||m.user.platformRole==='SUPERADMIN'||!hasSecondFactorProof(m.user,proof??undefined))fail(401,'INVALID_LOGIN','Não foi possível entrar com estes dados.');
- const s:DbSession={id:randomUUID(),user_id:m.userId,member_id:m.id,installation_id:installationId,proof,credential_version:credential(m.user,m),expires_at:new Date(Date.now()+30*86400000),revoked_at:null};
- const refreshToken=randomBytes(32).toString('base64url');
- await db.$executeRaw`INSERT INTO mobile_sessions(id,user_id,member_id,installation_id,proof,credential_version,expires_at) VALUES(${s.id}::uuid,${s.user_id},${s.member_id},${installationId}::uuid,${proof},${s.credential_version},${s.expires_at})`;
- await db.$executeRaw`INSERT INTO mobile_refresh_tokens(hash,session_id) VALUES(${hash(refreshToken)},${s.id}::uuid)`;
- return sessionResponse(s,refreshToken,db);
+  const m=await db.organizationMember.findFirst({where:{id:memberId,status:'ACTIVE',user:{status:'ACTIVE'},organization:{status:'ACTIVE'}},include:identityInclude});
+  if(!m||!hasSecondFactorProof(m.user,proof??undefined))fail(401,'INVALID_LOGIN','Não foi possível entrar com estes dados.');
+
+  // Controle de login por dispositivo:
+  // Desconecta qualquer celular anteriormente ativo e envia push de alerta (exceto superadmin)
+  await enforceSingleDeviceConcurrency(m.user, installationId, m.organizationId, db);
+
+  const s:DbSession={id:randomUUID(),user_id:m.userId,member_id:m.id,installation_id:installationId,proof,credential_version:credential(m.user,m),expires_at:new Date(Date.now()+30*86400000),revoked_at:null};
+  const refreshToken=randomBytes(32).toString('base64url');
+  await db.$executeRaw`INSERT INTO mobile_sessions(id,user_id,member_id,installation_id,proof,credential_version,expires_at) VALUES(${s.id}::uuid,${s.user_id},${s.member_id},${installationId}::uuid,${proof},${s.credential_version},${s.expires_at})`;
+  await db.$executeRaw`INSERT INTO mobile_refresh_tokens(hash,session_id) VALUES(${hash(refreshToken)},${s.id}::uuid)`;
+  return sessionResponse(s,refreshToken,db);
 }
 export async function login(input:unknown,mode:'pin'|'password') {
  const common={installationId:uuid};
@@ -67,7 +194,7 @@ export async function login(input:unknown,mode:'pin'|'password') {
  member=candidates[0];
  } else {
  const u=await prisma.user.findUnique({where:{email:parsed.email.toLowerCase()},include:{memberships:{where:{status:'ACTIVE',organization:{status:'ACTIVE'}},orderBy:{id:'asc'}}}});
- if(!u||u.status!=='ACTIVE'||u.platformRole==='SUPERADMIN'||!u.passwordHash||!await bcrypt.compare(parsed.password,u.passwordHash))fail(401,'INVALID_LOGIN','E-mail ou senha inválidos.');
+ if(!u||u.status!=='ACTIVE'||!u.passwordHash||!await bcrypt.compare(parsed.password,u.passwordHash))fail(401,'INVALID_LOGIN','E-mail ou senha inválidos.');
  member=u.memberships.find(m=>m.role==='EMPLOYEE')??u.memberships[0]??null;
  }
  if(!member)fail(401,'INVALID_LOGIN','Não foi possível entrar com estes dados.');
@@ -75,7 +202,7 @@ export async function login(input:unknown,mode:'pin'|'password') {
 }
 export async function finishLogin(memberId:string,installationId:string) {
  const m=await prisma.organizationMember.findUnique({where:{id:memberId},include:{user:true}});
- if(!m||m.user.platformRole==='SUPERADMIN')fail(403,'ROLE_UNSUPPORTED','Use o acesso da gestão no navegador.');
+ if(!m)fail(403,'ROLE_UNSUPPORTED','Use o acesso da gestão no navegador.');
  if(m.user.twoFactorEnabled){
  const enrollmentSecret=!m.user.twoFactorSecret?generateTotpSecret():null;
  const id=randomUUID(),expiresAt=new Date(Date.now()+300000);
@@ -155,7 +282,7 @@ export async function authenticate(req:Request) {
  let sid:string;
  try{const {payload}=await jwtVerify(token,accessKey(),{algorithms:['HS256'],audience:'marcai-mobile',issuer:'https://marcai-coral.vercel.app'});sid=uuid.parse(payload.sid);}catch{fail(401,'ACCESS_EXPIRED','Sua sessão precisa ser renovada.');}
  const [s]=await prisma.$queryRaw<DbSession[]>`SELECT * FROM mobile_sessions WHERE id=${sid!}::uuid AND revoked_at IS NULL AND expires_at>now()`;
- if(!s)fail(401,'SESSION_REVOKED','Sua sessão foi encerrada.');
+ if(!s)fail(401,'SESSION_REVOKED','Sua sessão foi encerrada porque outro dispositivo conectou-se à sua conta.');
  const m=await activeMember(s.member_id,s.user_id,s.proof,s.credential_version);
  const data:SessionData={userId:m.userId,name:m.user.name,email:m.user.email,activeOrgId:m.organizationId,activeMemberId:m.id,role:m.role,employeeCode:m.employeeCode,secondFactorProof:s.proof??undefined};
  return {session:s,member:m,data};
@@ -166,7 +293,7 @@ export async function withAuth<T>(req:Request,work:(auth:Awaited<ReturnType<type
  // authenticate already validated this membership, credential version and 2FA.
  // Reuse its projection only within this invocation, never across requests/ticks.
  const context=contextFromMember(auth.member);
- if(employee&&context.role!=='EMPLOYEE')fail(403,'ROLE_UNSUPPORTED','Este aplicativo é exclusivo para funcionários. Use a gestão no navegador.');
+ if(employee&&context.role!=='EMPLOYEE'&&auth.member.user.platformRole!=='SUPERADMIN')fail(403,'ROLE_UNSUPPORTED','Este aplicativo é exclusivo para funcionários. Use a gestão no navegador.');
  const result=await work(auth,context);
  // Authenticated writes have finished (including interactive transactions).
  // GET/replay/token reads must never publish: that would create refresh loops.
@@ -182,7 +309,7 @@ export async function withAuth<T>(req:Request,work:(auth:Awaited<ReturnType<type
 }
 export async function validInstallationSession(id:string){
  const [s]=await prisma.$queryRaw<DbSession[]>`SELECT * FROM mobile_sessions WHERE id=${id}::uuid AND revoked_at IS NULL AND expires_at>now()`;
- if(!s)return false;try{const m=await activeMember(s.member_id,s.user_id,s.proof,s.credential_version);if(m.role!=="EMPLOYEE"){await prisma.$executeRaw`UPDATE mobile_installations SET revoked_at=now() WHERE session_id=${s.id}::uuid`;return false;}return true;}catch{await logout(s);return false;}
+ if(!s)return false;try{const m=await activeMember(s.member_id,s.user_id,s.proof,s.credential_version);if(m.role!=="EMPLOYEE"&&m.user.platformRole!=="SUPERADMIN"){await prisma.$executeRaw`UPDATE mobile_installations SET revoked_at=now() WHERE session_id=${s.id}::uuid`;return false;}return true;}catch{await logout(s);return false;}
 }
 export async function logout(s:DbSession) {
  await prisma.$transaction(async tx=>{
@@ -192,6 +319,6 @@ export async function logout(s:DbSession) {
 }
 export async function switchOrg(s:DbSession,organizationId:string) {
  const m=await prisma.organizationMember.findFirst({where:{organizationId,userId:s.user_id,status:'ACTIVE',organization:{status:'ACTIVE'},user:{status:'ACTIVE'}},include:{user:true}});
- if(!m||m.role!=='EMPLOYEE'||!hasSecondFactorProof(m.user,s.proof??undefined))fail(403,'ORG_UNAVAILABLE','Este vínculo não permite o acesso de funcionário.');
+ if(!m||(m.role!=='EMPLOYEE'&&m.user.platformRole!=='SUPERADMIN')||!hasSecondFactorProof(m.user,s.proof??undefined))fail(403,'ORG_UNAVAILABLE','Este vínculo não permite o acesso de funcionário.');
  return prisma.$transaction(async tx=>{await tx.$executeRaw`UPDATE mobile_sessions SET revoked_at=now() WHERE id=${s.id}::uuid`;await tx.$executeRaw`UPDATE mobile_installations SET revoked_at=now() WHERE session_id=${s.id}::uuid`;return issue(m.id,s.installation_id,s.proof,tx);});
 }
