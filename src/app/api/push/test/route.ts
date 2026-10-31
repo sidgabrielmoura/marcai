@@ -4,9 +4,6 @@ import { prisma } from "@/infrastructure/database/prisma";
 import { Priority } from "@/domain/types";
 import { notificationTransaction } from "@/infrastructure/notifications/transaction";
 import { dispatchPersistedNotifications } from "@/infrastructure/notifications/notification-service";
-import { getAuthenticatedContext } from "@/application/security/auth-context";
-import { authenticate } from "@/application/mobile/security";
-import { validateCronRequest } from "@/infrastructure/security/cron-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,7 +28,7 @@ const testPushPayloadSchema = z.object({
 export async function GET() {
   return NextResponse.json({
     endpoint: "POST /api/push/test",
-    description: "Endpoint para teste de disparo de notificações push.",
+    description: "Endpoint público para teste de disparo de notificações push.",
     usage: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -45,37 +42,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  // 1. Autenticação e Autorização (Web session, Mobile Bearer, Cron Secret ou Dev Mode)
-  const webContext = await getAuthenticatedContext(false).catch(() => null);
+  // Rota pública de teste: Sem exigência de autenticação por cabeçalhos ou cookies
 
-  let mobileContext: any = null;
-  const authHeader = request.headers.get("authorization") || "";
-  if (!webContext && authHeader.startsWith("Bearer ey")) {
-    try {
-      const auth = await authenticate(request);
-      mobileContext = auth.data;
-    } catch {
-      // Ignora erro de token móvel inválido para verificar outros métodos
-    }
-  }
-
-  const isCronAuthorized = validateCronRequest(request).authorized;
-  const isDevelopment = process.env.NODE_ENV === "development";
-
-  const activeContext = webContext || mobileContext;
-  const isAuthorized = Boolean(activeContext || isCronAuthorized || isDevelopment);
-
-  if (!isAuthorized) {
-    return NextResponse.json(
-      {
-        error: "UNAUTHORIZED",
-        message: "Acesso não autorizado. É necessário estar autenticado ou fornecer credenciais válidas.",
-      },
-      { status: 401, headers: { "Cache-Control": "no-store" } }
-    );
-  }
-
-  // 2. Leitura e validação do corpo da requisição
+  // 1. Leitura e validação do corpo da requisição
   let body: unknown;
   try {
     const raw = await request.text();
@@ -118,60 +87,116 @@ export async function POST(request: Request) {
 
   const uniqueUserIds = [...new Set(userIds)];
 
-  // 3. Localização dos membros e organizações dos usuários fornecidos
-  const callerOrgId = activeContext?.activeOrgId || activeContext?.organizationId;
-  const members = await prisma.organizationMember.findMany({
-    where: {
-      userId: { in: uniqueUserIds },
-      status: "ACTIVE",
-      user: { status: "ACTIVE" },
-      organization: { status: "ACTIVE" },
-      ...(callerOrgId ? { organizationId: callerOrgId } : {}),
-    },
-    select: {
-      id: true,
-      userId: true,
-      organizationId: true,
-      role: true,
-      user: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-        },
+  // 2. Busca informações dos usuários e suas organizações
+  const [members, users, installations] = await Promise.all([
+    prisma.organizationMember.findMany({
+      where: {
+        userId: { in: uniqueUserIds },
+        status: "ACTIVE",
       },
-      organization: {
-        select: {
-          id: true,
-          name: true,
-        },
+      select: {
+        id: true,
+        userId: true,
+        organizationId: true,
+        role: true,
+        user: { select: { id: true, name: true, email: true } },
+        organization: { select: { id: true, name: true } },
       },
-    },
+    }),
+    prisma.user.findMany({
+      where: {
+        id: { in: uniqueUserIds },
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+    }),
+    prisma.nativeInstallation.findMany({
+      where: {
+        userId: { in: uniqueUserIds },
+        revokedAt: null,
+      },
+      select: {
+        userId: true,
+        organizationId: true,
+      },
+    }),
+  ]);
+
+  const userMap = new Map(users.map((u) => [u.id, u]));
+
+  // Organização padrão caso o usuário não tenha vínculo ativo
+  const fallbackOrg = await prisma.organization.findFirst({
+    where: { status: "ACTIVE" },
+    select: { id: true, name: true },
   });
 
-  // Mapeia por userId para deduplicar caso o usuário tenha múltiplos vínculos
-  const memberByUserId = new Map<string, (typeof members)[0]>();
+  const memberByUserId = new Map<
+    string,
+    {
+      userId: string;
+      organizationId: string;
+      userName: string;
+      userEmail: string | null;
+    }
+  >();
+
+  // Prioridade 1: vínculo de membro ativo
   for (const m of members) {
     if (!memberByUserId.has(m.userId)) {
-      memberByUserId.set(m.userId, m);
+      memberByUserId.set(m.userId, {
+        userId: m.userId,
+        organizationId: m.organizationId,
+        userName: m.user.name,
+        userEmail: m.user.email,
+      });
     }
   }
 
-  const matchedMembers = Array.from(memberByUserId.values());
-  const notFoundUserIds = uniqueUserIds.filter((id) => !memberByUserId.has(id));
+  // Prioridade 2: organização registrada na instalação do app nativo
+  for (const inst of installations) {
+    if (!memberByUserId.has(inst.userId) && inst.organizationId) {
+      const u = userMap.get(inst.userId);
+      if (u) {
+        memberByUserId.set(inst.userId, {
+          userId: inst.userId,
+          organizationId: inst.organizationId,
+          userName: u.name,
+          userEmail: u.email,
+        });
+      }
+    }
+  }
 
-  if (matchedMembers.length === 0) {
+  // Prioridade 3: usuário existente no sistema associado à organização padrão
+  for (const u of users) {
+    if (!memberByUserId.has(u.id) && fallbackOrg) {
+      memberByUserId.set(u.id, {
+        userId: u.id,
+        organizationId: fallbackOrg.id,
+        userName: u.name,
+        userEmail: u.email,
+      });
+    }
+  }
+
+  const matchedTargets = Array.from(memberByUserId.values());
+  const notFoundUserIds = uniqueUserIds.filter((id) => !userMap.has(id));
+
+  if (matchedTargets.length === 0) {
     return NextResponse.json(
       {
-        error: "NO_ACTIVE_USERS_FOUND",
-        message: "Nenhum dos usuários fornecidos possui vínculo ativo na organização.",
+        error: "NO_USERS_FOUND",
+        message: "Nenhum dos usuários fornecidos foi encontrado no banco de dados.",
         notFoundUserIds,
       },
       { status: 404, headers: { "Cache-Control": "no-store" } }
     );
   }
 
-  // 4. Criação atômica das notificações
+  // 3. Criação atômica das notificações
   const createdNotices: Array<{
     id: string;
     userId: string;
@@ -181,11 +206,11 @@ export async function POST(request: Request) {
   }> = [];
 
   await notificationTransaction(async (tx) => {
-    for (const m of matchedMembers) {
+    for (const target of matchedTargets) {
       const notice = await tx.notification.create({
         data: {
-          organizationId: m.organizationId,
-          userId: m.userId,
+          organizationId: target.organizationId,
+          userId: target.userId,
           type: "OPERATIONAL_ALERT",
           priority: Priority.HIGH,
           title: finalTitle,
@@ -206,21 +231,21 @@ export async function POST(request: Request) {
 
       createdNotices.push({
         id: notice.id,
-        userId: m.userId,
-        organizationId: m.organizationId,
-        userName: m.user.name,
-        userEmail: m.user.email,
+        userId: target.userId,
+        organizationId: target.organizationId,
+        userName: target.userName,
+        userEmail: target.userEmail,
       });
     }
   });
 
-  // 5. Disparo imediato para processar push e coletar status real de entrega
+  // 4. Disparo imediato para processar push e coletar status real de entrega
   const createdIds = createdNotices.map((n) => n.id);
   if (createdIds.length > 0) {
     await dispatchPersistedNotifications(createdIds);
   }
 
-  // 6. Consulta dos status reais de entrega gerados pelo provedor (FCM / WebPush)
+  // 5. Consulta dos status reais de entrega gerados pelo provedor (FCM / WebPush)
   const deliveries = await prisma.notificationDelivery.findMany({
     where: {
       notificationId: { in: createdIds },
@@ -241,7 +266,7 @@ export async function POST(request: Request) {
   }
 
   // Consulta de dispositivos ativos para detalhamento no retorno
-  const targetUserIds = matchedMembers.map((m) => m.userId);
+  const targetUserIds = matchedTargets.map((m) => m.userId);
   const [nativeInstallations, webTokens] = await Promise.all([
     prisma.nativeInstallation.findMany({
       where: {
