@@ -103,7 +103,7 @@ export function formatOperationalAlertMessage(params: SendWhatsAppAlertParams): 
 
   if (params.actionUrl) {
     lines.push("");
-    lines.push(`🔗 *Acessar no sistema:* ${params.actionUrl}`);
+    lines.push(`🔗 *Acessar no sistema:* https://tarefai.com/management/${params.actionUrl}`);
   }
 
   lines.push("");

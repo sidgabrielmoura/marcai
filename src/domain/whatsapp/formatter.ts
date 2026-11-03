@@ -53,7 +53,7 @@ export function formatOperationalAlertMessage(params: OperationalAlertMessagePar
 
   if (params.actionUrl) {
     lines.push("");
-    lines.push(`🔗 *Acessar no sistema:* ${params.actionUrl}`);
+    lines.push(`🔗 *Acessar no sistema:* https://tarefai.com/${params.actionUrl}`);
   }
 
   lines.push("");
