@@ -62,6 +62,40 @@ async function main() {
     await assert.rejects(service.deviceLoginTransaction(async db => { await service.replaceDeviceSessions(db, { id: 'user-a', platformRole: null }, 'org-a'); throw Error('rollback'); }));
     assert.equal(afters.length, 0); assert.equal(messages.length, 1);
   });
+  await check('cross-platform replacement revokes both web and native sessions and dispatches both transports', async () => {
+    const afters = [], messages = [], pushes = [];
+    const tx = {
+      $queryRaw: async (parts) => {
+        const text = parts.join('');
+        if (text.includes('UPDATE web_auth_sessions')) return [{ id: 'web-session-1', user_id: 'user-a' }];
+        if (text.includes('UPDATE mobile_sessions')) return [{ id: 'native-session-1', user_id: 'user-a' }];
+        if (text.includes('UPDATE mobile_installations')) return [{ token: 'fcm-token-1' }];
+        return [];
+      },
+      userDeviceToken: { deleteMany: async () => {} },
+      notification: { create: async () => {} },
+    };
+    const service = load('src/infrastructure/security/device-sessions.ts', {
+      'next/server': { after: cb => afters.push(cb) },
+      '@/infrastructure/notifications/transaction': { notificationTransaction: async work => work(tx) },
+      '@/infrastructure/realtime/ably': { publishToChannel: async (...args) => messages.push(args) },
+      '@/infrastructure/firebase/firebase-admin': { sendWebPushNotification: async (payload) => pushes.push(payload) },
+    });
+    await service.deviceLoginTransaction(async db => {
+      await service.lockDeviceLogin(db, 'user-a');
+      await service.replaceDeviceSessions(db, { id: 'user-a', platformRole: null }, 'org-a');
+    });
+    assert.equal(afters.length, 1);
+    await afters.shift()();
+    assert.equal(messages.length, 2);
+    const sessionChannels = messages.map(m => String(m[0])).sort();
+    assert.equal(sessionChannels[0], 'user:user-a:session:native-session-1');
+    assert.equal(sessionChannels[1], 'user:user-a:session:web-session-1');
+    assert.equal(pushes.length, 1);
+    assert.equal(pushes[0].tokens.length, 1);
+    assert.equal(pushes[0].tokens[0], 'fcm-token-1');
+    assert.equal(pushes[0].data?.type, 'SESSION_REVOKED');
+  });
   await check('Ably token grants subscribe only to its own session; tab groups isolate sessions', async () => {
     const issued = [];
     const sync = load('src/infrastructure/realtime/sync.ts', { './ably': { getAblyRest: () => ({ auth: { createTokenRequest: async value => { issued.push(value); return value; } } }) } });

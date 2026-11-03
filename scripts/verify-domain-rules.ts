@@ -220,11 +220,11 @@ assert(
 
 // Bloqueio de Unidades
 assert(
-  checkLocationLimit({ subscription: trial, currentActiveLocationsCount: 0 }).allowed === true,
+  checkLocationLimit({ subscription: trial, currentActiveLocationsCount: 0, now: new Date("2026-10-15T12:00:00Z") }).allowed === true,
   "Pode criar primeira unidade quando tem 0 de 1 unidade utilizada"
 );
 assert(
-  checkLocationLimit({ subscription: trial, currentActiveLocationsCount: 1 }).allowed === false,
+  checkLocationLimit({ subscription: trial, currentActiveLocationsCount: 1, now: new Date("2026-10-15T12:00:00Z") }).allowed === false,
   "Bloqueia criação de unidade quando limite do plano é atingido (1/1)"
 );
 assert(
@@ -237,17 +237,17 @@ assert(
 );
 const enterpriseSub = { ...trial, locationLimit: null, memberLimit: null };
 assert(
-  checkLocationLimit({ subscription: enterpriseSub, currentActiveLocationsCount: 100 }).allowed === true,
+  checkLocationLimit({ subscription: enterpriseSub, currentActiveLocationsCount: 100, now: new Date("2026-10-15T12:00:00Z") }).allowed === true,
   "Plano ilimitado permite criar unidades sem restrição de contagem"
 );
 
 // Bloqueio de Pessoas / Colaboradores
 assert(
-  checkMemberLimit({ subscription: trial, currentActiveMembersCount: 4 }).allowed === true,
+  checkMemberLimit({ subscription: trial, currentActiveMembersCount: 4, now: new Date("2026-10-15T12:00:00Z") }).allowed === true,
   "Pode adicionar membro quando tem 4 de 5 pessoas"
 );
 assert(
-  checkMemberLimit({ subscription: trial, currentActiveMembersCount: 5 }).allowed === false,
+  checkMemberLimit({ subscription: trial, currentActiveMembersCount: 5, now: new Date("2026-10-15T12:00:00Z") }).allowed === false,
   "Bloqueia adição de colaborador quando limite de pessoas é atingido (5/5)"
 );
 assert(
@@ -259,7 +259,7 @@ assert(
   "Bloqueia adição de colaborador quando plano estiver expirado"
 );
 assert(
-  checkMemberLimit({ subscription: enterpriseSub, currentActiveMembersCount: 500 }).allowed === true,
+  checkMemberLimit({ subscription: enterpriseSub, currentActiveMembersCount: 500, now: new Date("2026-10-15T12:00:00Z") }).allowed === true,
   "Plano ilimitado permite adicionar colaboradores sem restrição de contagem"
 );
 

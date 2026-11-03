@@ -17,19 +17,19 @@ export async function replaceDeviceSessions(
   tx: Prisma.TransactionClient,
   user: { id: string },
   organizationId: string,
-  platform: "web" | "native" = "web",
+  _platform?: "web" | "native" | "all",
 ) {
   const effects = pending.get(tx);
   if (!effects) throw new Error("Device replacement requires a login transaction.");
-  const web = platform === "web" ? await tx.$queryRaw<RevokedSession[]>`
+  const web = await tx.$queryRaw<RevokedSession[]>`
     UPDATE web_auth_sessions SET revoked_at=now()
     WHERE user_id=${user.id} AND revoked_at IS NULL AND expires_at>now()
-    RETURNING id::text, user_id` : [];
-  const mobile = platform === "native" ? await tx.$queryRaw<RevokedSession[]>`
+    RETURNING id::text, user_id`;
+  const mobile = await tx.$queryRaw<RevokedSession[]>`
     UPDATE mobile_sessions s SET revoked_at=now()
     WHERE s.user_id=${user.id}
       AND s.revoked_at IS NULL AND s.expires_at>now()
-    RETURNING s.id::text, s.user_id` : [];
+    RETURNING s.id::text, s.user_id`;
   if (!web.length && !mobile.length) return;
 
   const webIds = web.map(s => s.id);
@@ -44,11 +44,13 @@ export async function replaceDeviceSessions(
   }
   effects.sessions.push(...web, ...mobile);
   // A platform-only account has no tenant for an internal notification.
-  if (organizationId) await tx.notification.create({ data: {
-    organizationId, userId: user.id, type: "SECURITY_ALERT", priority: "HIGH",
-    title: "Desconexão de segurança",
-    message: "Outro dispositivo conectou-se à sua conta. A sessão no aparelho anterior foi encerrada por segurança.",
-  } });
+  if (organizationId) await tx.notification.create({
+    data: {
+      organizationId, userId: user.id, type: "SECURITY_ALERT", priority: "HIGH",
+      title: "Desconexão de segurança",
+      message: "Outro dispositivo conectou-se à sua conta. A sessão no aparelho anterior foi encerrada por segurança.",
+    }
+  });
 }
 
 /** Commit revocation and login together; no network work can escape a rollback. */

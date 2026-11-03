@@ -101,9 +101,9 @@ A migração 20261029020000_whatsapp_webhooks deve preceder o backend atualizado
 
 ### Entrega de push e sessões (28/10/2026)
 
-#### Sessão única por conta (31/10/2026)
+#### Sessão única por conta (31/10/2026, unificada cross-platform em 03/11/2026)
 
-O login web antes apenas inseria `web_auth_sessions`; a substituição de aparelho existia somente no mobile e não emitia um comando Ably para o navegador sair. `deviceLoginTransaction` agora serializa logins pela linha de `users`, inclusive quando ainda não há sessões. Cada login revoga as sessões anteriores de sua plataforma e insere a nova na mesma transação: web e app nativo preservam seus ciclos independentes. A regra de um navegador por vez vale também para superadmin; contas sem organização recebem o aviso na tela de login e não criam notificação vinculada a tenant. Falha/rollback preserva a sessão anterior e não envia alertas. Logout continua limitado à sessão corrente.
+O login web antes apenas inseria `web_auth_sessions`; a substituição de aparelho existia somente no mobile e não emitia um comando Ably para o navegador sair. `deviceLoginTransaction` agora serializa logins pela linha de `users`, inclusive quando ainda não há sessões. Cada login revoga todas as sessões anteriores ativas do usuário em ambas as plataformas (web e native) e insere a nova na mesma transação: uma conta ativa tem estritamente apenas um dispositivo conectado por vez em todo o sistema. A regra de um dispositivo por vez vale também para superadmin; contas sem organização recebem o aviso na tela de login e não criam notificação vinculada a tenant. Falha/rollback preserva a sessão anterior e não envia alertas. Logout continua limitado à sessão corrente.
 
 `notificationTransaction` persiste o alerta de segurança e agenda sua entrega após commit. A revogação remove os tokens web antigos e revoga instalações nativas; o push nativo de desconexão também ocorre somente após commit, acompanhado por `after`. Não há promessa solta dentro da transação.
 

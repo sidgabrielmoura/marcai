@@ -54,8 +54,8 @@ export async function issue(memberId: string, installationId: string, proof: str
   const m = await db.organizationMember.findFirst({ where: { id: memberId, status: 'ACTIVE', user: { status: 'ACTIVE' }, organization: { status: 'ACTIVE' } }, include: identityInclude });
   if (!m || !hasSecondFactorProof(m.user, proof ?? undefined)) fail(401, 'INVALID_LOGIN', 'Não foi possível entrar com estes dados.');
 
-  // Browser and native sessions keep their existing independent lifecycles.
-  await replaceDeviceSessions(db, m.user, m.organizationId, "native");
+  // Enforce single active device per account across both web and native platforms.
+  await replaceDeviceSessions(db, m.user, m.organizationId);
 
   const s: DbSession = { id: randomUUID(), user_id: m.userId, member_id: m.id, installation_id: installationId, proof, credential_version: credential(m.user, m), expires_at: new Date(Date.now() + 30 * 86400000), revoked_at: null };
   const refreshToken = randomBytes(32).toString('base64url');

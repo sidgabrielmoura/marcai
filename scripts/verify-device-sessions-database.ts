@@ -59,21 +59,33 @@ async function main() {
       assert.ok(await decryptSession(current));
       assert.equal(await prisma.notification.count({ where: { userId: user.id } }), notices);
     });
-    await check("native replacement blocks old access/refresh; browser lifecycle stays independent", async () => {
+    await check("single active device across platforms: native login revokes browser, browser login revokes native", async () => {
       const native = await issue(member.id, randomUUID());
-      assert.ok(await decryptSession(current));
+      assert.equal(await decryptSession(current), null);
       const request = new Request("http://localhost", { headers: { authorization: "Bearer " + native.accessToken } });
       assert.ok(await authenticate(request));
       const latest = await issue(member.id, randomUUID());
       await assert.rejects(authenticate(request), (e: any) => e.code === "SESSION_REVOKED");
       await assert.rejects(refresh({ refreshToken: native.refreshToken, requestKey: randomUUID() }));
+      const latestReq = new Request("http://localhost", { headers: { authorization: "Bearer " + latest.accessToken } });
+      assert.ok(await authenticate(latestReq));
+
+      // Browser login revokes active native session
+      current = await encryptSession(base);
       assert.ok(await decryptSession(current));
-      assert.ok(await authenticate(new Request("http://localhost", { headers: { authorization: "Bearer " + latest.accessToken } })));
+      await assert.rejects(authenticate(latestReq), (e: any) => e.code === "SESSION_REVOKED");
+      await assert.rejects(refresh({ refreshToken: latest.refreshToken, requestKey: randomUUID() }));
     });
     await check("simultaneous native logins leave only one usable credential", async () => {
       const sessions = await Promise.all([issue(member.id, randomUUID()), issue(member.id, randomUUID())]);
       const valid = await Promise.all(sessions.map(native => authenticate(new Request("http://localhost", { headers: { authorization: "Bearer " + native.accessToken } })).then(() => true, () => false)));
       assert.equal(valid.filter(Boolean).length, 1);
+    });
+    await check("simultaneous cross-platform logins leave only one usable credential", async () => {
+      const [webToken, nativeSession] = await Promise.all([encryptSession(base), issue(member.id, randomUUID())]);
+      const webValid = Boolean(await decryptSession(webToken));
+      const nativeValid = await authenticate(new Request("http://localhost", { headers: { authorization: "Bearer " + nativeSession.accessToken } })).then(() => true, () => false);
+      assert.equal(Number(webValid) + Number(nativeValid), 1);
     });
     await check("session validation remains one SQL read; no polling or writes", async () => {
       current = await encryptSession(base);
