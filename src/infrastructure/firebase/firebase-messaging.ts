@@ -51,6 +51,9 @@ export async function registerFirebaseServiceWorker(): Promise<ServiceWorkerRegi
   }
 }
 
+export const DEFAULT_FIREBASE_VAPID_KEY =
+  "BAsywe3apcyAQpc5eg_XR3VPD49vL0dCWTvHXlGXo-rX3_j9B_GVABpEOXLvRH7uEImX9gwG6bvMKMYY7hMF4wc";
+
 /**
  * Solicita permissão do navegador para notificações e retorna o token FCM gerado.
  */
@@ -72,31 +75,34 @@ export async function requestPushNotificationToken(): Promise<string | null> {
 
     const registration = await registerFirebaseServiceWorker();
     if (!registration) throw new Error("Não foi possível registrar o serviço de notificações.");
-    const swRegistration = registration;
-    if (!registration.active) await new Promise<void>((resolve, reject) => {
-      const worker = registration.installing || registration.waiting;
-      if (!worker) return reject(new Error("Serviço de notificações indisponível."));
-      const timeout = setTimeout(() => { cleanup(); reject(new Error("O serviço de notificações não ficou pronto.")); }, 15000);
-      const cleanup = () => { clearTimeout(timeout); worker.removeEventListener("statechange", check); };
-      const check = () => {
-        if (worker.state === "activated") { cleanup(); resolve(); }
-        else if (worker.state === "redundant") { cleanup(); reject(new Error("Falha na ativação do serviço de notificações.")); }
-      };
-      worker.addEventListener("statechange", check);
-      check();
-    });
 
-    const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY?.trim();
-    if (!vapidKey) throw new Error("A chave pública de notificações não foi configurada no build.");
+    let swRegistration = registration;
+    if (!registration.active || registration.active.state !== "activated") {
+      try {
+        const ready = await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise<null>((_, reject) =>
+            setTimeout(() => reject(new Error("Timeout ao aguardar ativação do serviço de notificações.")), 10000)
+          ),
+        ]);
+        if (ready) swRegistration = ready;
+      } catch (err) {
+        console.warn("[Firebase Messaging] Aguardando ativação do service worker:", err);
+      }
+    }
+
+    const vapidKey =
+      process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY?.trim() ||
+      DEFAULT_FIREBASE_VAPID_KEY;
 
     const token = await getToken(messaging, {
       serviceWorkerRegistration: swRegistration,
-      ...(vapidKey ? { vapidKey } : {}),
+      vapidKey,
     });
 
     return token || null;
   } catch (error) {
-    console.error("[Firebase Messaging] Falha ao obter token FCM:", errorCode(error));
+    console.error("[Firebase Messaging] Falha ao obter token FCM:", error);
     return null;
   }
 }

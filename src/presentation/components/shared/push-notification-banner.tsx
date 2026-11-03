@@ -1,19 +1,40 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { Bell, BellRing } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 
 export function PushNotificationBanner({ sessionId }: { sessionId?: string }) {
   const { permission, isSubscribing, isSubscribed, subscribe, isSupported, error } =
     usePushNotifications(sessionId);
+  const [mounted, setMounted] = useState(false);
 
-  if (!isSupported || isSubscribed) {
-    return null;
-  }
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
-  if (permission === "denied") {
+  const handleActivate = async () => {
+    const success = await subscribe();
+    if (success) {
+      toast.add({
+        title: "Notificações ativadas!",
+        description: "Você receberá avisos operacionais e de tarefas em tempo real no seu dispositivo.",
+        type: "success",
+      });
+    }
+  };
+
+  // Se não montado no cliente, não suportado, negado, ou se já concedido/inscrito (sem erro pendente de ativação), não renderiza banner
+  if (
+    !mounted ||
+    !isSupported ||
+    permission === "denied" ||
+    isSubscribed ||
+    (permission === "granted" && !error && !isSubscribing)
+  ) {
     return null;
   }
 
@@ -38,7 +59,7 @@ export function PushNotificationBanner({ sessionId }: { sessionId?: string }) {
         type="button"
         size="sm"
         disabled={isSubscribing}
-        onClick={() => subscribe()}
+        onClick={handleActivate}
         className="h-9 px-4 rounded-[12px] bg-[var(--brand-900)] text-white hover:bg-[var(--brand-700)] shrink-0 self-end sm:self-auto gap-1.5"
       >
         {isSubscribing ? (
@@ -49,7 +70,7 @@ export function PushNotificationBanner({ sessionId }: { sessionId?: string }) {
         ) : (
           <>
             <Bell className="size-3.5" />
-            <span>Ativar notificações</span>
+            <span>{error ? "Tentar novamente" : "Ativar notificações"}</span>
           </>
         )}
       </Button>

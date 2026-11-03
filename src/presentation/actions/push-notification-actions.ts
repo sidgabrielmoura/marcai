@@ -39,8 +39,8 @@ export async function saveDeviceTokenAction(token: string, userAgent?: string, e
         });
         return saved ? { success: true } : { error: "Sessão encerrada." };
     }
-    catch {
-        console.error("[Push] Falha ao registrar inscrição.");
+    catch (err) {
+        console.error("[Push] Falha ao registrar inscrição:", err);
         return { error: "Não foi possível ativar as notificações. Tente novamente." };
     }
 }
