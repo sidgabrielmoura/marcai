@@ -5,10 +5,11 @@ import {prisma} from '@/infrastructure/database/prisma';
 import {fail} from './http';
 import {finishLogin} from './security';
 import type {AuthenticatedContext} from '@/application/security/auth-context';
-const rpID='marcai-coral.vercel.app';
+const rpID='tarefai.com';
+const webOrigin='https://'+rpID;
 function origins(){
- const configured=JSON.parse(process.env.MOBILE_PASSKEY_ORIGINS??'["https://marcai-coral.vercel.app"]') as string[];
- if(!Array.isArray(configured)||configured.some(v=>v!=='https://marcai-coral.vercel.app'&&!/^android:apk-key-hash:[A-Za-z0-9_-]+$/.test(v)))throw new Error('Invalid passkey origins');
+ const configured=JSON.parse(process.env.MOBILE_PASSKEY_ORIGINS??JSON.stringify([webOrigin])) as string[];
+ if(!Array.isArray(configured)||configured.some(v=>v!==webOrigin&&!/^android:apk-key-hash:[A-Za-z0-9_-]+$/.test(v)))throw new Error('Invalid passkey origins');
  return configured;
 }
 export async function authenticationOptions(input:unknown) {
