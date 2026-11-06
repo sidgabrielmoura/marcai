@@ -169,7 +169,7 @@ export function ProcessListClient({
             <CheckCircle2 className="size-4 text-emerald-700" />
           </div>
           <div className="min-w-0">
-            <span className="text-lg font-bold text-[var(--text-primary)] tabular-nums block leading-tight">
+            <span className="text-base font-semibold text-[var(--text-primary)] tabular-nums block leading-tight">
               {activeCount}
             </span>
             <span className="text-xs text-[var(--text-secondary)]">processos ativos</span>
@@ -181,7 +181,7 @@ export function ProcessListClient({
             <Calendar className="size-4 text-muted-foreground" />
           </div>
           <div className="min-w-0">
-            <span className="text-lg font-bold text-[var(--text-primary)] tabular-nums block leading-tight">
+            <span className="text-base font-semibold text-[var(--text-primary)] tabular-nums block leading-tight">
               {withScheduleCount}
             </span>
             <span className="text-xs text-[var(--text-secondary)]">com repetição ativa</span>
@@ -193,7 +193,7 @@ export function ProcessListClient({
             <Layers className="size-4 text-muted-foreground" />
           </div>
           <div className="min-w-0">
-            <span className="text-lg font-bold text-[var(--text-primary)] tabular-nums block leading-tight">
+            <span className="text-base font-semibold text-[var(--text-primary)] tabular-nums block leading-tight">
               {processes.length}
             </span>
             <span className="text-xs text-[var(--text-secondary)]">total cadastrado</span>

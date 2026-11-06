@@ -212,39 +212,39 @@ export function ManagementExecutionsClient({
 
       {/* Cartões de Indicadores */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="border-[var(--border-subtle)] bg-[var(--surface)]">
-          <CardContent className="p-4">
-            <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider block">
+        <Card className="border-[var(--border-subtle)] bg-[var(--surface)] shadow-none rounded-xl">
+          <CardContent className="p-3.5">
+            <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block">
               Total de Execuções
             </span>
-            <p className="text-2xl font-bold text-[var(--brand-900)] mt-1">{totalCount}</p>
+            <p className="text-xl font-semibold text-[var(--brand-900)] tabular-nums mt-0.5">{totalCount}</p>
           </CardContent>
         </Card>
 
-        <Card className="border-[var(--border-subtle)] bg-[var(--surface)]">
-          <CardContent className="p-4">
-            <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider block">
+        <Card className="border-[var(--border-subtle)] bg-[var(--surface)] shadow-none rounded-xl">
+          <CardContent className="p-3.5">
+            <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block">
               Concluídas
             </span>
-            <p className="text-2xl font-bold text-emerald-600 mt-1">{completedCount}</p>
+            <p className="text-xl font-semibold text-emerald-700 tabular-nums mt-0.5">{completedCount}</p>
           </CardContent>
         </Card>
 
-        <Card className="border-[var(--border-subtle)] bg-[var(--surface)]">
-          <CardContent className="p-4">
-            <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider block">
+        <Card className="border-[var(--border-subtle)] bg-[var(--surface)] shadow-none rounded-xl">
+          <CardContent className="p-3.5">
+            <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block">
               Em Andamento
             </span>
-            <p className="text-2xl font-bold text-blue-600 mt-1">{inProgressCount}</p>
+            <p className="text-xl font-semibold text-blue-700 tabular-nums mt-0.5">{inProgressCount}</p>
           </CardContent>
         </Card>
 
-        <Card className="border-[var(--border-subtle)] bg-[var(--surface)]">
-          <CardContent className="p-4">
-            <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider block">
+        <Card className="border-[var(--border-subtle)] bg-[var(--surface)] shadow-none rounded-xl">
+          <CardContent className="p-3.5">
+            <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block">
               Taxa de Conclusão
             </span>
-            <p className="text-2xl font-bold text-[var(--brand-900)] mt-1">{completionRate}%</p>
+            <p className="text-xl font-semibold text-[var(--brand-900)] tabular-nums mt-0.5">{completionRate}%</p>
           </CardContent>
         </Card>
       </div>

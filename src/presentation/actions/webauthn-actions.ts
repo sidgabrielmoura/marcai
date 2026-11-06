@@ -16,10 +16,10 @@ import { beginLoginChallenge } from "@/infrastructure/security/login-challenge";
 
 // Helper to dynamically resolve WebAuthn RP configuration & allowed origins
 async function getWebAuthnConfig(){
- const canonical='https://marcai-coral.vercel.app';
+ const canonical='https://tarefai.com';
  if(process.env.NODE_ENV==='production'){
   const url=new URL(process.env.NEXT_PUBLIC_APP_URL||process.env.APP_URL||canonical);
-  if(url.origin!==canonical)throw new Error('Origem de produção inválida.');
+  if(![canonical,'https://marcai-coral.vercel.app'].includes(url.origin))throw new Error('Origem de produção inválida.');
   return {rpName:'Marcaí',rpID:url.hostname,origins:[url.origin]};
  }
  const {headers}=await import('next/headers'),h=await headers();
@@ -162,7 +162,7 @@ export async function verifyWebAuthnAuthentication(response: any, mobileAuthToke
       user: {
         include: {
           memberships: {
-            where: { status: "ACTIVE", organization: { status: "ACTIVE" } },
+            where: { status: "ACTIVE", organization: { status: { in: ["ACTIVE", "SUSPENDED"] } } },
             include: { organization: true },
           },
         },
@@ -250,6 +250,7 @@ export async function verifyWebAuthnAuthentication(response: any, mobileAuthToke
 
   if (user.memberships.length === 1) {
     const member = user.memberships[0];
+    const orgStatus = (member.organization.status as "ACTIVE" | "SUSPENDED") || "ACTIVE";
     await createSession({
       userId: user.id,
       name: user.name,
@@ -258,14 +259,23 @@ export async function verifyWebAuthnAuthentication(response: any, mobileAuthToke
       activeMemberId: member.id,
       role: member.role as Role,
       employeeCode: member.employeeCode,
+      orgStatus,
     });
+    if (orgStatus === "SUSPENDED") {
+      return {
+        success: true,
+        redirectUrl: "/suspended",
+      };
+    }
     return {
       success: true,
       redirectUrl: member.role === "EMPLOYEE" ? "/tasks" : "/overview",
     };
   }
 
-  const primaryMember = user.memberships[0];
+  const hasActiveOrg = user.memberships.some(m => m.organization.status === "ACTIVE");
+  const primaryMember = user.memberships.find(m => m.organization.status === "ACTIVE") || user.memberships[0];
+  const orgStatus = (primaryMember.organization.status as "ACTIVE" | "SUSPENDED") || "ACTIVE";
   await createSession({
     userId: user.id,
     name: user.name,
@@ -274,7 +284,12 @@ export async function verifyWebAuthnAuthentication(response: any, mobileAuthToke
     activeMemberId: primaryMember.id,
     role: primaryMember.role as Role,
     employeeCode: primaryMember.employeeCode,
+    orgStatus,
   });
+
+  if (!hasActiveOrg) {
+    return { success: true, redirectUrl: "/suspended" };
+  }
 
   return { success: true, redirectUrl: "/select-org" };
 }

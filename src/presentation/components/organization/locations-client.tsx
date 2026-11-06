@@ -215,7 +215,7 @@ export function LocationsClient({
                   className={cn(
                     "text-xs font-semibold px-2.5 py-1 rounded-lg border",
                     isLimitReached
-                      ? "bg-amber-50 text-amber-900 border-amber-300 dark:bg-amber-950/40 dark:text-amber-200"
+                      ? "bg-zinc-50 text-zinc-900 border-zinc-300 dark:bg-zinc-950/40 dark:text-zinc-200"
                       : "bg-muted/50 text-muted-foreground border-border"
                   )}
                 >
@@ -282,7 +282,7 @@ export function LocationsClient({
                 </span>
               </div>
 
-              <h3 className="text-foreground text-[length:var(--type-card-title)] font-bold">
+              <h3 className="text-foreground text-sm font-semibold">
                 {loc.name}
               </h3>
               {loc.address ? (

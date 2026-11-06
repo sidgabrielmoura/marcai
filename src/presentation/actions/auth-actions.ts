@@ -60,7 +60,7 @@ export async function loginWithPasswordAction(
     include: {
       passkeys: { select: { id: true } },
       memberships: {
-        where: { status: "ACTIVE", organization: { status: "ACTIVE" } },
+        where: { status: "ACTIVE", organization: { status: { in: ["ACTIVE", "SUSPENDED"] } } },
         include: { organization: true },
       },
     },
@@ -98,6 +98,7 @@ export async function loginWithPasswordAction(
   // Se tiver apenas 1 organização, define imediatamente
   if (user.memberships.length === 1) {
     const member = user.memberships[0];
+    const orgStatus = (member.organization.status as "ACTIVE" | "SUSPENDED") || "ACTIVE";
     await createSession({
       userId: user.id,
       name: user.name,
@@ -106,7 +107,12 @@ export async function loginWithPasswordAction(
       activeMemberId: member.id,
       role: member.role as Role,
       employeeCode: member.employeeCode,
+      orgStatus,
     });
+
+    if (orgStatus === "SUSPENDED") {
+      redirect("/suspended");
+    }
 
     const destination = member.role === "EMPLOYEE" ? "/tasks" : "/overview";
     if (user.passkeys.length === 0) {
@@ -116,8 +122,11 @@ export async function loginWithPasswordAction(
     }
   }
 
-  // Se possuir múltiplos vínculos, grava sessão parcial para seleção
-  const primaryMember = user.memberships[0];
+  // Se possuir múltiplos vínculos
+  const hasActiveOrg = user.memberships.some(m => m.organization.status === "ACTIVE");
+  const primaryMember = user.memberships.find(m => m.organization.status === "ACTIVE") || user.memberships[0];
+  const orgStatus = (primaryMember.organization.status as "ACTIVE" | "SUSPENDED") || "ACTIVE";
+
   await createSession({
     userId: user.id,
     name: user.name,
@@ -126,7 +135,13 @@ export async function loginWithPasswordAction(
     activeMemberId: primaryMember.id,
     role: primaryMember.role as Role,
     employeeCode: primaryMember.employeeCode,
+    orgStatus,
   });
+
+  if (!hasActiveOrg) {
+    // Se todas as organizações do usuário estiverem suspensas, direciona para a tela de suspensão
+    redirect("/suspended");
+  }
 
   const destination = "/select-org";
   if (user.passkeys.length === 0) {
@@ -158,7 +173,7 @@ export async function loginWithPinAction(
     where: { slug: organizationSlug.toLowerCase().trim() },
   });
 
-  if (!org || org.status !== "ACTIVE") {
+  if (!org || !["ACTIVE", "SUSPENDED"].includes(org.status)) {
     return { error: "Organização não encontrada ou inativa." };
   }
 
@@ -198,6 +213,8 @@ export async function loginWithPinAction(
     redirect("/verify-access");
   }
 
+  const orgStatus = (org.status as "ACTIVE" | "SUSPENDED") || "ACTIVE";
+
   await createSession({
     userId: member.user.id,
     name: member.user.name,
@@ -206,7 +223,12 @@ export async function loginWithPinAction(
     activeMemberId: member.id,
     role: member.role as Role,
     employeeCode: member.employeeCode,
+    orgStatus,
   });
+
+  if (orgStatus === "SUSPENDED") {
+    redirect("/suspended");
+  }
 
   const destination = member.role === "EMPLOYEE" ? "/tasks" : "/overview";
   if (member.user.passkeys.length === 0) {
@@ -239,11 +261,14 @@ export async function switchOrganizationAction(targetOrgId: string) {
   if (
     !member ||
     member.status !== "ACTIVE" ||
-    member.organization.status !== "ACTIVE" || member.user.status !== "ACTIVE"
+    !["ACTIVE", "SUSPENDED"].includes(member.organization.status) ||
+    member.user.status !== "ACTIVE"
   ) {
     throw new Error("Você não possui permissão para acessar esta organização.");
   }
   if (!hasSecondFactorProof(member.user, session.secondFactorProof)) redirect("/login");
+
+  const orgStatus = (member.organization.status as "ACTIVE" | "SUSPENDED") || "ACTIVE";
 
   await createSession({
     userId: member.user.id,
@@ -254,7 +279,12 @@ export async function switchOrganizationAction(targetOrgId: string) {
     role: member.role as Role,
     employeeCode: member.employeeCode,
     secondFactorProof: session.secondFactorProof,
+    orgStatus,
   });
+
+  if (orgStatus === "SUSPENDED") {
+    redirect("/suspended");
+  }
 
   if (member.role === "EMPLOYEE") {
     redirect("/tasks");
@@ -269,6 +299,7 @@ export type UserOrganizationOption = {
   slug: string;
   role: Role;
   isActive: boolean;
+  status?: string;
 };
 
 export async function getUserOrganizationsAction(): Promise<UserOrganizationOption[]> {
@@ -281,7 +312,7 @@ export async function getUserOrganizationsAction(): Promise<UserOrganizationOpti
     where: {
       userId: session.userId,
       status: "ACTIVE",
-      organization: { status: "ACTIVE" },
+      organization: { status: { in: ["ACTIVE", "SUSPENDED"] } },
       user: { status: "ACTIVE" },
     },
     include: {
@@ -290,6 +321,7 @@ export async function getUserOrganizationsAction(): Promise<UserOrganizationOpti
           id: true,
           name: true,
           slug: true,
+          status: true,
         },
       },
     },
@@ -304,6 +336,7 @@ export async function getUserOrganizationsAction(): Promise<UserOrganizationOpti
     slug: m.organization.slug,
     role: m.role as Role,
     isActive: m.organization.id === session.activeOrgId,
+    status: m.organization.status,
   }));
 }
 
@@ -324,7 +357,8 @@ export async function loginWithMobileSessionAction(token: string) {
     where: { id: mobileSession.userId },
     include: {
       memberships: {
-        where: { id: mobileSession.memberId,status:"ACTIVE",organization:{status:"ACTIVE"} },
+        where: { id: mobileSession.memberId, status: "ACTIVE", organization: { status: { in: ["ACTIVE", "SUSPENDED"] } } },
+        include: { organization: true },
       },
       passkeys: {
         select: { id: true },
@@ -344,6 +378,8 @@ export async function loginWithMobileSessionAction(token: string) {
     return { success: true, redirectUrl: "/verify-access" };
   }
 
+  const orgStatus = (member.organization.status as "ACTIVE" | "SUSPENDED") || "ACTIVE";
+
   await createSession({
     userId: user.id,
     name: user.name,
@@ -352,9 +388,12 @@ export async function loginWithMobileSessionAction(token: string) {
     activeMemberId: member.id,
     role: member.role as Role,
     employeeCode: member.employeeCode,
+    orgStatus,
   });
 
-
+  if (orgStatus === "SUSPENDED") {
+    return { success: true, redirectUrl: "/suspended" };
+  }
 
   const destination = member.role === "EMPLOYEE" ? "/tasks" : "/overview";
   if (user.passkeys.length === 0) {

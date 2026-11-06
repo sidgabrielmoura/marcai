@@ -43,6 +43,10 @@ import {
 } from "@/components/ui/native-select";
 import { uiLabel } from "../shared/ui-labels";
 import { TaskActivityHistory } from "./task-activity-history";
+import { TaskEvidenceItem } from "@/presentation/components/mobile/task-evidence-item";
+import { EmployeeTaskForm } from "@/presentation/components/mobile/employee-task-form";
+import { TaskTimeline } from "@/presentation/components/mobile/task-timeline";
+import { activityActor, viewersWithoutClaim } from "@/presentation/lib/task-activity";
 
 function isPauseOccurrence(o: {
   type?: string;
@@ -209,6 +213,7 @@ interface ManagementTaskDetailProps {
       id: string;
       type: string;
       required: boolean;
+      minQuantity?: number;
       executionStage: string;
       submissions: Array<{
         id: string;
@@ -216,6 +221,7 @@ interface ManagementTaskDetailProps {
         storageKey: string | null;
         fileUrl?: string | null;
         publicId?: string | null;
+        rejectionReason?: string | null;
         validationStatus: string;
         attemptNumber: number;
         createdAt: Date | string;
@@ -823,38 +829,37 @@ export function ManagementTaskDetailClient({
 
       {/* Tarefa com Perguntas: Perguntas e Respostas */}
       {isForm && formFieldsList.length > 0 ? (
-        <Card className="bg-[var(--surface)] rounded-[18px] p-5 shadow-none border-[var(--border-subtle)] space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] pb-4">
+        <Card className="bg-[var(--surface)] rounded-[18px] p-3.5 sm:p-4 shadow-none border-[var(--border-subtle)] space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] pb-2.5">
             <div>
-              <div className="flex items-center gap-2">
-                <ClipboardList className="size-5 text-brand-900" />
-                <h3 className="text-[var(--brand-900)] text-[length:var(--type-card-title)] font-bold">
-                  Perguntas e Respostas da Tarefa
+              <div className="flex items-center gap-1.5">
+                <ClipboardList className="size-3.5 text-brand-900" />
+                <h3 className="text-[var(--brand-900)] text-[11px] uppercase tracking-wider font-bold">
+                  Perguntas e Respostas
                 </h3>
               </div>
-              <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                Respostas registradas pelo colaborador para cada pergunta desta
-                tarefa.
+              <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">
+                Respostas registradas pelo colaborador para esta tarefa.
               </p>
             </div>
             <div className="flex items-center gap-2">
               {isFullyAnswered ? (
-                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 font-semibold px-3 py-1 rounded-full flex items-center gap-1.5 text-xs">
-                  <CheckCircle2 className="size-3.5 text-emerald-600" />
+                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1 text-[10px]">
+                  <CheckCircle2 className="size-3 text-emerald-600" />
                   100% Respondido ({answeredQuestions}/{totalQuestions})
                 </Badge>
               ) : answeredQuestions > 0 ? (
-                <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 font-semibold px-3 py-1 rounded-full flex items-center gap-1.5 text-xs">
-                  <Clock className="size-3.5 text-amber-600" />
+                <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1 text-[10px]">
+                  <Clock className="size-3 text-amber-600" />
                   {answeredQuestions} de {totalQuestions} respondidas (
                   {completionPercentage}%)
                 </Badge>
               ) : (
                 <Badge
                   variant="outline"
-                  className="text-slate-600 border-slate-300 font-medium px-3 py-1 rounded-full flex items-center gap-1.5 text-xs"
+                  className="text-slate-600 border-slate-300 font-medium px-2.5 py-0.5 rounded-full flex items-center gap-1 text-[10px]"
                 >
-                  <Clock className="size-3.5 text-slate-400" />
+                  <Clock className="size-3 text-slate-400" />
                   Aguardando respostas ({totalQuestions} perguntas)
                 </Badge>
               )}
@@ -864,11 +869,11 @@ export function ManagementTaskDetailClient({
           {/* Barra de progresso visual */}
           {totalQuestions > 0 && (
             <div className="space-y-1">
-              <div className="flex justify-between text-[11px] font-medium text-[var(--text-secondary)]">
+              <div className="flex justify-between text-[10px] font-medium text-[var(--text-secondary)]">
                 <span>Progresso do preenchimento</span>
                 <span>{completionPercentage}%</span>
               </div>
-              <div className="w-full bg-[var(--canvas)] rounded-full h-2 overflow-hidden border border-[var(--border-subtle)]">
+              <div className="w-full bg-[var(--canvas)] rounded-full h-1.5 overflow-hidden border border-[var(--border-subtle)]">
                 <div
                   className={`h-full transition-all duration-300 rounded-full ${
                     isFullyAnswered ? "bg-emerald-500" : "bg-brand-900"
@@ -880,208 +885,15 @@ export function ManagementTaskDetailClient({
           )}
 
           {/* Lista de perguntas */}
-          <div className="space-y-3 pt-1">
-            {formFieldsList.map((field: any, idx: number) => {
-              const answer = task.formAnswers?.[field.id];
-              const isAnswered =
-                answer !== undefined && answer !== null && answer !== "";
-              return (
-                <div
-                  key={field.id}
-                  className="p-4 bg-[var(--canvas)] border border-[var(--border-subtle)] rounded-[16px] flex flex-col gap-2.5 transition-all"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-2.5">
-                      <span className="size-7 rounded-lg bg-brand-soft border border-brand-200 flex items-center justify-center text-xs font-bold text-brand-900 shrink-0 select-none mt-0.5">
-                        {idx + 1}
-                      </span>
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-sm font-semibold text-[var(--brand-900)] leading-snug">
-                          {field.question ||
-                            field.label ||
-                            "Pergunta sem título"}
-                        </span>
-                        {field.required && (
-                          <span className="text-[11px] font-semibold text-red-600 flex items-center gap-0.5">
-                            * Obrigatória
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] font-medium shrink-0 px-2 py-0.5 rounded-md bg-[var(--surface)] text-[var(--text-secondary)] border-[var(--border-subtle)]"
-                    >
-                      {field.type === "SHORT_TEXT" && "Texto Curto"}
-                      {field.type === "LONG_TEXT" && "Texto Longo"}
-                      {field.type === "RATING" && "Avaliação (1-5)"}
-                      {field.type === "BOOLEAN" && "Sim / Não"}
-                      {field.type === "PHOTO" && "Foto"}
-                      {field.type === "VIDEO" && "Vídeo"}
-                      {field.type === "FILE" && "Arquivos"}
-                      {field.type === "NUMBER" && "Número"}
-                      {field.type === "MULTIPLE_CHOICE" && "Múltipla escolha"}
-                      {(!field.type ||
-                        ![
-                          "SHORT_TEXT",
-                          "LONG_TEXT",
-                          "RATING",
-                          "BOOLEAN",
-                          "PHOTO",
-                          "VIDEO",
-                          "FILE",
-                          "NUMBER",
-                          "MULTIPLE_CHOICE",
-                        ].includes(field.type)) &&
-                        (field.type || "Texto")}
-                    </Badge>
-                  </div>
-
-                  {/* Resposta do Colaborador */}
-                  <div className="mt-1">
-                    <span className="text-[11px] uppercase tracking-wider font-semibold text-[var(--text-secondary)] block mb-1">
-                      Resposta:
-                    </span>
-                    <div className="text-sm text-[var(--text-primary)] font-medium bg-[var(--surface)] p-3 rounded-[12px] border border-[var(--border-subtle)]">
-                      {!isAnswered ? (
-                        <div className="flex items-center gap-2 text-slate-400 dark:text-slate-500 italic text-xs py-0.5">
-                          <Clock className="size-3.5 text-slate-400 shrink-0" />
-                          <span>Aguardando resposta do colaborador</span>
-                        </div>
-                      ) : field.type === "BOOLEAN" ? (
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
-                              answer === true || answer === "true"
-                                ? "bg-emerald-100 text-emerald-900 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300"
-                                : "bg-slate-100 text-slate-800 border border-slate-200 dark:bg-slate-800 dark:text-slate-300"
-                            }`}
-                          >
-                            {answer === true || answer === "true" ? (
-                              <>
-                                <CheckCircle2 className="size-3.5 text-emerald-600" />{" "}
-                                Sim
-                              </>
-                            ) : (
-                              <>
-                                <XCircle className="size-3.5 text-slate-500" />{" "}
-                                Não
-                              </>
-                            )}
-                          </span>
-                        </div>
-                      ) : field.type === "RATING" ? (
-                        <div className="flex items-center gap-3">
-                          <div className="flex gap-1 text-amber-500 text-base">
-                            {Array.from({ length: 5 }).map((_, i) => (
-                              <span key={i}>
-                                {i < Number(answer) ? "★" : "☆"}
-                              </span>
-                            ))}
-                          </div>
-                          <span className="text-xs font-semibold text-[var(--brand-900)]">
-                            {answer} de 5 estrelas
-                          </span>
-                        </div>
-                      ) : field.type === "PHOTO" ? (
-                        <div className="flex flex-col gap-2">
-                          <div className="flex items-center gap-2.5 text-brand-900 dark:text-primary">
-                            <Camera className="size-4 text-brand-700 shrink-0" />
-                            <span className="font-semibold text-xs">
-                              {typeof answer === "object"
-                                ? answer.fileName
-                                : String(answer)}
-                            </span>
-                          </div>
-                          {typeof answer === "object" &&
-                            (answer.fileUrl || answer.storageKey) && (
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <a
-                                  href={
-                                    answer.fileUrl ||
-                                    `/api/tasks/${task.id}/form-file/${answer.storageKey}`
-                                  }
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--canvas)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--brand-900)] hover:bg-[var(--surface)] transition-colors"
-                                >
-                                  <ExternalLink className="size-3.5" />
-                                  <span>Visualizar foto</span>
-                                </a>
-                              </div>
-                            )}
-                        </div>
-                      ) : field.type === "VIDEO" ? (
-                        <div className="flex flex-col gap-2">
-                          <div className="flex items-center gap-2.5 text-brand-900 dark:text-primary">
-                            <Video className="size-4 text-brand-700 shrink-0" />
-                            <span className="font-semibold text-xs">
-                              {typeof answer === "object"
-                                ? answer.fileName
-                                : String(answer)}
-                            </span>
-                          </div>
-                          {typeof answer === "object" &&
-                            (answer.fileUrl || answer.storageKey) && (
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <a
-                                  href={
-                                    answer.fileUrl ||
-                                    `/api/tasks/${task.id}/form-file/${answer.storageKey}`
-                                  }
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--canvas)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--brand-900)] hover:bg-[var(--surface)] transition-colors"
-                                >
-                                  <ExternalLink className="size-3.5" />
-                                  <span>Assistir / Baixar vídeo</span>
-                                </a>
-                              </div>
-                            )}
-                        </div>
-                      ) : field.type === "FILE" ? (
-                        <div className="flex flex-col gap-2">
-                          <div className="flex items-center gap-2.5 text-brand-900 dark:text-primary">
-                            <Paperclip className="size-4 text-brand-700 shrink-0" />
-                            <span className="font-semibold text-xs">
-                              {typeof answer === "object"
-                                ? answer.fileName
-                                : String(answer)}
-                            </span>
-                            {typeof answer === "object" && answer.fileSize && (
-                              <span className="text-[11px] text-muted-foreground">
-                                ({Math.round(answer.fileSize / 1024)} KB)
-                              </span>
-                            )}
-                          </div>
-                          {typeof answer === "object" &&
-                            (answer.fileUrl || answer.storageKey) && (
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <a
-                                  href={
-                                    answer.fileUrl ||
-                                    `/api/tasks/${task.id}/form-file/${answer.storageKey}`
-                                  }
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--canvas)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--brand-900)] hover:bg-[var(--surface)] transition-colors"
-                                >
-                                  <Download className="size-3.5" />
-                                  <span>Baixar anexo</span>
-                                </a>
-                              </div>
-                            )}
-                        </div>
-                      ) : (
-                        <p className="whitespace-pre-wrap leading-relaxed text-xs sm:text-sm">
-                          {String(answer)}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="pt-1">
+            <EmployeeTaskForm
+              taskId={task.id}
+              scope={`${task.id}:mgmt`}
+              fields={formFieldsList}
+              answers={task.formAnswers ?? {}}
+              disabled={true}
+              onChange={() => {}}
+            />
           </div>
         </Card>
       ) : isForm ? (
@@ -1110,96 +922,50 @@ export function ManagementTaskDetailClient({
       {/* Evidências Coletadas (oculta se for form sem evidências exigidas) */}
       {(!isForm || task.evidenceRequirements.length > 0) && (
         <Card className="bg-[var(--surface)] rounded-[18px] p-5 shadow-none border-[var(--border-subtle)]">
-          <h3 className="text-[var(--text-secondary)] mb-3 text-[length:var(--type-card-title)] font-bold">
-            {isForm ? "Evidências Fotográficas Adicionais" : "Evidências"}
-          </h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-[var(--text-secondary)] text-[length:var(--type-card-title)] font-bold">
+              {isForm ? "Evidências Fotográficas Adicionais" : "Comprovações e Evidências"}
+            </h3>
+            {task.evidenceRequirements.length > 0 && (
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-200/80 dark:bg-muted text-slate-800 dark:text-foreground">
+                {task.evidenceRequirements.filter((r) => r.submissions.filter((s) => s.validationStatus === "VALID").length >= (r.minQuantity ?? 1)).length}
+                /{task.evidenceRequirements.length} entregues
+              </span>
+            )}
+          </div>
 
           {task.evidenceRequirements.length === 0 ? (
             <p className="text-[length:var(--type-label)] text-[var(--text-secondary)]">
               Esta tarefa não exige evidências.
             </p>
           ) : (
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3.5">
               {task.evidenceRequirements.map((req) => (
-                <Card
+                <TaskEvidenceItem
                   key={req.id}
-                  className="p-3.5 rounded-[16px] bg-[var(--canvas)] border-[var(--border-subtle)] shadow-none"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <Camera className="size-4 text-[var(--brand-700)]" />
-                      <span className="text-[length:var(--type-label)] font-semibold text-[var(--brand-900)]">
-                        {uiLabel(req.type)}
-                      </span>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className="text-[length:var(--type-caption)] font-semibold px-2 py-0.5 rounded-full bg-[var(--surface)] border-[var(--border-subtle)] text-[var(--brand-900)]"
-                    >
-                      {(
-                        {
-                          START: "Antes de iniciar",
-                          DURING: "Durante a execução",
-                          COMPLETION: "Para concluir",
-                        } as Record<string, string>
-                      )[req.executionStage] || req.executionStage}
-                    </Badge>
-                  </div>
-
-                  <div className="flex flex-col gap-1.5 mt-2">
-                    {req.submissions.length === 0 ? (
-                      <span className="text-[length:var(--type-label)] text-amber-800 font-medium">
-                        Aguardando envio do colaborador.
-                      </span>
-                    ) : (
-                      req.submissions.map((sub) => (
-                        <Card
-                          key={sub.id}
-                          className="flex items-center justify-between p-2 rounded-[10px] bg-[var(--surface)] border-[var(--border-subtle)] text-[length:var(--type-label)] shadow-none"
-                        >
-                          <div>
-                            <span className="font-semibold text-[var(--brand-900)]">
-                              {sub.fileUrl || sub.storageKey ? (
-                                <a
-                                  className="underline hover:text-brand-700"
-                                  href={
-                                    sub.fileUrl || `/api/evidence/${sub.id}`
-                                  }
-                                  target="_blank"
-                                  rel="noreferrer"
-                                >
-                                  Visualizar / Baixar {sub.value || "arquivo"}
-                                </a>
-                              ) : (
-                                sub.value || "Evidência enviada"
-                              )}
-                            </span>
-                            <span className="text-[length:var(--type-caption)] text-[var(--text-secondary)] block">
-                              Tentativa #{sub.attemptNumber} •{" "}
-                              {formatTimeInTimezone(sub.createdAt, task.timezone)}
-                            </span>
-                          </div>
-                          <Badge
-                            variant={
-                              sub.validationStatus === "VALID"
-                                ? "default"
-                                : "destructive"
-                            }
-                            className={`text-[length:var(--type-caption)] font-semibold px-2 py-0.5 rounded-full ${
-                              sub.validationStatus === "VALID"
-                                ? "bg-emerald-100 text-emerald-900 border-transparent"
-                                : "bg-red-100 text-red-900 border-transparent"
-                            }`}
-                          >
-                            {sub.validationStatus === "VALID"
-                              ? "Validada"
-                              : "Rejeitada"}
-                          </Badge>
-                        </Card>
-                      ))
-                    )}
-                  </div>
-                </Card>
+                  scope={`${task.id}:mgmt`}
+                  timezone={task.timezone ?? undefined}
+                  taskId={task.id}
+                  requirement={{
+                    id: req.id,
+                    type: req.type,
+                    required: req.required,
+                    minQuantity: req.minQuantity ?? 1,
+                    executionStage: req.executionStage,
+                    submissions: req.submissions.map((s) => ({
+                      id: s.id,
+                      validationStatus: s.validationStatus,
+                      attemptNumber: s.attemptNumber,
+                      value: s.value,
+                      storageKey: s.storageKey,
+                      fileUrl: s.fileUrl,
+                      rejectionReason: s.rejectionReason,
+                      createdAt: typeof s.createdAt === "string" ? s.createdAt : s.createdAt.toISOString(),
+                    })),
+                  }}
+                  disabled={true}
+                  onDraftChange={() => {}}
+                />
               ))}
             </div>
           )}
@@ -1541,21 +1307,50 @@ export function ManagementTaskDetailClient({
         );
       })()}
 
-      {/* Auditoria Append-Only */}
-      <Card className="bg-[var(--surface)] rounded-[18px] p-5 shadow-none border-[var(--border-subtle)]">
-        <h3 className="text-[var(--text-secondary)] mb-3 flex items-center gap-1.5 text-[length:var(--type-card-title)] font-bold">
-          <History className="size-4" />
-          <span>Histórico de atividades</span>
-        </h3>
+      {/* Auditoria / Histórico no padrão do funcionário */}
+      <div className="flex flex-col gap-3">
+        {(() => {
+          const viewers = viewersWithoutClaim(
+            task.activityLogs,
+            task.assignments
+              .filter((assignment) => assignment.type === "PRIMARY")
+              .map((assignment) => assignment.memberId)
+          );
+          if (viewers.length === 0) return null;
+          return (
+            <Card className="bg-[var(--surface)] rounded-[18px] p-4 shadow-none border-[var(--border-subtle)]">
+              <div className="text-xs">
+                <p className="font-semibold text-[var(--text-primary)]">Visualizaram e não assumiram</p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  Abriram quando a tarefa estava sem responsável.
+                </p>
+                <ul className="mt-2 flex flex-col gap-1.5">
+                  {viewers.map((log) => (
+                    <li key={log.actorId} className="flex flex-wrap justify-between gap-x-3 gap-y-1">
+                      <span className="font-medium text-slate-700 dark:text-slate-300">
+                        {activityActor(log)}
+                      </span>
+                      <time dateTime={new Date(log.createdAt).toISOString()} className="text-muted-foreground text-[10px]">
+                        {formatDateTimeInTimezone(log.createdAt, task.timezone)}
+                      </time>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </Card>
+          );
+        })()}
 
-        <TaskActivityHistory
-          logs={task.activityLogs}
-          assignedMemberIds={task.assignments
-            .filter((assignment) => assignment.type === "PRIMARY")
-            .map((assignment) => assignment.memberId)}
-          timezone={task.timezone}
+        <TaskTimeline
+          events={task.activityLogs.map((l) => ({
+            id: l.id,
+            action: l.action,
+            createdAt: l.createdAt,
+            actorName: l.actorName || activityActor(l),
+          }))}
+          timezone={task.timezone ?? undefined}
         />
-      </Card>
+      </div>
 
       <Dialog open={showTransferModal} onOpenChange={setShowTransferModal}>
         <DialogContent className="sm:max-w-lg p-7!">

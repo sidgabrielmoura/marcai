@@ -1,17 +1,16 @@
+import { EmployeeNoticeList } from "@/presentation/components/mobile/employee-notice-list";
+import { EmployeeNoticeFilters } from "@/presentation/components/mobile/employee-filters";
+
+import { Settings2 } from "lucide-react";
 import {projectNotices} from "@/application/mobile/notifications";
 import Link from "next/link";
 import { getAuthenticatedContext } from "@/application/security/auth-context";
 import { prisma } from "@/infrastructure/database/prisma";
 import { EmployeeShell } from "@/presentation/components/mobile/employee-shell";
 import { PageHeader, EmptyState } from "@/presentation/components/shared";
-import {
-  markAllNotificationsReadAction,
-  markNotificationReadAction,
-  markNotificationReadAndNavigateAction,
-} from "@/presentation/actions/notification-actions";
+import { markAllNotificationsReadAction } from "@/presentation/actions/notification-actions";
 import { Bell, CheckCheck } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+
 import { Button } from "@/components/ui/button";
 import { PushNotificationBanner } from "@/presentation/components/shared/push-notification-banner";
 import { getSession } from "@/infrastructure/security/session";
@@ -64,48 +63,19 @@ export default async function NotificationsPage({
       role={c.role}
       userId={c.userId}
     >
-      <div className="page-stack">
+      <div className="page-stack employee-notices">
         <PageHeader
           title="Avisos"
-          subtitle={
-            unread
-              ? `${unread} ${unread === 1 ? "aviso ainda não lido" : "avisos ainda não lidos"}. Acompanhe as mudanças da sua operação.`
-              : "Todos os avisos estão em dia. O histórico continua disponível abaixo."
-          }
-          actions={
-            <form action={markAllNotificationsReadAction} className="w-full md:w-fit">
-              <Button type="submit" variant="outline" disabled={!unread} className="w-full">
-                <CheckCheck data-icon="inline-start" />
-                Marcar todos como lidos
-              </Button>
-            </form>
-          }
+          subtitle="Acompanhe o que precisa da sua atenção."
+          actions={<Button variant="outline" size="icon" aria-label="Estado das notificações" render={<Link href="/notification-status" />}><Settings2 /></Button>}
         />
 
         <PushNotificationBanner sessionId={(await getSession())?.sessionId} />
 
-        <nav className="flex gap-2 max-w-lg" aria-label="Filtrar avisos">
-          {[
-            ["all", "Todos"],
-            ["unread", "Não lidos"],
-            ["read", "Lidos"],
-          ].map(([value, label]) => (
-            <Button
-              key={value}
-              nativeButton={false}
-              variant={status === value ? "default" : "outline"}
-              className="flex-1"
-              render={
-                <Link
-                  href={`/notifications?status=${value}`}
-                  aria-current={status === value ? "page" : undefined}
-                />
-              }
-            >
-              {label}
-            </Button>
-          ))}
-        </nav>
+        <EmployeeNoticeFilters status={status} />
+        <form action={markAllNotificationsReadAction} className="employee-notices-mark-all">
+          <Button type="submit" variant="ghost" disabled={!unread}><CheckCheck data-icon="inline-start" />Marcar todos como lidos</Button>
+        </form>
 
         {!notifications.length ? (
           <EmptyState
@@ -114,93 +84,7 @@ export default async function NotificationsPage({
             icon={Bell}
           />
         ) : (
-          <div className="flex flex-col gap-3">
-            {notifications.map((n) => {
-              const destination=n.destination;
-              const taskLink=destination.taskId?'/tasks/'+destination.taskId:destination.executionId?'/executions/'+destination.executionId:null;
-
-
-              return (
-                <Card key={n.id}>
-                  <CardContent className="flex flex-col justify-between items-start gap-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {!n.readAt && <Badge>Novo</Badge>}
-                        {(n.priority === "HIGH" || n.priority === "CRITICAL") && (
-                          <Badge variant="destructive">
-                            {n.priority === "CRITICAL" ? "Crítico" : "Alta prioridade"}
-                          </Badge>
-                        )}
-                        {n.type === "APPROVAL_REQUESTED" && (
-                          <Badge variant="secondary">Aprovação</Badge>
-                        )}
-                        {n.type === "TASK_CORRECTION_REQUESTED" && (
-                          <Badge variant="destructive">Correção</Badge>
-                        )}
-                        {n.type === "TASK_UNBLOCKED" && (
-                          <Badge variant="outline">Liberada</Badge>
-                        )}
-                        {n.type === "TASK_OVERDUE" && (
-                          <Badge variant="destructive">Prazo Excedido</Badge>
-                        )}
-                        {n.type === "TASK_EXPIRING_SOON" && (
-                          <Badge variant="secondary">Vence em breve</Badge>
-                        )}
-                        {n.type === "OPERATIONAL_ALERT" && (
-                          <Badge variant="destructive">Impedimento</Badge>
-                        )}
-                        <h2 className="text-card-title font-semibold w-full">
-                          {n.title}
-                        </h2>
-                      </div>
-
-                      <p className="mt-2 text-muted-foreground">{n.message}</p>
-
-                      <p className="mt-2 text-caption text-muted-foreground">
-                        {n.createdAt.toLocaleString("pt-BR", {
-                          timeZone: "America/Sao_Paulo",
-                          dateStyle: "short",
-                          timeStyle: "short",
-                        })}
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2 w-full md:w-fit">
-                      {taskLink && (
-                        <form
-                          action={markNotificationReadAndNavigateAction}
-                          className="flex-1 md:flex-initial"
-                        >
-                          <input type="hidden" name="id" value={n.id} />
-                          <input type="hidden" name="url" value={taskLink} />
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            type="submit"
-                            className="w-full"
-                          >
-                            {destination.taskId?"Ver tarefa":"Ver processo"}
-                          </Button>
-                        </form>
-                      )}
-
-                      {!n.readAt && (
-                        <form
-                          action={markNotificationReadAction}
-                          className="flex-1 md:flex-initial"
-                        >
-                          <input type="hidden" name="id" value={n.id} />
-                          <Button variant="outline" size="sm" type="submit" className="w-full">
-                            Marcar como lido
-                          </Button>
-                        </form>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+          <EmployeeNoticeList notifications={notifications} />
         )}
 
         <nav

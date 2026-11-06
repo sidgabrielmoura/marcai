@@ -12,7 +12,7 @@ fs.mkdirSync(workspace, { recursive: true });
 if (fs.readdirSync(workspace).some(name=>name==='.env'||name.startsWith('.env.'))) throw new Error('The isolated workspace must not contain .env files.');
 const changedFile = (source, destination) => !fs.statSync(source).isFile() || !fs.existsSync(destination) || !fs.readFileSync(source).equals(fs.readFileSync(destination));
 for (const directory of ['src','scripts','prisma','public']) fs.cpSync(path.join(root,directory),path.join(workspace,directory),{recursive:true,filter:changedFile});
-for (const file of ['package.json','tsconfig.json','next.config.ts','postcss.config.mjs','prisma.config.ts']) {
+for (const file of ['package.json','tsconfig.json','next.config.ts','postcss.config.mjs','prisma.config.ts','.gitignore']) {
   const source=path.join(root,file),destination=path.join(workspace,file);
   if(changedFile(source,destination))fs.copyFileSync(source,destination);
 }

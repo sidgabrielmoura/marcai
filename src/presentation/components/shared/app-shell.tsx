@@ -320,26 +320,26 @@ export function AppShell({
   }, [pathname, mode]);
 
   useEffect(() => {
-    if(mode === 'platform') return;
-    let active=true,flight=false;
-    const pending=new Set<string>();
-    async function reconcile(){
-      if(flight||!active||document.hidden||!pending.size)return;
-      const kinds=[...pending];pending.clear();flight=true;
-      try{
-        if(kinds.every(k=>k==='NOTIFICATIONS_CHANGED')){
-          const count=await getUnreadNotificationsCountAction();if(active)setUnreadCount(count);
-        }else{
-          const summary=await getCurrentUserSummaryAction();
-          if(active&&summary){setUnreadCount(summary.unreadCount);setPendingApprovalsCount((summary as any).pendingApprovalsCount??0);}
+    if (mode === 'platform') return;
+    let active = true, flight = false;
+    const pending = new Set<string>();
+    async function reconcile() {
+      if (flight || !active || document.hidden || !pending.size) return;
+      const kinds = [...pending]; pending.clear(); flight = true;
+      try {
+        if (kinds.every(k => k === 'NOTIFICATIONS_CHANGED')) {
+          const count = await getUnreadNotificationsCountAction(); if (active) setUnreadCount(count);
+        } else {
+          const summary = await getCurrentUserSummaryAction();
+          if (active && summary) { setUnreadCount(summary.unreadCount); setPendingApprovalsCount((summary as any).pendingApprovalsCount ?? 0); }
         }
-      }catch{/* The next hint or navigation retries. */}
-      finally{flight=false;}
-      if(pending.size&&active)void reconcile();
+      } catch {/* The next hint or navigation retries. */ }
+      finally { flight = false; }
+      if (pending.size && active) void reconcile();
     }
-    const unsubscribe=subscribeResourceChanges(change=>{change.kinds.forEach(k=>pending.add(k));void reconcile();});
-    return()=>{active=false;unsubscribe();};
-  },[mode]);
+    const unsubscribe = subscribeResourceChanges(change => { change.kinds.forEach(k => pending.add(k)); void reconcile(); });
+    return () => { active = false; unsubscribe(); };
+  }, [mode]);
 
   useRealtimeEvents((eventType, payload) => {
     if (eventType === "NOTIFICATION_CREATED" && payload) {

@@ -1,70 +1,26 @@
 "use client";
+import { EmployeeTaskForm } from "./employee-task-form";
+import { TaskTimeline } from "./task-timeline";
+import { ImpedimentSheet } from "./impediment-sheet";
+import { CircleX } from "lucide-react";
 import {applyTaskResource,loadTaskResource,subscribeTaskResource} from '@/presentation/realtime/task-resource';
 import { useTaskView } from "@/presentation/hooks/use-task-view";
-import { FormChoiceInput } from "@/presentation/components/shared/form-choice-input";
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerClose,
-} from "@/components/ui/drawer";
-import {
-  getTaskDetailAction,
-  completeTaskAction,
-  submitEvidenceAction,
-  uploadEvidenceAction,
-  uploadTaskFormFileAction,
-  type TaskDetailResult,
-} from "@/presentation/actions/task-actions";
-import {
-  resumeTaskAction,
-  reportImpedimentAction,
-  claimTaskAction,
-} from "@/presentation/actions/management-task-actions";
-import { StatusBadge, PriorityBadge, Modal } from "../shared";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerFooter } from "@/components/ui/drawer";
+import { completeTaskAction, submitEvidenceAction, uploadEvidenceAction, uploadTaskFormFileAction, type TaskDetailResult } from "@/presentation/actions/task-actions";
+import { reportImpedimentAction, claimTaskAction } from "@/presentation/actions/management-task-actions";
+import { StatusBadge, PriorityBadge } from "../shared";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { Field, FieldLabel, FieldGroup } from "@/components/ui/field";
+
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LogoLoader } from "@/components/loader/logo-loader";
-import {
-  Check,
-  MapPin,
-  Send,
-  RotateCcw,
-  Calendar,
-  AlertCircle,
-  FileCheck2,
-  RefreshCw,
-  X,
-  Camera,
-  Video,
-  Paperclip,
-  FileUp,
-  FileText,
-  Hash,
-  PenTool,
-  Navigation,
-  Clock,
-  ChevronRight,
-  ChevronDown,
-  ChevronUp,
-  ListTodo,
-  Lock,
-  ArrowLeft,
-} from "lucide-react";
+import { Check, AlertCircle, FileCheck2, RefreshCw, X, Clock, ChevronDown, ChevronUp, ListTodo, Lock, ArrowLeft } from "lucide-react";
 
 interface TaskDetailDrawerProps {
   taskId: string | null;
@@ -113,6 +69,7 @@ export function EmployeeTaskDetailDrawer({
   const [loading, setLoading] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const [dialog, setDialog] = useState<"impediment" | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [category, setCategory] = useState("OUTROS");
   const [evidenceDrafts, setEvidenceDrafts] = useState<Record<string, EvidenceDraft>>({});
@@ -128,6 +85,7 @@ export function EmployeeTaskDetailDrawer({
       const res = await loadTaskResource(id);
       if(version!==loadingVersion.current)return;
       if (res.error) {
+        setOperationError(res.error);
         toast.add({
           title: "Erro ao carregar tarefa",
           description: res.error,
@@ -185,9 +143,11 @@ export function EmployeeTaskDetailDrawer({
   ) {
     if (!task) return;
     setActionBusy(true);
+    setOperationError(null);
     try {
       const res = await actionFn();
       if (res.error) {
+        setOperationError(res.error);
         toast.add({
           title: "Não foi possível concluir",
           description: res.error,
@@ -205,6 +165,7 @@ export function EmployeeTaskDetailDrawer({
         else if (taskId) await loadTask(taskId);
         onTaskUpdated?.();
         if(!applyTaskResource(res))router.refresh();
+        setDialog(null);
         if (opts?.closeOnSuccess) {
           if (embedded && onBack) {
             onBack();
@@ -214,6 +175,7 @@ export function EmployeeTaskDetailDrawer({
         }
       }
     } catch {
+      setOperationError("Não foi possível concluir a ação. Tente novamente.");
       toast.add({
         title: "Erro inesperado",
         description: "Ocorreu uma falha na operação. Tente novamente.",
@@ -562,218 +524,8 @@ export function EmployeeTaskDetailDrawer({
               )}
 
               {task.taskType === "FORM" && Array.isArray(task.formFields) ? (
-                <div className="space-y-4 pt-2">
-                  {task.formFields.map((field: any, idx: number) => (
-                    <div key={field.id} className="p-3 bg-white dark:bg-card border border-slate-200 dark:border-border rounded-xl">
-                      <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200 mb-2">
-                        {idx + 1}. {field.question} {field.required && <span className="text-red-500">*</span>}
-                      </label>
-                      {field.type === "MULTIPLE_CHOICE" && <FormChoiceInput options={field.options ?? []} value={formAnswers[field.id]} onChange={value => setFormAnswers(prev => ({ ...prev, [field.id]: value }))} />}
-                      {field.type === "SHORT_TEXT" && (
-                        <Input
-                          value={formAnswers[field.id] || ""}
-                          onChange={(e) => setFormAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
-                          placeholder="Sua resposta..."
-                          className="text-xs"
-                          disabled={isTerminal || actionBusy}
-                        />
-                      )}
-                      {field.type === "LONG_TEXT" && (
-                        <Textarea
-                          value={formAnswers[field.id] || ""}
-                          onChange={(e) => setFormAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
-                          placeholder="Descreva sua resposta..."
-                          className="text-xs resize-none"
-                          rows={3}
-                          disabled={isTerminal || actionBusy}
-                        />
-                      )}
-                      {field.type === "RATING" && (
-                        <div className="flex gap-2">
-                          {[1, 2, 3, 4, 5].map((star) => (
-                            <button
-                              key={star}
-                              type="button"
-                              disabled={isTerminal || actionBusy}
-                              onClick={() => setFormAnswers((prev) => ({ ...prev, [field.id]: star }))}
-                              className={`size-8 rounded-full flex items-center justify-center border transition-colors ${formAnswers[field.id] === star
-                                ? "bg-amber-100 border-amber-400 text-amber-600"
-                                : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100"
-                                }`}
-                            >
-                              ★
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {field.type === "BOOLEAN" && (
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            disabled={isTerminal || actionBusy}
-                            onClick={() => setFormAnswers((prev) => ({ ...prev, [field.id]: true }))}
-                            className={`flex-1 py-2 text-xs rounded-lg border font-medium transition-colors ${formAnswers[field.id] === true
-                              ? "bg-emerald-50 border-emerald-300 text-emerald-700"
-                              : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
-                              }`}
-                          >
-                            Sim
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isTerminal || actionBusy}
-                            onClick={() => setFormAnswers((prev) => ({ ...prev, [field.id]: false }))}
-                            className={`flex-1 py-2 text-xs rounded-lg border font-medium transition-colors ${formAnswers[field.id] === false
-                              ? "bg-red-50 border-red-300 text-red-700"
-                              : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
-                              }`}
-                          >
-                            Não
-                          </button>
-                        </div>
-                      )}
-                      {field.type === "PHOTO" && (
-                        <div className="flex flex-col gap-2">
-                          {formAnswers[field.id] instanceof File ? (
-                            <div className="p-2.5 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-300 dark:border-emerald-800 rounded-xl flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <div className="size-8 rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 flex items-center justify-center shrink-0">
-                                  <Camera className="size-4" />
-                                </div>
-                                <div className="flex flex-col min-w-0">
-                                  <span className="text-xs font-semibold text-emerald-900 dark:text-emerald-200 truncate">
-                                    {(formAnswers[field.id] as File).name}
-                                  </span>
-                                  <span className="text-[10px] text-emerald-700/80 dark:text-emerald-400">
-                                    {Math.round(((formAnswers[field.id] as File).size || 0) / 1024)} KB · Foto registrada
-                                  </span>
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                disabled={isTerminal || actionBusy}
-                                onClick={() => setFormAnswers((prev) => { const next = { ...prev }; delete next[field.id]; return next; })}
-                                className="text-xs text-red-600 hover:text-red-800 font-semibold px-2 py-1 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer"
-                              >
-                                Trocar
-                              </button>
-                            </div>
-                          ) : (
-                            <label className={`flex flex-col items-center justify-center p-3.5 border-2 border-dashed border-[var(--border-subtle)] hover:border-[var(--brand-700)] bg-[var(--surface)] hover:bg-[var(--canvas)] rounded-xl cursor-pointer transition-all ${(isTerminal || actionBusy) ? "opacity-50 pointer-events-none" : ""
-                              }`}>
-                              <Camera className="size-5 mb-1 text-[var(--brand-700)] opacity-80" />
-                              <span className="text-xs font-semibold text-[var(--brand-900)]">Tirar foto na hora</span>
-                              <span className="text-[10px] text-muted-foreground mt-0.5">Abre a câmera do dispositivo</span>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                capture="environment"
-                                className="hidden"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) setFormAnswers((prev) => ({ ...prev, [field.id]: file }));
-                                }}
-                              />
-                            </label>
-                          )}
-                        </div>
-                      )}
-
-                      {field.type === "VIDEO" && (
-                        <div className="flex flex-col gap-2">
-                          {formAnswers[field.id] instanceof File ? (
-                            <div className="p-2.5 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-300 dark:border-emerald-800 rounded-xl flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <div className="size-8 rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 flex items-center justify-center shrink-0">
-                                  <Video className="size-4" />
-                                </div>
-                                <div className="flex flex-col min-w-0">
-                                  <span className="text-xs font-semibold text-emerald-900 dark:text-emerald-200 truncate">
-                                    {(formAnswers[field.id] as File).name}
-                                  </span>
-                                  <span className="text-[10px] text-emerald-700/80 dark:text-emerald-400">
-                                    {Math.round(((formAnswers[field.id] as File).size || 0) / 1024)} KB · Vídeo gravado
-                                  </span>
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                disabled={isTerminal || actionBusy}
-                                onClick={() => setFormAnswers((prev) => { const next = { ...prev }; delete next[field.id]; return next; })}
-                                className="text-xs text-red-600 hover:text-red-800 font-semibold px-2 py-1 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer"
-                              >
-                                Trocar
-                              </button>
-                            </div>
-                          ) : (
-                            <label className={`flex flex-col items-center justify-center p-3.5 border-2 border-dashed border-[var(--border-subtle)] hover:border-[var(--brand-700)] bg-[var(--surface)] hover:bg-[var(--canvas)] rounded-xl cursor-pointer transition-all ${(isTerminal || actionBusy) ? "opacity-50 pointer-events-none" : ""
-                              }`}>
-                              <Video className="size-5 mb-1 text-[var(--brand-700)] opacity-80" />
-                              <span className="text-xs font-semibold text-[var(--brand-900)]">Gravar vídeo na hora</span>
-                              <span className="text-[10px] text-muted-foreground mt-0.5">Abre a câmera para gravação direta</span>
-                              <input
-                                type="file"
-                                accept="video/*"
-                                capture="environment"
-                                className="hidden"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) setFormAnswers((prev) => ({ ...prev, [field.id]: file }));
-                                }}
-                              />
-                            </label>
-                          )}
-                        </div>
-                      )}
-
-                      {field.type === "FILE" && (
-                        <div className="flex flex-col gap-2">
-                          {formAnswers[field.id] instanceof File ? (
-                            <div className="p-2.5 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-300 dark:border-emerald-800 rounded-xl flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <div className="size-8 rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 flex items-center justify-center shrink-0">
-                                  <Paperclip className="size-4" />
-                                </div>
-                                <div className="flex flex-col min-w-0">
-                                  <span className="text-xs font-semibold text-emerald-900 dark:text-emerald-200 truncate">
-                                    {(formAnswers[field.id] as File).name}
-                                  </span>
-                                  <span className="text-[10px] text-emerald-700/80 dark:text-emerald-400">
-                                    {Math.round(((formAnswers[field.id] as File).size || 0) / 1024)} KB · Arquivo anexado
-                                  </span>
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                disabled={isTerminal || actionBusy}
-                                onClick={() => setFormAnswers((prev) => { const next = { ...prev }; delete next[field.id]; return next; })}
-                                className="text-xs text-red-600 hover:text-red-800 font-semibold px-2 py-1 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer"
-                              >
-                                Trocar
-                              </button>
-                            </div>
-                          ) : (
-                            <label className={`flex flex-col items-center justify-center p-3.5 border-2 border-dashed border-[var(--border-subtle)] hover:border-[var(--brand-700)] bg-[var(--surface)] hover:bg-[var(--canvas)] rounded-xl cursor-pointer transition-all ${(isTerminal || actionBusy) ? "opacity-50 pointer-events-none" : ""
-                              }`}>
-                              <Paperclip className="size-5 mb-1 text-[var(--brand-700)] opacity-80" />
-                              <span className="text-xs font-semibold text-[var(--brand-900)]">Anexar arquivo</span>
-                              <span className="text-[10px] text-muted-foreground mt-0.5">Imagens, vídeos ou documentos (máx. 12 MB)</span>
-                              <input
-                                type="file"
-                                accept="image/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
-                                className="hidden"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) setFormAnswers((prev) => ({ ...prev, [field.id]: file }));
-                                }}
-                              />
-                            </label>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                <EmployeeTaskForm taskId={task.id} scope={task.draftScope} fields={task.formFields} answers={formAnswers}
+                  disabled={isTerminal || task.status === "SUBMITTED" || actionBusy} onChange={(id, value) => setFormAnswers(previous => ({ ...previous, [id]: value }))} />
               ) : (
                 <div className="space-y-1.5">
                   <span className="font-semibold text-xs text-[var(--text-primary)] block">
@@ -834,9 +586,11 @@ export function EmployeeTaskDetailDrawer({
                   task.evidenceRequirements.map((req) => (
                     <TaskEvidenceItem
                       key={req.id}
+                      scope={task.draftScope}
+                      timezone={task.timezone}
                       taskId={task.id}
                       requirement={req}
-                      disabled={isTerminal || task.status === "BLOCKED" || !!task.isUnassigned || isToleranceExceeded}
+                      disabled={isTerminal || actionBusy || task.status === "SUBMITTED" || task.actions?.evidence.allowed === false || task.status === "BLOCKED" || !!task.isUnassigned || isToleranceExceeded}
                       draft={evidenceDrafts[req.id]}
                       onDraftChange={(draft) =>
                         setEvidenceDrafts((prev) => ({ ...prev, [req.id]: draft }))
@@ -864,6 +618,8 @@ export function EmployeeTaskDetailDrawer({
               </CardContent>
             </Card>
           )}
+
+          <TaskTimeline key={task.id} events={task.timeline ?? []} timezone={task.timezone} />
 
           {(() => {
             const validOccurrences = (task.occurrences || []).filter((occ) => !isPauseOccurrence(occ));
@@ -986,15 +742,16 @@ export function EmployeeTaskDetailDrawer({
           </Button>
 
           <Button
-            variant="ghost"
-            className="w-full h-9 rounded-lg text-xs text-red-600 hover:text-red-700 hover:bg-red-50 cursor-pointer"
+            variant="outline"
+            className="employee-impediment-trigger w-full"
             disabled={actionBusy}
             onClick={() => {
               setReason("");
-              setDialog("impediment");
+              setOperationError(null);
+                setDialog("impediment");
             }}
           >
-            Não foi possível realizar
+            <CircleX data-icon="inline-start" />Não foi possível realizar
           </Button>
         </div>
       ) : task.status === "SUBMITTED" ? (
@@ -1009,85 +766,10 @@ export function EmployeeTaskDetailDrawer({
     </>
   ) : null;
 
-  const impedimentModal = dialog === "impediment" && task && (
-    <Modal
-      open={true}
-      title="Registrar impedimento"
-      onClose={() => {
-        if (!actionBusy) setDialog(null);
-      }}
-    >
-      <form
-        className="flex flex-col gap-4 text-xs"
-        onSubmit={(e) => {
-          e.preventDefault();
-          handleAction(
-            () => reportImpedimentAction(task.id, category, reason),
-            {
-              closeOnSuccess: true,
-              successNotice: "Impedimento registrado. A gestão foi avisada.",
-            }
-          );
-        }}
-      >
-        <FieldGroup>
-          <Field>
-            <FieldLabel className="text-xs">Tipo de impedimento</FieldLabel>
-            <NativeSelect
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="text-xs h-9"
-              disabled={actionBusy}
-            >
-              <NativeSelectOption value="MATERIAL_FALTANDO">Falta de material / insumo</NativeSelectOption>
-              <NativeSelectOption value="ACESSO_BLOQUEADO">Local sem acesso / trancado</NativeSelectOption>
-              <NativeSelectOption value="EQUIPAMENTO_DEFEITO">Equipamento com defeito</NativeSelectOption>
-              <NativeSelectOption value="ERRO_PROCESSO">Dúvida ou divergência no procedimento</NativeSelectOption>
-              <NativeSelectOption value="OUTROS">Outros motivos operacionais</NativeSelectOption>
-            </NativeSelect>
-          </Field>
-
-          <Field>
-            <FieldLabel className="text-xs">Descreva detalhadamente o ocorrido *</FieldLabel>
-            <Textarea
-              required
-              rows={3}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Explique o que impediu a conclusão..."
-              className="text-xs resize-none"
-              disabled={actionBusy}
-            />
-          </Field>
-        </FieldGroup>
-
-        <div className="flex gap-2 justify-end pt-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="text-xs h-8"
-            disabled={actionBusy}
-            onClick={() => setDialog(null)}
-          >
-            Cancelar
-          </Button>
-          <Button
-            type="submit"
-            size="sm"
-            className="text-xs h-8 bg-red-600 hover:bg-red-700 text-white cursor-pointer"
-            disabled={actionBusy || !reason.trim()}
-          >
-            {actionBusy ? (
-              <Spinner data-icon="inline-start" />
-            ) : (
-              <AlertCircle data-icon="inline-start" />
-            )}
-            Registrar e pausar
-          </Button>
-        </div>
-      </form>
-    </Modal>
+  const impedimentModal = task && (
+    <ImpedimentSheet open={dialog === "impediment"} category={category} reason={reason} busy={actionBusy} error={operationError}
+      onCategoryChange={setCategory} onReasonChange={setReason} onClose={() => setDialog(null)}
+      onSubmit={() => { void handleAction(() => reportImpedimentAction(task.id, category, reason.trim()), { closeOnSuccess: true, successNotice: "Impedimento registrado. A gestão foi avisada." }); }} />
   );
 
   if (embedded) {

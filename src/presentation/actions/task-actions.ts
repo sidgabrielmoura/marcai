@@ -228,7 +228,7 @@ export async function uploadTaskFormFileAction(
   const origin =
     process.env.NEXT_PUBLIC_APP_URL ||
     process.env.APP_URL ||
-    "https://tarefai.com.br";
+    "https://tarefai.com";
   const req = (stage: string) => {
     const hex = createHash("sha256")
       .update(inputReceipt + ":" + stage)
@@ -284,7 +284,7 @@ function webRequest(receipt?: string, reconcile=false) {
   const origin =
     process.env.NEXT_PUBLIC_APP_URL ||
     process.env.APP_URL ||
-    "https://tarefai.com.br";
+    "https://tarefai.com";
   return receipt
     ? new Request(origin, {
         method: "POST",

@@ -26,6 +26,8 @@
     "test:templates:ui": "tsx scripts/verify-template-ui.ts",
     "test:superadmin:ui": "tsx scripts/verify-superadmin-ui.ts",
     "test:superadmin:async": "tsx scripts/verify-superadmin-async.ts",
+    "test:mobile-web:ui": "node scripts/verify-mobile-web-parity.cjs",
+    "test:mobile-web:contracts": "node scripts/verify-mobile-web-contracts.cjs",
     "test:purge": "tsx scripts/verify-purge-organization.ts",
     "test:process:archive": "tsx scripts/verify-archived-process-isolation.ts",
     "db:templates": "prisma db execute --file prisma/templates-library.sql"
@@ -56,6 +58,7 @@
     "jose": "^6.2.12",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.47.0",
+    "maplibre-gl": "^6.16.0",
     "next": "16.3.6",
     "pg": "^8.23.0",
     "qrcode": "^1.5.4",

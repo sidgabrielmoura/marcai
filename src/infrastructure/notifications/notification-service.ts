@@ -109,8 +109,9 @@ export async function dispatchPersistedNotifications(ids: string[]): Promise<voi
                 AND s.revoked_at IS NULL AND s.expires_at>now()
                 AND s.credential_version=encode(sha256(convert_to(COALESCE(u."passwordHash",'') || ':' || COALESCE(m."pinHash",''),'UTF8')),'hex')
                 AND t."lastUsedAt">now()-interval '45 days'
+                AND (${data.testWebSessionId || null}::text IS NULL OR s.id::text=${data.testWebSessionId || null})
             `;
-                        const native = await prisma.$queryRaw<Array<{
+                        const native = data.testWebSessionId ? [] : await prisma.$queryRaw<Array<{
                             id: string;
                             token: string;
                             sessionId: string;

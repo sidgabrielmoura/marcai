@@ -10,11 +10,15 @@ import {
   PenTool,
   Navigation,
   Check,
+  XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { MediaGallery, type GalleryMedia } from "./media-gallery";
+import { LocationCard } from "./location-card";
+import { parseLocation } from "@/presentation/lib/media-preview";
 
 export interface TaskEvidenceRequirement {
   id: string;
@@ -23,12 +27,15 @@ export interface TaskEvidenceRequirement {
   minQuantity: number;
   maxQuantity?:number;
   executionStage?: string;
+  previousSubmissions?: TaskEvidenceRequirement["submissions"];
   submissions: {
     id: string;
     validationStatus: string;
     attemptNumber: number;
     value: string | null;
     storageKey?: string | null;
+    fileUrl?: string | null;
+    rejectionReason?: string | null;
     createdAt: string;
   }[];
 }
@@ -55,18 +62,22 @@ export const evidenceTypeMeta: Record<
 
 export function TaskEvidenceItem({
   taskId,
+  scope,
+  timezone = "America/Sao_Paulo",
   requirement: req,
   disabled,
   draft,
-  onDraftChange,
+  onDraftChange = () => {},
   onSuccess,
   onError,
 }: {
   taskId: string;
+  scope?: string;
+  timezone?: string;
   requirement: TaskEvidenceRequirement;
   disabled: boolean;
   draft?: EvidenceDraft;
-  onDraftChange: (draft: EvidenceDraft) => void;
+  onDraftChange?: (draft: EvidenceDraft) => void;
   onSuccess?: (msg?: string) => void;
   onError?: (err: string) => void;
 }) {
@@ -80,13 +91,11 @@ export function TaskEvidenceItem({
   // ─── Câmera traseira (PHOTO) ─────────────────────────────────────────
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
   async function openCamera() {
     setCameraError(null);
-    setPhotoPreview(null);
     setFile(null);
     onDraftChange({ file: null, value: "", signed: false });
     setCameraOpen(true);
@@ -124,7 +133,6 @@ export function TaskEvidenceItem({
       const timestamp = Date.now();
       const capturedFile = new File([blob], `foto_evidencia_${timestamp}.jpg`, { type: "image/jpeg" });
       setFile(capturedFile);
-      setPhotoPreview(URL.createObjectURL(blob));
       closeCamera();
       onDraftChange({ file: capturedFile, value: "", signed: false });
     }, "image/jpeg", 0.92);
@@ -172,13 +180,22 @@ export function TaskEvidenceItem({
   }
 
   const currentFile = draft?.file ?? file;
+  useEffect(() => { setFile(draft?.file ?? null); }, [draft?.file]);
+  const allSubmissions = [...(req.previousSubmissions ?? []), ...req.submissions];
+  const isMedia = req.type === "PHOTO" || req.type === "VIDEO";
+  const media: GalleryMedia[] = isMedia ? allSubmissions.filter(s => s.storageKey || s.fileUrl).map(s => ({
+    id: s.id, kind: req.type === "VIDEO" ? "video" : "image", status: s.validationStatus === "VALID" ? "VALID" : "REJECTED",
+    url: s.fileUrl ?? (s.validationStatus === "VALID" ? `/api/evidence/${s.id}` : null), reason: s.rejectionReason,
+    caption: `${req.previousSubmissions?.some(previous => previous.id === s.id) ? "Rodada anterior · " : ""}${new Date(s.createdAt).toLocaleString("pt-BR", { timeZone: timezone, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`,
+  })) : [];
+  if (isMedia && currentFile) media.push({ id: `draft:${currentFile.name}:${currentFile.lastModified}`, kind: req.type === "VIDEO" ? "video" : "image", status: "DRAFT", file: currentFile });
   const [signaturePreview,setSignaturePreview]=useState<string|null>(null);
   useEffect(()=>{if(req.type!=='SIGNATURE'||!currentFile){setSignaturePreview(null);return;}const url=URL.createObjectURL(currentFile);setSignaturePreview(url);return ()=>URL.revokeObjectURL(url);},[req.type,currentFile]);
   const currentValue = draft?.value ?? value;
   const isSigned = draft?.signed ?? signed;
 
   const hasAttachedDraft =
-    (req.type === "PHOTO" && (!!currentFile || !!photoPreview)) ||
+    (req.type === "PHOTO" && !!currentFile) ||
     (["VIDEO", "FILE"].includes(req.type) && !!currentFile) ||
     (req.type === "SIGNATURE" && isSigned) ||
     (req.type === "LOCATION" && !!currentValue) ||
@@ -244,10 +261,14 @@ export function TaskEvidenceItem({
         </Badge>
       </div>
 
-      {valid.map((s) => (
-        <p key={s.id} className="text-xs text-muted-foreground break-all my-1.5 flex items-center gap-1.5">
-          <Check className="size-3 text-emerald-600 shrink-0" />
-          {s.storageKey ? (
+      {isMedia && !!media.length && <MediaGallery scope={scope ?? `${taskId}:${req.id}`} items={media} disabled={disabled} onRemove={() => { setFile(null); onDraftChange({ file: null, value: "", signed: false }); }} />}
+      {!isMedia && allSubmissions.map((s) => (
+        <div key={s.id} className="text-xs text-muted-foreground my-1.5 flex flex-col gap-1.5">
+          <div className="flex items-center gap-1.5">
+            {s.validationStatus === "VALID" ? <Check className="size-3 text-emerald-600 shrink-0" /> : <XCircle className="size-3 text-destructive shrink-0" />}
+            <span>{req.previousSubmissions?.some(previous => previous.id === s.id) ? "Rodada anterior · " : ""}{s.validationStatus === "VALID" ? "Aceita" : "Rejeitada"} · {new Date(s.createdAt).toLocaleString("pt-BR", { timeZone: timezone, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+          </div>
+          {req.type === "LOCATION" && parseLocation(s.value) ? <LocationCard point={parseLocation(s.value)!} /> : s.storageKey ? (
             <a
               className="underline text-blue-600 hover:text-blue-800 font-medium"
               href={`/api/evidence/${s.id}`}
@@ -255,9 +276,9 @@ export function TaskEvidenceItem({
               Visualizar {s.value || "comprovação"}
             </a>
           ) : (
-            <span>{s.value}</span>
+            <span>{s.value}{s.rejectionReason ? ` · ${s.rejectionReason}` : ""}</span>
           )}
-        </p>
+        </div>
       ))}
 
       {failures > 0 && !isDone && (
@@ -311,12 +332,8 @@ export function TaskEvidenceItem({
               )}
 
               {/* Preview da foto tirada */}
-              {!cameraOpen && photoPreview && (
+              {!cameraOpen && currentFile && (
                 <div className="flex flex-col gap-1.5">
-                  <div className="relative rounded-xl overflow-hidden border border-emerald-200">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={photoPreview} alt="Foto capturada" className="w-full max-h-52 object-cover" />
-                  </div>
                   <Button
                     type="button"
                     variant="ghost"
@@ -330,7 +347,7 @@ export function TaskEvidenceItem({
               )}
 
               {/* Botões de captura/anexo */}
-              {!cameraOpen && !photoPreview && (
+              {!cameraOpen && !currentFile && (
                 <div className="flex flex-col gap-2">
                   <Button
                     type="button"
@@ -352,7 +369,6 @@ export function TaskEvidenceItem({
                       const f = e.target.files?.[0] ?? null;
                       if (f) {
                         setFile(f);
-                        setPhotoPreview(URL.createObjectURL(f));
                         onDraftChange({ file: f, value: "", signed: false });
                       }
                     }}
@@ -420,6 +436,7 @@ export function TaskEvidenceItem({
 
           {req.type === "LOCATION" && (
             <div className="flex flex-col gap-1.5">
+              {parseLocation(currentValue) && <LocationCard point={parseLocation(currentValue)!} />}
               <Button
                 type="button"
                 variant="outline"

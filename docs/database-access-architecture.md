@@ -63,6 +63,16 @@ SSE é fallback, com cursor e checkpoint completos compatíveis com versões ant
 
 ## Site
 
+### Paridade mobile/web de 04/11/2026
+
+O detalhamento visual está em [MOBILE_WEB_PARITY_2026-11-04.md](MOBILE_WEB_PARITY_2026-11-04.md). Página e drawer compartilham formulário, galeria, mapa, linha do tempo e impedimento. `webTaskDetail` preserva `submissions` apenas da rodada atual e entrega os anteriores em `previousSubmissions`, usando a leitura já existente. Envios antigos aparecem na interface sem satisfazer exigências atuais.
+
+A galeria usa miniaturas Cloudinary de 288 px e imagens de visualização de até 1600 px. Arquivos legados passam pela rota autenticada, com deduplicação por arquivo na instância da galeria. URLs de objeto e caches de visualização são descartados ao desmontar/trocar o escopo. Vídeos carregam ao abrir e param ao trocar de arquivo. O mapa usa recursos públicos OpenFreeMap, sem consultas SQL ou alteração do GPS persistido. A rota de anexo de formulário aceita chave opaca somente após localizar a mesma chave na resposta persistida da tarefa autorizada; mantém arquivos locais legados e valida a origem de redirecionamentos Cloudinary.
+
+`/notification-status` confere a permissão local ao abrir/ganhar foco sem registrar o navegador ou consultar SQL novamente. A verificação manual usa o registro autorizado existente. `sendCurrentSessionPushTestAction` valida sessão, usuário, organização e presença do token; limita testes a um por minuto e grava uma notificação pela transação existente, com entrega após commit. `testWebSessionId` restringe a entrega à sessão autenticada e dispensa a consulta de instalações nativas. O cliente não fornece IDs de destinatários. As categorias de invalidação existentes são mantidas.
+
+Verificações específicas: `npm run test:mobile-web:contracts` e `npm run test:mobile-web:ui`. A primeira usa módulos reais com armazenamento/transporte sintéticos; a segunda usa os componentes React reais em Chrome, ações simuladas, imagens/vídeos sintéticos e apenas recursos públicos do mapa. Nenhuma carrega `.env` ou acessa banco de produção.
+
 `src/presentation/realtime/resource-events.ts` centraliza categorias, deduplicação e relação entre rotas e recursos. `use-realtime-events.ts` agrupa mensagens por 350 ms e encaminha ao dono do recurso visível.
 
 As páginas `/tasks`, `/management/tasks` e `/overview` recebem dados iniciais do servidor e usam `Live*Board` + `useLiveResource`. Seus leitores são Server Actions em `live-board-actions.ts`, com autenticação em cada chamada. Alterações de tarefas não refazem a página e o shell inteiros. Não há timer consultando os quadros. Leituras simultâneas do mesmo quadro são agrupadas; alterações durante uma leitura provocam uma reconciliação posterior, sem sobreposição. Uma falha aguarda o próximo evento/retomada ou atualização manual.

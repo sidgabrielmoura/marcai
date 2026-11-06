@@ -27,7 +27,7 @@ export default async function SelectOrganizationPage() {
       memberships: {
         where: {
           status: "ACTIVE",
-          organization: { status: "ACTIVE" },
+          organization: { status: { in: ["ACTIVE", "SUSPENDED"] } },
         },
         select: {
           id: true,
@@ -38,6 +38,7 @@ export default async function SelectOrganizationPage() {
               id: true,
               name: true,
               slug: true,
+              status: true,
               logoUrl: true,
               _count: {
                 select: {
@@ -65,6 +66,7 @@ export default async function SelectOrganizationPage() {
       id: m.organization.id,
       name: m.organization.name,
       slug: m.organization.slug,
+      status: m.organization.status,
       logoUrl: m.organization.logoUrl,
       memberCount: m.organization._count.members,
       locationCount: m.organization._count.locations,

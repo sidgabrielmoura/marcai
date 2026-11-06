@@ -559,11 +559,11 @@ export function ProcessDetailClient({
         </div>
 
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-[var(--text-primary)] tracking-tight">
+          <h1 className="text-lg sm:text-xl font-semibold text-[var(--text-primary)] tracking-tight">
             {proc.name}
           </h1>
           {proc.description ? (
-            <p className="text-sm text-[var(--text-secondary)] mt-1.5 leading-relaxed max-w-3xl">
+            <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-1 leading-relaxed max-w-3xl">
               {proc.description}
             </p>
           ) : (
@@ -572,33 +572,33 @@ export function ProcessDetailClient({
         </div>
 
         {/* Quick Highlights Summary */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-          <div className="p-3 bg-[var(--canvas)] rounded-xl">
-            <span className="text-[11px] text-[var(--text-secondary)] block">Etapas do processo</span>
-            <span className="text-base font-semibold text-[var(--text-primary)]">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+          <div className="p-2.5 bg-[var(--canvas)] rounded-xl border border-[var(--border-subtle)]/60">
+            <span className="text-[11px] text-muted-foreground block">Etapas do processo</span>
+            <span className="text-sm font-semibold text-[var(--text-primary)] tabular-nums">
               {tasks.length} {tasks.length === 1 ? "tarefa" : "tarefas"}
             </span>
           </div>
 
-          <div className="p-3 bg-[var(--canvas)] rounded-xl">
-            <span className="text-[11px] text-[var(--text-secondary)] block">Status do calendário</span>
-            <span className="text-base font-semibold text-[var(--text-primary)]">
+          <div className="p-2.5 bg-[var(--canvas)] rounded-xl border border-[var(--border-subtle)]/60">
+            <span className="text-[11px] text-muted-foreground block">Status do calendário</span>
+            <span className="text-sm font-semibold text-[var(--text-primary)]">
               {activeRoutine ? (activeRoutine.status === "ACTIVE" ? "Ativo" : "Pausado") : "Não configurado"}
             </span>
           </div>
 
-          <div className="p-3 bg-[var(--canvas)] rounded-xl">
-            <span className="text-[11px] text-[var(--text-secondary)] block">Próxima execução</span>
-            <span className="text-base font-semibold text-[var(--text-primary)] truncate block">
+          <div className="p-2.5 bg-[var(--canvas)] rounded-xl border border-[var(--border-subtle)]/60">
+            <span className="text-[11px] text-muted-foreground block">Próxima execução</span>
+            <span className="text-sm font-semibold text-[var(--text-primary)] truncate block tabular-nums">
               {activeRoutine?.nextOccurrenceAt
                 ? formatDateTime(activeRoutine.nextOccurrenceAt).full
                 : "Sem previsão"}
             </span>
           </div>
 
-          <div className="p-3 bg-[var(--canvas)] rounded-xl">
-            <span className="text-[11px] text-[var(--text-secondary)] block">Execuções no cronograma</span>
-            <span className="text-base font-semibold text-[var(--text-primary)]">
+          <div className="p-2.5 bg-[var(--canvas)] rounded-xl border border-[var(--border-subtle)]/60">
+            <span className="text-[11px] text-muted-foreground block">Execuções no cronograma</span>
+            <span className="text-sm font-semibold text-[var(--text-primary)] tabular-nums">
               {executions.length} {executions.length === 1 ? "registro" : "registros"}
             </span>
           </div>

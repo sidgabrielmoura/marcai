@@ -253,44 +253,44 @@ export function ManagementApprovalsClient({
 
       {/* Métricas do topo */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Card className="border-[var(--border-subtle)] bg-[var(--surface)]">
-          <CardContent className="p-4 flex items-center justify-between">
+        <Card className="border-[var(--border-subtle)] bg-[var(--surface)] shadow-none rounded-xl">
+          <CardContent className="p-3.5 flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                 Aguardando Decisão
               </p>
-              <p className="text-2xl font-bold text-[var(--brand-900)] mt-1">{tasks.length}</p>
+              <p className="text-xl font-semibold text-[var(--brand-900)] tabular-nums mt-0.5">{tasks.length}</p>
             </div>
-            <div className="p-2.5 rounded-xl bg-amber-50 text-amber-600 border border-amber-200">
-              <Clock size={22} />
+            <div className="size-8 rounded-lg bg-amber-500/10 text-amber-700 border border-amber-200/60 flex items-center justify-center shrink-0">
+              <Clock size={16} />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-[var(--border-subtle)] bg-[var(--surface)]">
-          <CardContent className="p-4 flex items-center justify-between">
+        <Card className="border-[var(--border-subtle)] bg-[var(--surface)] shadow-none rounded-xl">
+          <CardContent className="p-3.5 flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                 Prioridade Alta / Crítica
               </p>
-              <p className="text-2xl font-bold text-rose-600 mt-1">{criticalCount}</p>
+              <p className="text-xl font-semibold text-rose-700 tabular-nums mt-0.5">{criticalCount}</p>
             </div>
-            <div className="p-2.5 rounded-xl bg-rose-50 text-rose-600 border border-rose-200">
-              <ShieldAlert size={22} />
+            <div className="size-8 rounded-lg bg-rose-500/10 text-rose-700 border border-rose-200/60 flex items-center justify-center shrink-0">
+              <ShieldAlert size={16} />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-[var(--border-subtle)] bg-[var(--surface)]">
-          <CardContent className="p-4 flex items-center justify-between">
+        <Card className="border-[var(--border-subtle)] bg-[var(--surface)] shadow-none rounded-xl">
+          <CardContent className="p-3.5 flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                 Com Evidências Anexadas
               </p>
-              <p className="text-2xl font-bold text-emerald-600 mt-1">{withEvidenceCount}</p>
+              <p className="text-xl font-semibold text-emerald-700 tabular-nums mt-0.5">{withEvidenceCount}</p>
             </div>
-            <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200">
-              <FileCheck size={22} />
+            <div className="size-8 rounded-lg bg-emerald-500/10 text-emerald-700 border border-emerald-200/60 flex items-center justify-center shrink-0">
+              <FileCheck size={16} />
             </div>
           </CardContent>
         </Card>

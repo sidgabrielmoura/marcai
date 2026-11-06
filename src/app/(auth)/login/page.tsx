@@ -307,7 +307,8 @@ export default function LoginPage() {
                 setTab(selected === "faceid" ? "biometrics" : selected);
               }
             }}
-            className="grid grid-cols-3 p-1 bg-canvas border border-(--border-subtle) rounded-[14px] mb-6 w-full gap-1"
+            data-full
+            className="employee-segments employee-login-segments mb-6"
           >
             <ToggleGroupItem
               value="pin"

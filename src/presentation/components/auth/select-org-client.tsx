@@ -44,6 +44,7 @@ export interface SelectOrgMembership {
     id: string;
     name: string;
     slug: string;
+    status?: string;
     logoUrl: string | null;
     memberCount?: number;
     locationCount?: number;
@@ -321,6 +322,15 @@ export function SelectOrgClient({
                               >
                                 <span className="size-1.5 rounded-full bg-emerald-600 animate-pulse" />
                                 Espaço atual
+                              </Badge>
+                            )}
+
+                            {membership.organization.status === "SUSPENDED" && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] uppercase font-bold tracking-wider bg-amber-100/80 text-amber-900 border-amber-300 py-0 px-2 rounded-full inline-flex items-center gap-1 shadow-none shrink-0"
+                              >
+                                Suspensa
                               </Badge>
                             )}
                           </div>

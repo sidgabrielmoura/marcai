@@ -25,18 +25,20 @@ export interface SessionData {
   role: Role;
   employeeCode?: string | null;
   secondFactorProof?: string;
+  orgStatus?: "ACTIVE" | "SUSPENDED" | string;
 }
 
 export async function encryptSession(payload: SessionData): Promise<string> {
   return deviceLoginTransaction(async tx => {
   await lockDeviceLogin(tx, payload.userId);
   const user=await tx.user.findUnique({where:{id:payload.userId}});
-  const member=payload.activeMemberId?await tx.organizationMember.findFirst({where:{id:payload.activeMemberId,userId:payload.userId,organizationId:payload.activeOrgId}}):null;
-  if(!user||user.status!=="ACTIVE"||(payload.role!=="SUPERADMIN"&&(!member||member.status!=="ACTIVE")))throw new Error("Acesso inválido.");
+  const member=payload.activeMemberId?await tx.organizationMember.findFirst({where:{id:payload.activeMemberId,userId:payload.userId,organizationId:payload.activeOrgId},include:{organization:true}}):null;
+  const orgStatus = (payload.role === "SUPERADMIN" ? "ACTIVE" : (member?.organization?.status ?? payload.orgStatus ?? "ACTIVE")) as string;
+  if(!user||user.status!=="ACTIVE"||(payload.role!=="SUPERADMIN"&&(!member||member.status!=="ACTIVE"||!["ACTIVE","SUSPENDED"].includes(orgStatus))))throw new Error("Acesso inválido.");
   const sessionId=randomUUID(),version=createHash("sha256").update((user.passwordHash??"")+":"+(member?.pinHash??"")).digest("hex");
   await replaceDeviceSessions(tx, user, payload.activeOrgId);
   await tx.$executeRaw`INSERT INTO web_auth_sessions(id,user_id,member_id,organization_id,credential_version,expires_at) VALUES(${sessionId}::uuid,${payload.userId},${payload.activeMemberId},${payload.activeOrgId},${version},${new Date(Date.now()+7*86400000)})`;
-  return new SignJWT({ ...payload,sessionId })
+  return new SignJWT({ ...payload,orgStatus,sessionId })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
@@ -62,9 +64,13 @@ export async function decryptSession(token: string): Promise<SessionData | null>
       WHERE s.id=${data.sessionId}::uuid AND s.user_id=${data.userId} AND s.member_id=${data.activeMemberId}
       AND s.organization_id=${data.activeOrgId} AND s.revoked_at IS NULL AND s.expires_at>now()`;
     if(!stored)return null;
-    if(stored.user_status!=="ACTIVE"||(data.role!=="SUPERADMIN"&&(stored.member_status!=="ACTIVE"||stored.organization_status!=="ACTIVE"||stored.member_role!==data.role)))return null;
+    if(stored.user_status!=="ACTIVE"||(data.role!=="SUPERADMIN"&&(stored.member_status!=="ACTIVE"||!["ACTIVE","SUSPENDED"].includes(stored.organization_status??"")||stored.member_role!==data.role)))return null;
     const version=createHash("sha256").update((stored.password_hash??"")+":"+(stored.pin_hash??"")).digest("hex");
-    return version===stored.credential_version?data:null;
+    if(version!==stored.credential_version)return null;
+    return {
+      ...data,
+      orgStatus: (data.role === "SUPERADMIN" ? "ACTIVE" : stored.organization_status) as "ACTIVE" | "SUSPENDED",
+    };
   } catch {
     return null;
   }

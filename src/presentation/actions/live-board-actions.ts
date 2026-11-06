@@ -79,6 +79,21 @@ export async function readManagementBoard(includeCatalogs = true) {
         }) : Promise.resolve([]),
     ]);
     const now = new Date();
+    const taskIds = tasks.map((t) => t.id);
+    const viewedLogs = taskIds.length > 0
+        ? await prisma.activityLog.findMany({
+            where: {
+                organizationId: context.organizationId,
+                entityType: "TASK",
+                action: "TASK_VIEWED",
+                entityId: { in: taskIds },
+            },
+            select: { entityId: true },
+            distinct: ["entityId"],
+        })
+        : [];
+    const viewedSet = new Set(viewedLogs.map((l) => l.entityId));
+
     const formattedTasks = tasks.map((t) => ({
         id: t.id,
         title: t.title,
@@ -99,6 +114,7 @@ export async function readManagementBoard(includeCatalogs = true) {
         taskType: t.taskType,
         slaExceeded: Boolean(t.slaExceededAt ||
             (t.slaDueAt && t.slaDueAt < now && t.status !== "COMPLETED")),
+        isViewed: viewedSet.has(t.id),
     }));
     return { contextKey: realtimeContextKey(context), tasks: formattedTasks, locations, teams, role: context.role, userName: context.userName, orgName: context.organizationName };
 }

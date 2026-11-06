@@ -56,3 +56,18 @@ export async function removeDeviceTokenAction(token: string): Promise<PushAction
         return { error: "Não foi possível desativar as notificações." };
     }
 }
+
+/** A test is always bound to the authenticated browser, never to a supplied user ID. */
+export async function sendCurrentSessionPushTestAction(expectedSessionId: string): Promise<PushActionResult> {
+    const session = await getSession();
+    const context = await getAuthenticatedContext(false);
+    if (!context || !session?.sessionId || session.sessionId !== expectedSessionId)
+        return { error: "A sessão mudou. Entre novamente." };
+    const token = await prisma.userDeviceToken.findFirst({ where: { userId: context.userId, sessionId: session.sessionId }, select: { id: true } });
+    if (!token) return { error: "Conecte este navegador aos avisos antes de enviar o teste." };
+    const recent = await prisma.notification.findFirst({ where: { userId: context.userId, organizationId: context.organizationId, type: "PUSH_TEST", createdAt: { gte: new Date(Date.now() - 60000) } }, select: { id: true } });
+    if (recent) return { error: "Aguarde um minuto antes de enviar outro teste." };
+    const { sendNotification } = await import("@/infrastructure/notifications/notification-service");
+    await sendNotification({ userId: context.userId, organizationId: context.organizationId, type: "PUSH_TEST", title: "Teste de avisos", message: "Este navegador está conectado aos avisos do Tarefaí.", channels: ["INTERNAL", "PUSH"], data: { testWebSessionId: session.sessionId } });
+    return { success: true };
+}

@@ -5,6 +5,7 @@ import { lockTask } from "@/application/tasks/task-lock";
 import { taskDetailScope } from "./data";
 import { fail } from "./http";
 import { idempotent } from "./idempotency";
+import { revalidateOrganization } from "@/infrastructure/realtime/revalidate";
 
 // Called only by an explicit POST after opening the detail, never by GET/prefetch.
 export async function recordTaskView(
@@ -50,6 +51,7 @@ export async function recordTaskView(
       },
       select: { id: true, createdAt: true },
     });
+    revalidateOrganization(context.organizationId);
     return { success: true, id: log.id, viewedAt: log.createdAt.toISOString() };
   });
 }

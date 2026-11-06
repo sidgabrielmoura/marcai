@@ -29,6 +29,8 @@ O aviso não é um banco de dados nem autorização para acessar um recurso. A p
 
 ## Consultas
 
+Paridade de interface (04/11/2026): a expansão da linha do tempo e os filtros visuais não criam leitores adicionais. A galeria reaproveita uma leitura concorrente por arquivo legado e usa miniaturas Cloudinary; ampliar/revisitar o arquivo já resolvido não repete SQL. Evidências de rodadas anteriores vêm da leitura existente do detalhe e não compõem os totais válidos atuais. O mapa e o círculo de precisão são locais, com cartografia pública. A tela de estado dos avisos atualiza somente a permissão local no foco; sincronização de token ocorre por ação explícita ou pelos gatilhos de registro já existentes. O teste de push faz leituras autorizadas somente no clique, grava pela transação existente e filtra a própria sessão, sem consultar instalações nativas nem atualizar quadros. `test:mobile-web:contracts` cobre escopos e limites; `test:mobile-web:ui` mede reutilização de arquivos e foco sem novo registro. O executor isolado copia também `.gitignore` para não tratar artefatos temporários de testes como fontes da aplicação durante o build.
+
 Na transição WAHA QR → WORKING, uma falha/ausência da imagem permite uma reconciliação única da sessão; não há consulta de status adicional na renovação saudável nem repetição para esconder erro real. O teste WAHA cobre a conexão concluída entre as duas chamadas, tanto para QR recusado quanto ausente.
 
 A primeira página de tarefas retorna as contagens completas. As seguintes usam `includeCounts: false` e carregam apenas os resumos das execuções presentes na página. O cliente guarda as contagens da primeira página. Não impor `take` arbitrário às estatísticas nem ocultar registros para reduzir consultas.

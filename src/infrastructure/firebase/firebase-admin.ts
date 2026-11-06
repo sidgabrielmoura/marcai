@@ -279,7 +279,7 @@ export async function sendWebPushNotification(
 }
 
 function securePushLink(destination?: string) {
-  const base = new URL(process.env.NEXT_PUBLIC_APP_URL || "https://tarefai.com.br");
+  const base = new URL(process.env.NEXT_PUBLIC_APP_URL || "https://tarefai.com");
   const target = new URL(destination || "/notifications", base);
   const safe = target.origin === base.origin ? target : new URL("/notifications", base);
   return safe.protocol === "https:" ? { fcmOptions: { link: safe.href } } : {};

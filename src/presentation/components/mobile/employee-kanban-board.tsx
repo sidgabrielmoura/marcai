@@ -571,7 +571,7 @@ export function EmployeeKanbanBoard({
 
           <SelectContent
             align="start"
-            className="min-w-55 rounded-xl p-1 shadow-lg"
+            className="employee-task-type-options min-w-55 rounded-xl p-1 shadow-lg"
           >
             {typeFilterItems.map((item) => {
               const count =

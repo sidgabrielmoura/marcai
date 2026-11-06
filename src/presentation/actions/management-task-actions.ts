@@ -1354,6 +1354,8 @@ export type ManagementTaskDrawerResult = {
       id: string;
       value: string | null;
       storageKey: string | null;
+      fileUrl?: string | null;
+      rejectionReason?: string | null;
       validationStatus: string;
       attemptNumber: number;
       createdAt: string;
@@ -1554,6 +1556,8 @@ export async function getManagementTaskDrawerAction(taskId: string): Promise<{
             id: s.id,
             value: s.value,
             storageKey: s.storageKey,
+            fileUrl: s.fileUrl,
+            rejectionReason: s.rejectionReason,
             validationStatus: s.validationStatus,
             attemptNumber: s.attemptNumber,
             createdAt: s.createdAt.toISOString(),

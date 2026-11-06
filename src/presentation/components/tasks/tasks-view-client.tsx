@@ -24,6 +24,8 @@ import {
   ListChecks,
   UserCheck,
   Copy,
+  CheckCheck,
+  MoreVertical,
 } from "lucide-react";
 import {
   trashTaskAction,
@@ -66,6 +68,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
   Dialog,
@@ -105,6 +108,7 @@ interface TaskItem {
   primaryAssignee: string | null;
   slaExceeded: boolean;
   taskType: string;
+  isViewed?: boolean;
 }
 
 interface TasksViewClientProps {
@@ -1018,13 +1022,13 @@ export function TasksViewClient({
                 key={col.id}
                 className={`bg-surface border-(--border-subtle) rounded-[20px] p-3 shadow-none border-t-4 ${col.color} flex flex-col`}
               >
-                <div className="flex items-center justify-between mb-3 px-1">
-                  <h4 className="text-brand-900 text-(length:--type-card-title) font-bold">
+                <div className="flex items-center justify-between mb-2.5 px-1">
+                  <h4 className="text-xs font-semibold text-[var(--brand-900)] uppercase tracking-wider">
                     {col.title}
                   </h4>
                   <Badge
                     variant="outline"
-                    className="text-(length:--type-caption) font-semibold px-2 py-0.5 bg-canvas rounded-full text-(--text-secondary) border-(--border-subtle)"
+                    className="text-[11px] font-medium px-1.5 py-0.2 bg-canvas rounded-full text-muted-foreground border-(--border-subtle) tabular-nums"
                   >
                     {columnTasks.length}
                   </Badge>
@@ -1039,47 +1043,109 @@ export function TasksViewClient({
                     columnTasks.map((task) => (
                       <Card
                         key={task.id}
-                        className="p-3 rounded-[14px] bg-canvas border-(--border-subtle) hover:border-brand-700 transition-all shadow-none flex flex-col justify-between gap-2"
+                        onClick={() => openTaskDrawer(task.id)}
+                        className="group relative p-3.5 rounded-2xl bg-surface border border-(--border-subtle) hover:border-brand-700/60 dark:hover:border-primary/60 hover:shadow-xs transition-all flex flex-col justify-between gap-3 cursor-pointer select-none"
                       >
                         <div>
-                          <div className="flex items-center justify-between gap-1 mb-1">
-                            <span className="text-(length:--type-caption) uppercase font-semibold text-(--text-secondary)">
+                          <div className="flex items-center justify-between gap-1.5 mb-2">
+                            <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground bg-slate-100/80 dark:bg-muted/40 px-2 py-0.5 rounded-md">
                               {task.origin === "PROCESS"
                                 ? "Processo"
                                 : task.taskType === "FORM"
-                                  ? "Tarefa com perguntas"
+                                  ? "Com perguntas"
                                   : "Tarefa avulsa"}
                             </span>
-                            <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                            <div className="flex items-center gap-1.5 shrink-0">
                               {col.id === "IMPEDED_CANCELLED" && (
                                 <StatusBadge status={task.status} size="sm" />
                               )}
-                              <PriorityBadge priority={task.priority} size="sm" className="max-w-fit! px-5!" />
+                              <PriorityBadge priority={task.priority} size="sm" className="max-w-fit! px-2.5!" />
+
+                              <div onClick={(e) => e.stopPropagation()}>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger
+                                    render={
+                                      <Button
+                                        variant="ghost"
+                                        size="icon-xs"
+                                        className="size-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-slate-100 dark:hover:bg-muted cursor-pointer"
+                                        aria-label="Opções da tarefa"
+                                      />
+                                    }
+                                  >
+                                    <MoreVertical className="size-3.5" />
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-52">
+                                    <DropdownMenuItem onClick={() => openTaskDrawer(task.id)}>
+                                      <Eye className="size-3.5 mr-2 text-muted-foreground" />
+                                      <span>Ver detalhes</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleCopyTask(task)}>
+                                      <Copy className="size-3.5 mr-2 text-muted-foreground" />
+                                      <span>Copiar tarefa</span>
+                                    </DropdownMenuItem>
+                                    {(task.status === "COMPLETED" ||
+                                      task.status === "NOT_COMPLETED" ||
+                                      task.slaExceeded) &&
+                                      userRole !== "EMPLOYEE" && (
+                                        <DropdownMenuItem onClick={() => openTaskDrawer(task.id, true)}>
+                                          <UserCheck className="size-3.5 mr-2 text-muted-foreground" />
+                                          <span>
+                                            {task.status === "NOT_COMPLETED"
+                                              ? "Reatribuir / Destravar"
+                                              : task.status === "COMPLETED"
+                                                ? "Reatribuir tarefa"
+                                                : "Destravar atraso"}
+                                          </span>
+                                        </DropdownMenuItem>
+                                      )}
+                                    {userRole !== "EMPLOYEE" && (
+                                      <>
+                                        {!["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status) && (
+                                          <DropdownMenuItem
+                                            onClick={() => setTaskToCancel(task.id)}
+                                            className="text-amber-700 dark:text-amber-400 focus:text-amber-800"
+                                          >
+                                            <X className="size-3.5 mr-2" />
+                                            <span>Cancelar tarefa</span>
+                                          </DropdownMenuItem>
+                                        )}
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                          variant="destructive"
+                                          onClick={() => setTaskToTrash(task.id)}
+                                        >
+                                          <Trash2 className="size-3.5 mr-2" />
+                                          <span>Mover para a lixeira</span>
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
                             </div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => openTaskDrawer(task.id)}
-                            className="text-(length:--type-label) font-semibold text-brand-900 hover:underline block leading-tight mb-1 text-left cursor-pointer"
-                          >
+
+                          <h5 className="text-xs font-semibold text-brand-900 dark:text-foreground group-hover:text-brand-700 dark:group-hover:text-primary transition-colors leading-snug line-clamp-2">
                             {task.title}
-                          </button>
+                          </h5>
                         </div>
 
-                        <div className="pt-2 border-t border-(--border-subtle) flex items-center justify-between gap-1.5 text-(length:--type-caption) text-(--text-secondary)">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div
-                              className="flex items-center gap-1 font-medium truncate max-w-24"
-                              title={task.primaryAssignee || "Sem responsável"}
-                            >
-                              <User className="size-3 text-brand-700 shrink-0" />
-                              <span className="truncate">
-                                {task.primaryAssignee || "Sem responsável"}
-                              </span>
-                            </div>
+                        <div className="pt-2 border-t border-(--border-subtle) flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                          <div
+                            className="flex items-center gap-1.5 font-medium truncate min-w-0"
+                            title={task.primaryAssignee || "Sem responsável"}
+                          >
+                            <User className="size-3.5 text-brand-700 shrink-0" />
+                            <span className="truncate text-[11px]">
+                              {task.primaryAssignee || "Sem responsável"}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
                             {task.deadlineAt && (
-                              <div className="flex items-center gap-1 font-semibold text-[var(--brand-900)] shrink-0">
-                                <Clock className="size-3 text-brand-700" />
+                              <div className="flex items-center gap-1 font-semibold text-[11px] text-brand-900 dark:text-foreground">
+                                <Clock className="size-3 text-brand-700 shrink-0" />
                                 <span>
                                   {formatTimeInTimezone(
                                     task.deadlineAt,
@@ -1088,93 +1154,18 @@ export function TasksViewClient({
                                 </span>
                               </div>
                             )}
-                          </div>
-
-                          <div className="flex items-center gap-0.5 shrink-0">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="size-7 text-[var(--brand-900)] hover:bg-[var(--surface)] cursor-pointer"
-                              title="Ver detalhes"
-                              onClick={(e) => { e.stopPropagation(); openTaskDrawer(task.id); }}
+                            <div
+                              className="flex items-center shrink-0"
+                              title={task.isViewed ? "Visualizada por um colaborador" : "Nunca aberta"}
                             >
-                              <Eye className="size-3.5" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="size-7 text-slate-500 hover:text-[var(--brand-900)] hover:bg-[var(--surface)] cursor-pointer"
-                              title="Copiar tarefa para reaproveitar"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleCopyTask(task);
-                              }}
-                            >
-                              <Copy className="size-3.5" />
-                            </Button>
-                            {(task.status === "COMPLETED" ||
-                              task.status === "NOT_COMPLETED" ||
-                              task.slaExceeded) &&
-                              userRole !== "EMPLOYEE" && (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openTaskDrawer(task.id, true);
-                                  }}
-                                  className={`size-7 ${task.status === "NOT_COMPLETED"
-                                    ? "text-rose-800 hover:bg-rose-50 hover:text-rose-900"
-                                    : task.status === "COMPLETED"
-                                      ? "text-emerald-800 hover:bg-emerald-50 hover:text-emerald-900"
-                                      : "text-amber-800 hover:bg-amber-50 hover:text-amber-900"
-                                    }`}
-                                  title={
-                                    task.status === "NOT_COMPLETED"
-                                      ? "Reatribuir / Resolver impedimento"
-                                      : task.status === "COMPLETED"
-                                        ? "Reatribuir tarefa concluída"
-                                        : "Destravar tarefa atrasada"
-                                  }
-                                >
-                                  <UserCheck className="size-3.5" />
-                                </Button>
-                              )}
-                            {userRole !== "EMPLOYEE" && (
-                              <>
-                                {!["COMPLETED", "CANCELLED", "NOT_COMPLETED"].includes(task.status) && (
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setTaskToCancel(task.id);
-                                    }}
-                                    className="size-7 text-amber-800 hover:bg-red-100 hover:text-amber-900"
-                                    title="Cancelar tarefa"
-                                  >
-                                    <X className="size-3.5" />
-                                  </Button>
-                                )}
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setTaskToTrash(task.id);
-                                  }}
-                                  className="size-7 text-red-700 hover:bg-red-100 hover:text-red-800"
-                                  title="Mover para a lixeira"
-                                >
-                                  <Trash2 className="size-3.5" />
-                                </Button>
-                              </>
-                            )}
+                              <CheckCheck
+                                className={`size-4 transition-colors ${
+                                  task.isViewed
+                                    ? "text-sky-500 dark:text-sky-400"
+                                    : "text-slate-400 dark:text-slate-500"
+                                }`}
+                              />
+                            </div>
                           </div>
                         </div>
                       </Card>

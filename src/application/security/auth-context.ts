@@ -96,7 +96,13 @@ const getRenderContext = cache(loadAuthenticatedContext);
 
 export async function getAuthenticatedContext(redirectOnFailure = true): Promise<AuthenticatedContext | null> {
   const context = await requestRead("authenticated-context", getRenderContext);
-  if (!context && redirectOnFailure) redirect("/login");
+  if (!context && redirectOnFailure) {
+    const session = await getSession();
+    if (session?.orgStatus === "SUSPENDED") {
+      redirect("/suspended");
+    }
+    redirect("/login");
+  }
   return context;
 }
 

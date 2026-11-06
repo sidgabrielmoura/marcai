@@ -28,7 +28,7 @@ async function main() {
     assert.equal(calls[0].webpush.fcmOptions,undefined);assert.ok(!JSON.stringify(calls[0]).includes(base.title));assert.ok(!JSON.stringify(calls[0]).includes(base.body));
     await sender.sendWebPushNotification({...base,platform:'native',addressType:'fid'});
     assert.equal(calls[1][0].fid,'token-one');assert.equal(calls[1][0].notification.title,base.title);
-    assert.equal(calls[1][0].webpush.fcmOptions.link,'https://tarefai.com.br/tasks/task-one');
+    assert.equal(calls[1][0].webpush.fcmOptions.link,'https://tarefai.com/tasks/task-one');
     calls.length=0;
     const result=await sender.sendWebPushNotification({...base,tokens:Array.from({length:501},(_,i)=>'t-'+i)});
     assert.equal(result.successCount,501);assert.equal(calls[0].tokens.length,500);assert.equal(calls[1].tokens.length,1);

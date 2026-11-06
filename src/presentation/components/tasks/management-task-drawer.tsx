@@ -90,14 +90,17 @@ interface ManagementTaskDrawerProps {
   initialReassign?: boolean;
 }
 
-import { TaskActivityHistory } from "./task-activity-history";
+import { TaskEvidenceItem } from "@/presentation/components/mobile/task-evidence-item";
+import { EmployeeTaskForm } from "@/presentation/components/mobile/employee-task-form";
+import { TaskTimeline } from "@/presentation/components/mobile/task-timeline";
+import { activityActor, viewersWithoutClaim } from "@/presentation/lib/task-activity";
 import {
   formatDateInTimezone,
   formatDateTimeInTimezone,
   formatTimeInTimezone,
 } from "@/domain/rules/date-time";
 
-function fmtDate(iso: string, timezone?: string) {
+function fmtDate(iso: string | Date, timezone?: string) {
   return formatDateTimeInTimezone(iso, timezone);
 }
 
@@ -619,125 +622,23 @@ export function ManagementTaskDrawer({
                     )}
 
                     {task.taskType === "FORM" && Array.isArray(task.formFields) ? (
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold text-xs block text-(--text-primary)">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between pb-1 border-b border-(--border-subtle)">
+                          <span className="font-semibold text-[11px] block text-(--text-primary)">
                             Perguntas e Respostas:
                           </span>
-                          <span className="text-[11px] text-muted-foreground font-medium">
+                          <span className="text-[10px] text-muted-foreground font-medium">
                             {task.formFields.length} {task.formFields.length === 1 ? "pergunta" : "perguntas"}
                           </span>
                         </div>
-                        <div className="space-y-2">
-                          {task.formFields.map((field: any, idx: number) => {
-                            const answer = task.formAnswers?.[field.id];
-                            const isAnswered = answer !== undefined && answer !== null && answer !== "";
-                            return (
-                              <div key={field.id} className="p-3 bg-slate-50/70 dark:bg-muted/15 border border-(--border-subtle) rounded-lg flex flex-col gap-2">
-                                <div className="flex items-start justify-between gap-2">
-                                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-snug">
-                                    {idx + 1}. {field.question || field.label || "Pergunta sem título"}{" "}
-                                    {field.required && <span className="text-red-500 font-bold">*</span>}
-                                  </span>
-                                  <Badge variant="outline" className="text-[10px] font-medium shrink-0 px-1.5 py-0">
-                                    {field.type === "SHORT_TEXT" && "Texto Curto"}
-                                    {field.type === "LONG_TEXT" && "Texto Longo"}
-                                    {field.type === "RATING" && "Avaliação"}
-                                    {field.type === "BOOLEAN" && "Sim / Não"}
-                                    {field.type === "PHOTO" && "Foto"}
-                                    {field.type === "VIDEO" && "Vídeo"}
-                                    {field.type === "FILE" && "Arquivos"}
-                                    {field.type === "NUMBER" && "Número"}
-                                    {(!field.type || !["SHORT_TEXT", "LONG_TEXT", "RATING", "BOOLEAN", "PHOTO", "VIDEO", "FILE", "NUMBER"].includes(field.type)) && (field.type || "Texto")}
-                                  </Badge>
-                                </div>
-                                <div className="text-xs text-slate-900 dark:text-slate-100 font-medium bg-white dark:bg-slate-900 p-2.5 rounded-md border border-slate-200 dark:border-slate-800">
-                                  {!isAnswered ? (
-                                    <span className="text-slate-400 dark:text-slate-500 italic text-[11px] flex items-center gap-1.5">
-                                      <Clock className="size-3" />
-                                      Aguardando resposta do colaborador
-                                    </span>
-                                  ) : field.type === "BOOLEAN" ? (
-                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${answer === true || answer === "true"
-                                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
-                                        : "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300"
-                                      }`}>
-                                      {answer === true || answer === "true" ? "✓ Sim" : "✕ Não"}
-                                    </span>
-                                  ) : field.type === "RATING" ? (
-                                    <div className="flex items-center gap-2">
-                                      <div className="flex gap-1 text-amber-500 text-sm">
-                                        {Array.from({ length: 5 }).map((_, i) => (
-                                          <span key={i}>{i < Number(answer) ? "★" : "☆"}</span>
-                                        ))}
-                                      </div>
-                                      <span className="text-[11px] text-muted-foreground font-medium">({answer} de 5)</span>
-                                    </div>
-                                  ) : field.type === "PHOTO" ? (
-                                    <div className="flex flex-col gap-1.5">
-                                      <div className="flex items-center gap-2 text-brand-900 dark:text-primary">
-                                        <Camera className="size-3.5 shrink-0" />
-                                        <span className="truncate">{typeof answer === "object" ? answer.fileName : String(answer)}</span>
-                                      </div>
-                                      {typeof answer === "object" && (answer.fileUrl || answer.storageKey) && (
-                                        <a
-                                          href={answer.fileUrl || `/api/tasks/${task.id}/form-file/${answer.storageKey}`}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-brand-900 dark:text-brand-300 hover:underline w-fit"
-                                        >
-                                          <ExternalLink className="size-3" />
-                                          <span>Visualizar foto</span>
-                                        </a>
-                                      )}
-                                    </div>
-                                  ) : field.type === "VIDEO" ? (
-                                    <div className="flex flex-col gap-1.5">
-                                      <div className="flex items-center gap-2 text-brand-900 dark:text-primary">
-                                        <Video className="size-3.5 shrink-0" />
-                                        <span className="truncate">{typeof answer === "object" ? answer.fileName : String(answer)}</span>
-                                      </div>
-                                      {typeof answer === "object" && (answer.fileUrl || answer.storageKey) && (
-                                        <a
-                                          href={answer.fileUrl || `/api/tasks/${task.id}/form-file/${answer.storageKey}`}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-brand-900 dark:text-brand-300 hover:underline w-fit"
-                                        >
-                                          <ExternalLink className="size-3" />
-                                          <span>Assistir / Baixar vídeo</span>
-                                        </a>
-                                      )}
-                                    </div>
-                                  ) : field.type === "FILE" ? (
-                                    <div className="flex flex-col gap-1.5">
-                                      <div className="flex items-center gap-2 text-brand-900 dark:text-primary">
-                                        <Paperclip className="size-3.5 shrink-0" />
-                                        <span className="truncate">{typeof answer === "object" ? answer.fileName : String(answer)}</span>
-                                        {typeof answer === "object" && answer.fileSize && (
-                                          <span className="text-[10px] text-muted-foreground">({Math.round(answer.fileSize / 1024)} KB)</span>
-                                        )}
-                                      </div>
-                                      {typeof answer === "object" && (answer.fileUrl || answer.storageKey) && (
-                                        <a
-                                          href={answer.fileUrl || `/api/tasks/${task.id}/form-file/${answer.storageKey}`}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-brand-900 dark:text-brand-300 hover:underline w-fit"
-                                        >
-                                          <Download className="size-3" />
-                                          <span>Baixar anexo</span>
-                                        </a>
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <span className="whitespace-pre-wrap">{String(answer)}</span>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
+                        <EmployeeTaskForm
+                          taskId={task.id}
+                          scope={`${task.id}:mgmt`}
+                          fields={task.formFields}
+                          answers={(task.formAnswers as Record<string, any>) ?? {}}
+                          disabled={true}
+                          onChange={() => {}}
+                        />
                       </div>
                     ) : task.instructions ? (
                       <div className="space-y-1">
@@ -776,71 +677,33 @@ export function ManagementTaskDrawer({
                   </Card>
                 )}
 
-                {/* ── Comprovações ── */}
+                {/* ── Comprovações e Evidências ── */}
                 {task.evidenceRequirements.length > 0 && (
                   <Card className="shrink-0 rounded-xl p-0 border border-(--border-subtle) bg-surface shadow-none overflow-hidden">
                     <div className="px-4 py-3 bg-slate-50/80 dark:bg-muted/30 border-b border-(--border-subtle) flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <FileCheck2 className="size-4 text-brand-900 dark:text-primary" />
-                        <h3 className="font-bold text-xs uppercase tracking-wider text-(--text-primary)">Comprovações</h3>
+                        <h3 className="font-bold text-xs uppercase tracking-wider text-(--text-primary)">
+                          Comprovações e Evidências
+                        </h3>
                       </div>
                       <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-200/80 dark:bg-muted text-slate-800 dark:text-foreground">
                         {task.evidenceRequirements.filter((r) => r.submissions.filter((s) => s.validationStatus === "VALID").length >= r.minQuantity).length}
-                        /{task.evidenceRequirements.length}
+                        /{task.evidenceRequirements.length} entregues
                       </span>
                     </div>
-                    <CardContent className="p-4 flex flex-col gap-3">
-                      {task.evidenceRequirements.map((req) => {
-                        const valid = req.submissions.filter((s) => s.validationStatus === "VALID");
-                        const isDone = valid.length >= req.minQuantity;
-                        return (
-                          <div
-                            key={req.id}
-                            className={`p-3 rounded-xl border text-xs transition-colors ${isDone
-                              ? "bg-emerald-50/40 border-emerald-200"
-                              : "bg-slate-50/60 border-(--border-subtle)"
-                              }`}
-                          >
-                            <div className="flex items-center justify-between gap-2 mb-1.5">
-                              <span className="font-semibold text-(--text-primary)">{req.type} · {req.executionStage}</span>
-                              <Badge
-                                className={`text-[10px] font-semibold ${isDone
-                                  ? "bg-emerald-100 text-emerald-800 border-emerald-200"
-                                  : req.required
-                                    ? "border-amber-300 text-amber-800 bg-amber-50"
-                                    : "text-slate-500"
-                                  }`}
-                                variant="outline"
-                              >
-                                {isDone ? "Entregue" : req.required ? "Obrigatória" : "Opcional"}
-                              </Badge>
-                            </div>
-                            {req.submissions.length === 0 ? (
-                              <p className="text-muted-foreground">Nenhum envio ainda.</p>
-                            ) : (
-                              <div className="flex flex-col gap-1.5">
-                                {req.submissions.map((s) => (
-                                  <div key={s.id} className="flex items-center gap-1.5">
-                                    {s.validationStatus === "VALID"
-                                      ? <CheckCircle2 className="size-3.5 text-emerald-600 shrink-0" />
-                                      : s.validationStatus === "REJECTED"
-                                        ? <XCircle className="size-3.5 text-red-600 shrink-0" />
-                                        : <Clock className="size-3.5 text-slate-400 shrink-0" />}
-                                    {(s as any).fileUrl || s.storageKey ? (
-                                      <a href={(s as any).fileUrl || `/api/evidence/${s.id}`} className="underline text-blue-600 hover:text-blue-800 font-medium truncate" target="_blank" rel="noopener noreferrer">
-                                        Ver comprovação #{s.attemptNumber}
-                                      </a>
-                                    ) : (
-                                      <span className="truncate text-slate-700">{s.value || `Envio #${s.attemptNumber}`}</span>
-                                    )}
-                                    <span className="ml-auto text-[10px] text-muted-foreground shrink-0">{fmtDate(s.createdAt)}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                    <CardContent className="p-4 flex flex-col gap-3.5">
+                      {task.evidenceRequirements.map((req) => (
+                        <TaskEvidenceItem
+                          key={req.id}
+                          scope={`${task.id}:mgmt`}
+                          timezone={task.timezone}
+                          taskId={task.id}
+                          requirement={req}
+                          disabled={true}
+                          onDraftChange={() => {}}
+                        />
+                      ))}
                     </CardContent>
                   </Card>
                 )}
@@ -1036,21 +899,49 @@ export function ManagementTaskDrawer({
 
                 {/* ── Histórico ── */}
                 {task.activityLogs.length > 0 && (
-                  <Card className="shrink-0 rounded-xl p-0 border border-(--border-subtle) bg-surface shadow-none overflow-hidden">
-                    <div className="px-4 py-3 bg-slate-50/80 dark:bg-muted/30 border-b border-(--border-subtle) flex items-center gap-2">
-                      <Activity className="size-4 text-brand-900" />
-                      <h3 className="font-bold text-xs uppercase tracking-wider text-(--text-primary)">Histórico</h3>
-                    </div>
-                    <CardContent className="p-4 flex flex-col gap-2 text-xs">
-                      <TaskActivityHistory
-                        logs={task.activityLogs}
-                        assignedMemberIds={task.assignments
+                  <div className="flex flex-col gap-3">
+                    {(() => {
+                      const viewers = viewersWithoutClaim(
+                        task.activityLogs,
+                        task.assignments
                           .filter((assignment) => assignment.type === "PRIMARY")
-                          .map((assignment) => assignment.memberId)}
-                        timezone={task.timezone}
-                      />
-                    </CardContent>
-                  </Card>
+                          .map((assignment) => assignment.memberId)
+                      );
+                      if (viewers.length === 0) return null;
+                      return (
+                        <Card className="shrink-0 rounded-xl p-0 border border-(--border-subtle) bg-surface shadow-none overflow-hidden">
+                          <div className="p-3 bg-slate-50/60 dark:bg-muted/20 text-xs">
+                            <p className="font-semibold text-(--text-primary)">Visualizaram e não assumiram</p>
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                              Abriram quando a tarefa estava sem responsável.
+                            </p>
+                            <ul className="mt-2 flex flex-col gap-1.5">
+                              {viewers.map((log) => (
+                                <li key={log.actorId} className="flex flex-wrap justify-between gap-x-3 gap-y-1">
+                                  <span className="font-medium text-slate-700 dark:text-slate-300">
+                                    {activityActor(log)}
+                                  </span>
+                                  <time dateTime={new Date(log.createdAt).toISOString()} className="text-muted-foreground text-[10px]">
+                                    {fmtDate(log.createdAt, task.timezone)}
+                                  </time>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </Card>
+                      );
+                    })()}
+
+                    <TaskTimeline
+                      events={task.activityLogs.map((l) => ({
+                        id: l.id,
+                        action: l.action,
+                        createdAt: l.createdAt,
+                        actorName: l.actorName || activityActor(l),
+                      }))}
+                      timezone={task.timezone}
+                    />
+                  </div>
                 )}
               </>
             ) : null}

@@ -29,13 +29,13 @@ export async function verifySecondFactorAction(_previous: SecondFactorState, for
       where: { id: challenge.userId },
       include: {
         memberships: {
-          where: { status: "ACTIVE", organization: { status: "ACTIVE" } },
+          where: { status: "ACTIVE", organization: { status: { in: ["ACTIVE", "SUSPENDED"] } } },
           include: { organization: true },
         },
       },
     });
     if (!user || user.status !== "ACTIVE") return { error: "Acesso inválido. Entre novamente." };
-    const member = challenge.memberId ? await tx.organizationMember.findFirst({ where: { id: challenge.memberId, userId: user.id, status: "ACTIVE", organization: { status: "ACTIVE" } } }) : null;
+    const member = challenge.memberId ? await tx.organizationMember.findFirst({ where: { id: challenge.memberId, userId: user.id, status: "ACTIVE", organization: { status: { in: ["ACTIVE", "SUSPENDED"] } } } }) : null;
     if (challenge.memberId && !member) return { error: "Seu vínculo mudou. Entre novamente." };
     const credentials = challenge.memberId ? `${user.passwordHash ?? ""}:${member?.pinHash ?? ""}` : user.passwordHash;
     if (credentialVersion(credentials) !== challenge.credentialVersion) return { error: "Seu acesso foi alterado. Entre novamente." };
@@ -101,11 +101,31 @@ export async function verifySecondFactorAction(_previous: SecondFactorState, for
     return finish("/superadmin");
   }
   const members = challenge.memberId
-    ? await prisma.organizationMember.findMany({ where: { id: challenge.memberId, userId: user.id, status: "ACTIVE", organization: { status: "ACTIVE" } }, include: { organization: true } })
+    ? await prisma.organizationMember.findMany({ where: { id: challenge.memberId, userId: user.id, status: "ACTIVE", organization: { status: { in: ["ACTIVE", "SUSPENDED"] } } }, include: { organization: true } })
     : (user.memberships || []);
   if (!members.length) return { error: "Você não possui vínculo ativo. Consulte a administração." };
-  const member = members[0];
-  await createSession({ userId: user.id, name: user.name, email: user.email, activeOrgId: member.organizationId, activeMemberId: member.id, role: member.role as Role, employeeCode: member.employeeCode, secondFactorProof: proof });
+
+  const hasActiveOrg = members.some(m => m.organization.status === "ACTIVE");
+  const primaryMember = members.find(m => m.organization.status === "ACTIVE") || members[0];
+  const member = challenge.memberId ? members[0] : primaryMember;
+  const orgStatus = (member.organization.status as "ACTIVE" | "SUSPENDED") || "ACTIVE";
+
+  await createSession({
+    userId: user.id,
+    name: user.name,
+    email: user.email,
+    activeOrgId: member.organizationId,
+    activeMemberId: member.id,
+    role: member.role as Role,
+    employeeCode: member.employeeCode,
+    secondFactorProof: proof,
+    orgStatus,
+  });
+
+  if (orgStatus === "SUSPENDED" && (!challenge.memberId && !hasActiveOrg || !!challenge.memberId)) {
+    return finish("/suspended");
+  }
+
   const destination = members.length > 1 ? "/select-org" : member.role === "EMPLOYEE" ? "/tasks" : "/overview";
   if (userPasskeysCount === 0) {
     return finish(`/setup-biometrics?next=${encodeURIComponent(destination)}`);

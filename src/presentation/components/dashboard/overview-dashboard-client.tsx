@@ -352,7 +352,7 @@ export function OverviewDashboardClient({
               <span>Salvar PDF</span>
             </Button>
 
-            {["OWNER", "ADMIN"].includes(role) && (
+            {/* {["OWNER", "ADMIN"].includes(role) && (
               <Button
                 variant="outline"
                 size="sm"
@@ -365,7 +365,7 @@ export function OverviewDashboardClient({
                 <CalendarPlus className="size-4" />
                 <span>Agendar envio</span>
               </Button>
-            )}
+            )} */}
           </div>
         }
       />
@@ -570,40 +570,40 @@ export function OverviewDashboardClient({
           </CardContent>
         </Card>
 
-        <Card className="bg-[linear-gradient(125deg,#12472f,#248458)] text-white border-0 shadow-sm overflow-hidden">
+        <Card className="border-(--border-subtle) bg-(--surface) shadow-none overflow-hidden">
           <CardHeader>
-            <CardTitle className="text-white">Volume por responsável</CardTitle>
-            <CardDescription className="text-emerald-100/80">
+            <CardTitle>Volume por responsável</CardTitle>
+            <CardDescription>
               Distribuição de tarefas por pessoa na equipe.
             </CardDescription>
           </CardHeader>
           <CardContent className="max-h-50! overflow-y-auto">
-            <Table className="rounded-2xl!">
+            <Table>
               <TableHeader>
-                <TableRow className="bg-transparent border-transparent! hover:bg-white/5!">
-                  <TableHead className="text-emerald-100! font-semibold bg-transparent! border-transparent!">Responsável</TableHead>
-                  <TableHead className="text-emerald-100! font-semibold bg-transparent! border-transparent!">Total</TableHead>
-                  <TableHead className="text-emerald-100! font-semibold bg-transparent! border-transparent!">Concluídas</TableHead>
-                  <TableHead className="text-emerald-100! font-semibold bg-transparent! border-transparent!">Atrasadas</TableHead>
+                <TableRow className="border-(--border-subtle)">
+                  <TableHead className="text-xs font-medium text-muted-foreground">Responsável</TableHead>
+                  <TableHead className="text-xs font-medium text-muted-foreground text-center">Total</TableHead>
+                  <TableHead className="text-xs font-medium text-muted-foreground text-center">Concluídas</TableHead>
+                  <TableHead className="text-xs font-medium text-muted-foreground text-center">Atrasadas</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody className="divide-y divide-white/10">
+              <TableBody>
                 {people.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center py-6 text-emerald-100/70">
+                    <TableCell colSpan={4} className="text-center py-6 text-xs text-muted-foreground">
                       Nenhum responsável com tarefas no período.
                     </TableCell>
                   </TableRow>
                 ) : (
                   people.map((p) => (
-                    <TableRow key={p.name} className="hover:bg-white/5! border-transparent! transition-colors">
-                      <TableCell className="font-medium text-white">{p.name}</TableCell>
-                      <TableCell className="text-white">{p.total}</TableCell>
-                      <TableCell className="text-emerald-200 font-semibold">
+                    <TableRow key={p.name} className="border-(--border-subtle) text-xs">
+                      <TableCell className="font-medium text-foreground py-2">{p.name}</TableCell>
+                      <TableCell className="text-center tabular-nums py-2">{p.total}</TableCell>
+                      <TableCell className="text-center tabular-nums text-emerald-700 font-medium py-2">
                         {p.done}
                       </TableCell>
                       <TableCell
-                        className={p.late > 0 ? "text-amber-300 font-bold" : "text-white/80"}
+                        className={`text-center tabular-nums py-2 ${p.late > 0 ? "text-amber-700 font-semibold" : "text-muted-foreground"}`}
                       >
                         {p.late}
                       </TableCell>

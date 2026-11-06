@@ -1,3 +1,4 @@
+import { EmployeeHistoryFilters } from "@/presentation/components/mobile/employee-filters";
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { getAuthenticatedContext } from "@/application/security/auth-context";
@@ -8,8 +9,7 @@ import { EmployeeShell } from "@/presentation/components/mobile/employee-shell";
 import { PageHeader, EmptyState } from "@/presentation/components/shared";
 import { EmployeeHistoryList, type HistoryTaskItem } from "@/presentation/components/mobile/employee-history-list";
 import { Button } from "@/components/ui/button";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+
 import {
   formatDateInTimezone,
   resolveEffectiveTimezone,
@@ -73,38 +73,7 @@ export default async function HistoryPage({
           title="Histórico de tarefas"
           subtitle="Consulte entregas, cancelamentos e impedimentos da sua operação."
         />
-        <form className="flex flex-wrap items-end gap-4">
-          <FieldGroup className="form-grid sm:flex-1">
-            <Field>
-              <FieldLabel htmlFor="history-period">Período</FieldLabel>
-              <NativeSelect id="history-period" name="period" className="w-full" defaultValue={period}>
-                {[7, 30, 90, 365].map((v) => (
-                  <NativeSelectOption key={v} value={v}>
-                    Últimos {v} dias
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="history-status">Resultado</FieldLabel>
-              <NativeSelect id="history-status" name="status" className="w-full" defaultValue={status}>
-                {Object.entries({
-                  ALL: "Todos os resultados",
-                  COMPLETED: "Concluídas",
-                  CANCELLED: "Canceladas",
-                  NOT_COMPLETED: "Não realizadas",
-                }).map(([v, l]) => (
-                  <NativeSelectOption key={v} value={v}>
-                    {l}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </Field>
-          </FieldGroup>
-          <Button type="submit" variant="outline">
-            Aplicar filtros
-          </Button>
-        </form>
+        <EmployeeHistoryFilters period={period} status={status} />
 
         {!formattedTasks.length ? (
           <EmptyState

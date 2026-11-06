@@ -5,11 +5,13 @@ import { getPushContextAction, saveDeviceTokenAction } from "@/presentation/acti
 export type PushPermissionStatus = "default" | "granted" | "denied" | "unsupported";
 const registrations = new Map<string, Promise<boolean>>();
 const registeredSessions = new Set<string>();
+const registrationTimes = new Map<string, string>();
 export function usePushNotifications(sessionId?: string) {
     const [permission, setPermission] = useState<PushPermissionStatus>("default");
     const [isSubscribing, setIsSubscribing] = useState(false);
     const [isSubscribed, setIsSubscribed] = useState(!!sessionId && registeredSessions.has(sessionId));
     const [error, setError] = useState<string | null>(null);
+    const [lastSyncAt, setLastSyncAt] = useState<string | null>(sessionId ? registrationTimes.get(sessionId) ?? null : null);
     const mounted = useRef(true);
     const currentSession = useRef(sessionId);
     currentSession.current = sessionId;
@@ -17,10 +19,13 @@ export function usePushNotifications(sessionId?: string) {
         mounted.current = true;
         setIsSubscribed(!!sessionId && registeredSessions.has(sessionId));
         setPermission(typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
+        setLastSyncAt(sessionId ? registrationTimes.get(sessionId) ?? null : null);
         const registered = (event: Event) => {
             const next = (event as CustomEvent<string>).detail;
-            if (!sessionId || next === sessionId)
+            if (!sessionId || next === sessionId) {
                 setIsSubscribed(true);
+                setLastSyncAt(registrationTimes.get(next) ?? null);
+            }
         };
         window.addEventListener('tarefai:push-registered', registered);
         return () => { mounted.current = false; window.removeEventListener('tarefai:push-registered', registered); };
@@ -47,6 +52,8 @@ export function usePushNotifications(sessionId?: string) {
                     if (!result.success)
                         throw new Error(result.error || 'Falha ao registrar notificações.');
                     registeredSessions.add(context.sessionId);
+                    registrationTimes.set(context.sessionId, new Date().toISOString());
+                    if (registrationTimes.size > 10) registrationTimes.delete(registrationTimes.keys().next().value!);
                     if (registeredSessions.size > 10)
                         registeredSessions.delete(registeredSessions.values().next().value!);
                     window.dispatchEvent(new CustomEvent('tarefai:push-registered', { detail: context.sessionId }));
@@ -80,5 +87,11 @@ export function usePushNotifications(sessionId?: string) {
             }
         }
     }, [sessionId]);
-    return { permission, isSubscribed, isSubscribing, error, subscribe, isSupported: permission !== 'unsupported' };
+    // Checking local permission on focus does not register the device again or read SQL.
+    const refresh = useCallback(() => {
+        const next = typeof Notification === 'undefined' ? 'unsupported' : Notification.permission;
+        setPermission(next);
+        if (next !== 'granted') setIsSubscribed(false);
+    }, []);
+    return { permission, isSubscribed, isSubscribing, error, subscribe, refresh, lastSyncAt, isSupported: permission !== 'unsupported' };
 }

@@ -8,6 +8,10 @@ export default async function HomePage() {
     redirect("/login");
   }
 
+  if (session.orgStatus === "SUSPENDED") {
+    redirect("/suspended");
+  }
+
   if (session.role === "SUPERADMIN") {
     redirect("/superadmin");
   }

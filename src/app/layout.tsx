@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toast";
 import { AppReloadLoader } from "@/components/loader/logo-loader";
 import "./globals.css";
 import "./workspace.css";
+import "./employee-updates.css";
 
 const geist = localFont({
   src: "./fonts/Geist-Variable.woff2",
@@ -14,7 +15,7 @@ const geist = localFont({
   style: "normal",
 });
 
-const siteUrl = process.env.NEXT_PUBLIC_APP_URL || "https://tarefai.com.br";
+const siteUrl = process.env.NEXT_PUBLIC_APP_URL || "https://tarefai.com";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

@@ -500,7 +500,7 @@ export function TeamsClient({
               </div>
 
               {/* Título e Descrição */}
-              <h3 className="text-foreground text-[length:var(--type-card-title)] font-bold">
+              <h3 className="text-foreground text-sm font-semibold">
                 {team.name}
               </h3>
               {team.description ? (
