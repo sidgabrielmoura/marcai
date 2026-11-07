@@ -258,7 +258,16 @@ export async function operationalTick(now = new Date(), options: OperationalOpti
                                     where: { id: task.id },
                                     data: { slaExceededAt: task.slaDueAt },
                                 });
-                                await notifyManagers(tx, task, notifTitle, `${task.title} (${reason})`);
+                                const effectivePriority = task.priority === "CRITICAL" || task.criticality === "CRITICAL" ? "CRITICAL" : task.priority;
+                                await notifyManagers(tx, task, notifTitle, `${task.title} (${reason})`, {
+                                    type: "TASK_OVERDUE",
+                                    priority: effectivePriority,
+                                    data: {
+                                        taskId: task.id,
+                                        milestone,
+                                        taskTitle: task.title,
+                                    },
+                                });
                                 const assignments = await tx.taskAssignment.findMany({
                                     where: { taskId: task.id, removedAt: null },
                                     include: { member: { select: { userId: true } } },
@@ -270,10 +279,10 @@ export async function operationalTick(now = new Date(), options: OperationalOpti
                                             organizationId: task.organizationId,
                                             userId: a.member.userId,
                                             type: "TASK_OVERDUE",
-                                            priority: task.priority,
+                                            priority: effectivePriority,
                                             title: notifTitle,
                                             message: `${task.title} (${reason})`,
-                                            data: { taskId: task.id },
+                                            data: { taskId: task.id, milestone, taskTitle: task.title },
                                         },
                                     });
                                     assigneeUserIds.push(a.member.userId);
@@ -453,7 +462,11 @@ export async function operationalTick(now = new Date(), options: OperationalOpti
                                 reason: "Tarefa disponível há mais de 15 minutos sem nenhum responsável atribuído.",
                             },
                         });
-                        await notifyManagers(tx, task, "Tarefa sem responsável", `A tarefa “${task.title}” aguarda atribuição na unidade.`);
+                        await notifyManagers(tx, task, "Tarefa sem responsável", `A tarefa “${task.title}” aguarda atribuição na unidade.`, {
+                            type: "OPERATIONAL_ALERT",
+                            priority: task.criticality === "CRITICAL" ? "CRITICAL" : "HIGH",
+                            data: { taskId: task.id, taskTitle: task.title },
+                        });
                         return true;
                     });
                     if (changed) {

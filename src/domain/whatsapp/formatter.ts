@@ -52,8 +52,20 @@ export function formatOperationalAlertMessage(params: OperationalAlertMessagePar
   lines.push(params.message);
 
   if (params.actionUrl) {
+    const rawBase =
+      process.env.BASE_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.APP_URL ||
+      "https://tarefai.com";
+    const baseUrl = rawBase.replace(/\/+$/, "");
+    const cleanPath = params.actionUrl.startsWith("/")
+      ? params.actionUrl
+      : `/${params.actionUrl}`;
+    const fullUrl = cleanPath.startsWith("/management")
+      ? `${baseUrl}${cleanPath}`
+      : `${baseUrl}/management${cleanPath}`;
     lines.push("");
-    lines.push(`🔗 *Acessar no sistema:* https://tarefai.com/management/${params.actionUrl}`);
+    lines.push(`🔗 *Acessar no sistema:* ${fullUrl}`);
   }
 
   lines.push("");

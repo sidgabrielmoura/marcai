@@ -111,12 +111,16 @@ export async function registerOperationalAlert(params: RegisterAlertParams) {
     let resolvedTeamName = params.teamName;
     let resolvedProcessName: string | undefined;
 
+    let effectivePriority = params.priority;
+
     if (params.taskId) {
       const task = await prisma.task.findUnique({
         where: { id: params.taskId },
         select: {
           locationId: true,
           title: true,
+          priority: true,
+          criticality: true,
           team: { select: { name: true } },
         },
       });
@@ -124,6 +128,11 @@ export async function registerOperationalAlert(params: RegisterAlertParams) {
         if (!locationId) locationId = task.locationId;
         if (!resolvedTaskTitle) resolvedTaskTitle = task.title;
         if (!resolvedTeamName && task.team?.name) resolvedTeamName = task.team.name;
+        if (task.criticality === "CRITICAL" || task.priority === "CRITICAL") {
+          effectivePriority = "CRITICAL";
+        } else if (!effectivePriority) {
+          effectivePriority = task.priority;
+        }
       }
     } else if (params.executionId) {
       const exec = await prisma.processExecution.findUnique({
@@ -172,7 +181,7 @@ export async function registerOperationalAlert(params: RegisterAlertParams) {
     const now = new Date();
     const evaluation = evaluateAlertRules(settings, {
       type: params.type,
-      priority: params.priority,
+      priority: effectivePriority,
       milestoneStep: params.milestoneStep,
       location,
     }, now);
@@ -225,7 +234,7 @@ export async function registerOperationalAlert(params: RegisterAlertParams) {
       title: params.title,
       message: params.message,
       type: params.type,
-      priority: params.priority,
+      priority: effectivePriority,
       milestoneStep: params.milestoneStep,
       taskTitle: resolvedTaskTitle,
       processName: resolvedProcessName,
@@ -253,7 +262,7 @@ export async function registerOperationalAlert(params: RegisterAlertParams) {
           executionId: params.executionId || null,
           incidentKey,
           eventType: params.type,
-          priority: params.priority || null,
+          priority: effectivePriority || null,
           milestoneStep: params.milestoneStep ?? 0,
           title: params.title,
           message: messageText,
@@ -314,6 +323,25 @@ export async function registerOperationalAlert(params: RegisterAlertParams) {
       } catch (dispatchErr) {
         console.warn("[whatsapp-alerts] Immediate dispatch failed, will retry:", dispatchErr);
       }
+    }
+
+    // Emissão em tempo real no Ably para manter a interface de gestão e auditoria sincronizada instantaneamente
+    try {
+      const { publishToChannel } = await import("@/infrastructure/realtime/ably");
+      void publishToChannel(
+        `org:${params.organizationId}:notifications`,
+        "alert:operational",
+        {
+          organizationId: params.organizationId,
+          occurrenceId: occurrence.id,
+          type: params.type,
+          title: params.title,
+          priority: effectivePriority,
+          timestamp: new Date().toISOString(),
+        }
+      );
+    } catch {
+      // Fail-safe silencioso: falha de pub/sub em tempo real nunca afeta o alerta
     }
 
     return {

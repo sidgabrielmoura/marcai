@@ -178,9 +178,19 @@ export async function dispatchPersistedNotifications(ids: string[]): Promise<voi
 
             // WhatsApp: Desacoplado de push/email e da elegibilidade do usuário interno, avaliado por organização com fail-safe
             try {
-                const data = (notice.data || {}) as Record<string, string>;
-                const url = data.taskId ? '/tasks/' + encodeURIComponent(data.taskId) : '/notifications';
-                const whatsappKey = JSON.stringify([notice.organizationId, notice.type, notice.title, notice.message, data]);
+                const rawData = (notice.data || {}) as Record<string, unknown>;
+                const taskId = typeof rawData.taskId === "string" ? rawData.taskId : undefined;
+                const executionId = typeof rawData.executionId === "string" ? rawData.executionId : undefined;
+                const locationId = typeof rawData.locationId === "string" ? rawData.locationId : undefined;
+                const taskTitle = typeof rawData.taskTitle === "string" ? rawData.taskTitle : undefined;
+                let milestoneStep: number | undefined;
+                if (typeof rawData.milestone === "number" && !Number.isNaN(rawData.milestone)) {
+                    milestoneStep = rawData.milestone;
+                } else if (typeof rawData.milestone === "string" && /^\d+$/.test(rawData.milestone)) {
+                    milestoneStep = parseInt(rawData.milestone, 10);
+                }
+                const url = taskId ? '/tasks/' + encodeURIComponent(taskId) : '/notifications';
+                const whatsappKey = JSON.stringify([notice.organizationId, notice.type, notice.title, notice.message, taskId, executionId, milestoneStep]);
                 if (!whatsappSent.has(whatsappKey)) {
                     whatsappSent.add(whatsappKey);
                     const { registerOperationalAlert } = await import('@/application/whatsapp/alerts');
@@ -191,11 +201,11 @@ export async function dispatchPersistedNotifications(ids: string[]): Promise<voi
                         message: notice.message,
                         priority: notice.priority,
                         actionUrl: url,
-                        taskId: data.taskId,
-                        executionId: data.executionId,
-                        locationId: data.locationId,
-                        milestoneStep: typeof data.milestone === 'number' ? data.milestone : undefined,
-                        taskTitle: data.taskTitle,
+                        taskId,
+                        executionId,
+                        locationId,
+                        milestoneStep,
+                        taskTitle,
                     });
                 }
             }
