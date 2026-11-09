@@ -57,6 +57,16 @@ export async function inviteMemberAction(formData: FormData): Promise<ActionResu
     return { error: "Nome é obrigatório." };
   }
 
+  // A criação de equipe é pré-requisito obrigatório para adicionar pessoas
+  const activeTeamsCount = await prisma.team.count({
+    where: { organizationId: context.organizationId, status: "ACTIVE" },
+  });
+  if (activeTeamsCount === 0) {
+    return {
+      error: "A criação de equipe está pendente. É necessário criar ao menos uma equipe antes de adicionar pessoas à organização.",
+    };
+  }
+
   const pinHash = pin && pin.length === 6 ? await bcrypt.hash(pin, 10) : null;
   const password = String(formData.get("password") || "");
   if (!z.enum(["EMPLOYEE", "MANAGER", "ADMIN"]).safeParse(role).success) return { error: "Permissão inválida." };

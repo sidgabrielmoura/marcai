@@ -2,6 +2,7 @@ import { getManagementContext } from "@/application/security/auth-context";
 import { prisma } from "@/infrastructure/database/prisma";
 import { ManagementShell } from "@/presentation/components/mobile/management-shell";
 import { CreateTaskForm } from "@/presentation/components/tasks/create-task-form";
+import { PendingPrerequisitesGate } from "@/presentation/components/shared";
 
 export default async function NewTaskPage({
   searchParams,
@@ -43,22 +44,33 @@ export default async function NewTaskPage({
     }),
   ]);
 
+  const hasPrerequisites = locations.length > 0 && teams.length > 0;
+
   return (
     <ManagementShell
       userName={context.userName}
       orgName={context.organizationName}
       role={context.role}
     >
-      <CreateTaskForm
-        locations={locations}
-        teams={teams}
-        members={members.map((m) => ({
-          id: m.id,
-          name: m.user.name,
-          email: m.user.email,
-        }))}
-        initialTaskType={type === "FORM" ? "FORM" : "STANDARD"}
-      />
+      {!hasPrerequisites ? (
+        <PendingPrerequisitesGate
+          entityType="task"
+          hasTeams={teams.length > 0}
+          hasLocations={locations.length > 0}
+          fallbackUrl="/management/tasks"
+        />
+      ) : (
+        <CreateTaskForm
+          locations={locations}
+          teams={teams}
+          members={members.map((m) => ({
+            id: m.id,
+            name: m.user.name,
+            email: m.user.email,
+          }))}
+          initialTaskType={type === "FORM" ? "FORM" : "STANDARD"}
+        />
+      )}
     </ManagementShell>
   );
 }

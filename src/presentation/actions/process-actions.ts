@@ -57,6 +57,35 @@ export async function createProcessAction(
   const context = await getAuthenticatedContext(false);
   if (!context || !isManagement(context))
     return { error: "Apenas gestores podem salvar processos." };
+
+  const isNewProcess = !formData.get("processId");
+  if (isNewProcess) {
+    const [activeLocationsCount, activeTeamsCount] = await Promise.all([
+      prisma.location.count({
+        where: { organizationId: context.organizationId, status: "ACTIVE" },
+      }),
+      prisma.team.count({
+        where: { organizationId: context.organizationId, status: "ACTIVE" },
+      }),
+    ]);
+
+    if (activeLocationsCount === 0 && activeTeamsCount === 0) {
+      return {
+        error: "Você precisa criar ao menos uma equipe e uma unidade antes de criar um processo.",
+      };
+    }
+    if (activeTeamsCount === 0) {
+      return {
+        error: "Você precisa criar ao menos uma equipe antes de criar um processo.",
+      };
+    }
+    if (activeLocationsCount === 0) {
+      return {
+        error: "Você precisa criar ao menos uma unidade antes de criar um processo.",
+      };
+    }
+  }
+
   try {
     const input = JSON.parse(String(formData.get("definition")));
     const result = await notificationTransaction(

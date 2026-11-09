@@ -129,6 +129,32 @@ export async function createAdHocTaskAction(
     return { error: parsed.error.issues[0]?.message || "Dados inválidos." };
   }
 
+  // A criação de equipe e unidade são pré-requisitos obrigatórios para criar tarefas
+  const [activeLocationsCount, activeTeamsCount] = await Promise.all([
+    prisma.location.count({
+      where: { organizationId: context.organizationId, status: "ACTIVE" },
+    }),
+    prisma.team.count({
+      where: { organizationId: context.organizationId, status: "ACTIVE" },
+    }),
+  ]);
+
+  if (activeLocationsCount === 0 && activeTeamsCount === 0) {
+    return {
+      error: "Você precisa criar ao menos uma equipe e uma unidade antes de criar uma tarefa.",
+    };
+  }
+  if (activeTeamsCount === 0) {
+    return {
+      error: "Você precisa criar ao menos uma equipe antes de criar uma tarefa.",
+    };
+  }
+  if (activeLocationsCount === 0) {
+    return {
+      error: "Você precisa criar ao menos uma unidade antes de criar uma tarefa.",
+    };
+  }
+
   const {
     title,
     description,

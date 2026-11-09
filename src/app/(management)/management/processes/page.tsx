@@ -27,21 +27,37 @@ export default async function ManagementProcessesPage({
     whereClause.locationId = { in: context.scope.locationIds };
   }
 
-  const processes = await prisma.process.findMany({
-    where: whereClause,
-    include: {
-      location: true,
-      sourceTemplateVersion: true,
-      _count: {
-        select: {
-          routines: true,
-          tasks: { where: { deletedAt: null } },
-          executions: true,
+  const [processes, locationsCount, teamsCount] = await Promise.all([
+    prisma.process.findMany({
+      where: whereClause,
+      include: {
+        location: true,
+        sourceTemplateVersion: true,
+        _count: {
+          select: {
+            routines: true,
+            tasks: { where: { deletedAt: null } },
+            executions: true,
+          },
         },
       },
-    },
-    orderBy: [{ criticality: "desc" }, { createdAt: "desc" }],
-  });
+      orderBy: [{ criticality: "desc" }, { createdAt: "desc" }],
+    }),
+    prisma.location.count({
+      where: {
+        organizationId: context.organizationId,
+        status: "ACTIVE",
+        ...(context.role === "MANAGER" && context.scope ? { id: { in: context.scope.locationIds } } : {}),
+      },
+    }),
+    prisma.team.count({
+      where: {
+        organizationId: context.organizationId,
+        status: "ACTIVE",
+        ...(context.role === "MANAGER" && context.scope ? { id: { in: context.scope.teamIds } } : {}),
+      },
+    }),
+  ]);
 
   const formatted = processes
     .filter(
@@ -72,7 +88,12 @@ export default async function ManagementProcessesPage({
       orgName={context.organizationName}
       role={context.role}
     >
-      <ProcessListClient processes={formatted} userRole={context.role} />
+      <ProcessListClient
+        processes={formatted}
+        userRole={context.role}
+        hasLocations={locationsCount > 0}
+        hasTeams={teamsCount > 0}
+      />
     </ManagementShell>
   );
 }

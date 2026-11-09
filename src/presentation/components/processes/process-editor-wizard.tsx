@@ -874,7 +874,7 @@ export function ProcessEditorWizard({
                         </div>
 
                         <section className="flex justify-between items-center w-full">
-                          <div className="flex items-center gap-1 w-full">
+                          <div className="flex items-center gap-1">
                             <Button
                               type="button"
                               aria-label={`Duplicar tarefa ${i + 1}`}
@@ -889,8 +889,8 @@ export function ProcessEditorWizard({
                               }}
                               className="flex max-sm:flex-col flex-1! items-center justify-center px-2 py-1 min-w-13 rounded-lg text-emerald-800 bg-emerald-50 hover:bg-emerald-100 hover:text-emerald-900 border border-emerald-300/70 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60 transition-all cursor-pointer shadow-2xs group"
                             >
-                              <Copy className="size-3.5 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
-                              <span className="max-sm:text-[10px] text-[13px] font-bold leading-none mt-0.5 tracking-tight text-emerald-800 dark:text-emerald-300">Duplicar</span>
+                              <Copy className="size-3 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
+                              <span className="max-sm:text-[10px] text-[12px] font-bold leading-none mt-0.5 tracking-tight text-emerald-800 dark:text-emerald-300">Duplicar</span>
                             </Button>
                             <Button
                               type="button"
@@ -942,10 +942,10 @@ export function ProcessEditorWizard({
                                   type: "success",
                                 });
                               }}
-                              className="flex max-sm:flex-col flex-1! items-center justify-center px-2 py-1 min-w-16 rounded-lg text-brand-900 bg-brand-soft hover:bg-brand-soft/80 border border-brand-200/70 dark:bg-slate-800 dark:text-slate-200 transition-all cursor-pointer shadow-2xs group"
+                              className="flex max-sm:flex-col flex-1! items-center justify-center px-4! py-0.5! min-w-16 rounded-lg text-brand-900 bg-brand-soft hover:bg-brand-soft/80 border border-brand-200/70 dark:bg-slate-800 dark:text-slate-200 transition-all cursor-pointer shadow-2xs group"
                             >
-                              <ClipboardPaste className="size-3.5 text-brand-700 dark:text-brand-400 group-hover:scale-110 transition-transform" />
-                              <span className="max-sm:text-[10px] text-[13px] font-bold leading-none mt-0.5 tracking-tight text-brand-900 dark:text-slate-200">Colar tarefa</span>
+                              <ClipboardPaste className="size-3 text-brand-700 dark:text-brand-400 group-hover:scale-110 transition-transform" />
+                              <span className="max-sm:text-[10px] text-[12px] font-bold leading-none tracking-tight text-brand-900 dark:text-slate-200">Colar tarefa</span>
                             </Button>
                           </div>
                           <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>

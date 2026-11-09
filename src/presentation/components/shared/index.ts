@@ -7,3 +7,5 @@ export * from "./card";
 export * from "./filter-sheet";
 export * from "./organization-switcher";
 export { Modal } from "./modal";
+export * from "./pending-prerequisites-modal";
+export * from "./pending-prerequisites-gate";

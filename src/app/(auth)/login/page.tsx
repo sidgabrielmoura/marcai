@@ -467,12 +467,20 @@ export default function LoginPage() {
                 </Field>
 
                 <Field>
-                  <FieldLabel
-                    htmlFor="password"
-                    className="text-[length:var(--type-label)] font-bold text-[var(--text-primary)]"
-                  >
-                    Senha
-                  </FieldLabel>
+                  <div className="flex items-center justify-between mb-1">
+                    <FieldLabel
+                      htmlFor="password"
+                      className="text-[length:var(--type-label)] font-bold text-[var(--text-primary)]"
+                    >
+                      Senha
+                    </FieldLabel>
+                    <Link
+                      href="/esqueci-senha"
+                      className="text-xs text-[var(--brand-700)] hover:text-[var(--brand-900)] font-semibold hover:underline transition-colors"
+                    >
+                      Esqueceu a senha?
+                    </Link>
+                  </div>
                   <InputGroup className="h-12 bg-[var(--surface)] border-[var(--border-subtle)] rounded-[12px] focus-within:ring-2 focus-within:ring-[var(--brand-700)] focus-within:border-[var(--brand-700)]">
                     <InputGroupAddon className="text-[var(--text-secondary)] pl-3">
                       <Lock className="size-5" />

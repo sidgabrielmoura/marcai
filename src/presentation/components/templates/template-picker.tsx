@@ -11,7 +11,7 @@ import { templateJobs, processTemplateHref, type TemplateItem } from "@/domain/r
 import { duplicateTemplateAction, getTemplateLibraryAction } from "@/presentation/actions/template-actions";
 import { TemplateSheet } from "./template-sheet";
 
-export function TemplatePicker({ initialOpen = false, canManage = false, label = "Usar template", initialSelection }: { initialOpen?: boolean; canManage?: boolean; label?: string; initialSelection?: TemplateItem }) {
+export function TemplatePicker({ initialOpen = false, canManage = false, label = "Usar template", initialSelection, onBeforeOpen }: { initialOpen?: boolean; canManage?: boolean; label?: string; initialSelection?: TemplateItem; onBeforeOpen?: () => boolean }) {
   const [open, setOpen] = useState(initialOpen);
   const [items, setItems] = useState<TemplateItem[] | null>(null);
   const [selected, setSelected] = useState<TemplateItem | null>(initialSelection ?? null);
@@ -37,7 +37,7 @@ export function TemplatePicker({ initialOpen = false, canManage = false, label =
   }
   const filtered = (items ?? []).filter(t => (job === "ALL" || t.jobKey === job) && (origin === "ALL" || t.origin === origin) && (t.name + " " + t.description + " " + templateJobs[t.jobKey]).toLocaleLowerCase("pt-BR").includes(query.toLocaleLowerCase("pt-BR")));
   return <>
-    <Button variant="outline" onClick={() => { setSelected(initialSelection ?? null); setOpen(true); }}><Layers className="size-4" />{label}</Button>
+    <Button variant="outline" onClick={() => { if (onBeforeOpen && !onBeforeOpen()) return; setSelected(initialSelection ?? null); setOpen(true); }}><Layers className="size-4" />{label}</Button>
     <TemplateSheet open={open} onOpenChange={v => { if (!busy) setOpen(v); }} title={selected ? selected.name : "Comece com um template"} description={selected ? "Todas as etapas podem ser personalizadas antes de iniciar." : "Escolha um fluxo pronto e adapte à sua operação."} footer={selected
       ? <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><Button variant="ghost" onClick={() => setSelected(null)}><ArrowLeft className="size-4" />Voltar</Button><div className="flex flex-col gap-2 sm:flex-row">{canManage && <Button variant="outline" disabled={busy} onClick={customize}>{busy && <Spinner />}Criar minha versão</Button>}<Button nativeButton={false} render={<Link href={processTemplateHref(selected.reference)} />} className="bg-brand-900 text-white hover:bg-brand-700">Usar este template<ArrowRight className="size-4" /></Button></div></div>
       : <div className="flex items-center justify-between gap-2"><span className="text-xs text-muted-foreground">{items ? items.length + " templates disponíveis" : "Biblioteca de processos"}</span><Button variant="ghost" nativeButton={false} render={<Link href="/management/processes/new" />} onClick={() => setOpen(false)}>Criar do zero</Button></div>}>

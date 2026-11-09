@@ -39,6 +39,7 @@ import {
   PriorityBadge,
   EmptyState,
   FilterSheet,
+  PendingPrerequisitesModal,
 } from "@/presentation/components/shared";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -160,6 +161,8 @@ export function TasksViewClient({
 
   const [viewMode, setViewMode] = useState<"table" | "kanban">("kanban");
   const [showInfoCard, setShowInfoCard] = useState(false);
+  const [showPendingModal, setShowPendingModal] = useState(false);
+  const hasPrerequisites = locations.length > 0 && teams.length > 0;
   const [filterType, setFilterType] = useState<string>("ALL");
   const [filterStatus, setFilterStatus] = useState<string>("ALL");
   const [filterPriority, setFilterPriority] = useState<string>("ALL");
@@ -461,22 +464,33 @@ export function TasksViewClient({
               <Trash2 className="size-4.5" />
             </Button>
 
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button nativeButton={false} className="h-11 px-4 rounded-[14px] bg-brand-900 text-white text-(length:--type-label) font-semibold hover:bg-brand-700 shadow-none transition-all flex items-center gap-1.5 shrink-0" />}>
+            {!hasPrerequisites ? (
+              <Button
+                type="button"
+                onClick={() => setShowPendingModal(true)}
+                className="h-11 px-4 rounded-[14px] bg-brand-900 text-white text-(length:--type-label) font-semibold hover:bg-brand-700 shadow-none transition-all flex items-center gap-1.5 shrink-0"
+              >
                 <Plus data-icon="inline-start" className="size-4" />
                 <span>Criar</span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-fit! rounded-[12px] p-1.5">
-                <DropdownMenuItem render={<Link href="/management/tasks/new?type=STANDARD" />} className="rounded-[8px] cursor-pointer w-full flex items-center gap-2 text-[var(--text-primary)]">
-                  <CheckSquare className="size-4 text-(--text-secondary)" />
-                  <span className="font-medium text-sm">Tarefa Avulsa</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem render={<Link href="/management/tasks/new?type=FORM" />} className="rounded-[8px] cursor-pointer w-full flex items-center gap-2 text-[var(--text-primary)]">
-                  <ListChecks className="size-4 text-(--text-secondary)" />
-                  <span className="font-medium text-sm text-nowrap">Tarefa com Perguntas</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+              </Button>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<Button nativeButton={false} className="h-11 px-4 rounded-[14px] bg-brand-900 text-white text-(length:--type-label) font-semibold hover:bg-brand-700 shadow-none transition-all flex items-center gap-1.5 shrink-0" />}>
+                  <Plus data-icon="inline-start" className="size-4" />
+                  <span>Criar</span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-fit! rounded-[12px] p-1.5">
+                  <DropdownMenuItem render={<Link href="/management/tasks/new?type=STANDARD" />} className="rounded-[8px] cursor-pointer w-full flex items-center gap-2 text-[var(--text-primary)]">
+                    <CheckSquare className="size-4 text-(--text-secondary)" />
+                    <span className="font-medium text-sm">Tarefa Avulsa</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem render={<Link href="/management/tasks/new?type=FORM" />} className="rounded-[8px] cursor-pointer w-full flex items-center gap-2 text-[var(--text-primary)]">
+                    <ListChecks className="size-4 text-(--text-secondary)" />
+                    <span className="font-medium text-sm text-nowrap">Tarefa com Perguntas</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         }
       />
@@ -1278,6 +1292,13 @@ export function TasksViewClient({
         onTaskUpdated={() => router.refresh()}
         userRole={userRole}
         initialReassign={initialReassign}
+      />
+      <PendingPrerequisitesModal
+        open={showPendingModal}
+        onClose={() => setShowPendingModal(false)}
+        entityType="task"
+        hasTeams={teams.length > 0}
+        hasLocations={locations.length > 0}
       />
     </div>
   );

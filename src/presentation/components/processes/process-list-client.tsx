@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { TemplatePicker } from "@/presentation/components/templates/template-picker";
 import { SaveProcessTemplateButton } from "@/presentation/components/templates/save-process-template";
-import { PageHeader, EmptyState, StatusBadge, Modal } from "../shared";
+import { PageHeader, EmptyState, StatusBadge, Modal, PendingPrerequisitesModal } from "../shared";
 import { toggleProcessStatusAction } from "@/presentation/actions/process-actions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -63,14 +63,20 @@ const CRITICALITY_LABELS: Record<string, string> = {
 export function ProcessListClient({
   processes,
   userRole,
+  hasLocations = true,
+  hasTeams = true,
 }: {
   processes: ProcessItem[];
   userRole: string;
+  hasLocations?: boolean;
+  hasTeams?: boolean;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [busy, setBusy] = useState(false);
+  const [showPendingModal, setShowPendingModal] = useState(false);
+  const hasPrerequisites = hasLocations && hasTeams;
   const [target, setTarget] = useState<{
     process: ProcessItem;
     status: "ACTIVE" | "PAUSED" | "ARCHIVED";
@@ -150,15 +156,37 @@ export function ProcessListClient({
         title="Processos"
         subtitle="Acompanhe os fluxos da sua operação. Clique em qualquer processo para visualizar e configurar seu calendário e cronograma."
         actions={
-          <div className="flex flex-wrap gap-2"><TemplatePicker canManage={["OWNER", "ADMIN"].includes(userRole)} />
-            <Button
-              nativeButton={false}
-              render={<Link href="/management/processes/new" />}
-              className="bg-[var(--brand-900)] hover:bg-[var(--brand-700)] text-white shadow-none gap-1.5"
-            >
-              <Plus data-icon="inline-start" className="size-4" />
-              Criar do zero
-            </Button></div>
+          <div className="flex flex-wrap gap-2">
+            <TemplatePicker
+              canManage={["OWNER", "ADMIN"].includes(userRole)}
+              onBeforeOpen={() => {
+                if (!hasPrerequisites) {
+                  setShowPendingModal(true);
+                  return false;
+                }
+                return true;
+              }}
+            />
+            {!hasPrerequisites ? (
+              <Button
+                type="button"
+                onClick={() => setShowPendingModal(true)}
+                className="bg-[var(--brand-900)] hover:bg-[var(--brand-700)] text-white shadow-none gap-1.5"
+              >
+                <Plus data-icon="inline-start" className="size-4" />
+                Criar do zero
+              </Button>
+            ) : (
+              <Button
+                nativeButton={false}
+                render={<Link href="/management/processes/new" />}
+                className="bg-[var(--brand-900)] hover:bg-[var(--brand-700)] text-white shadow-none gap-1.5"
+              >
+                <Plus data-icon="inline-start" className="size-4" />
+                Criar do zero
+              </Button>
+            )}
+          </div>
         }
       />
 
@@ -396,6 +424,13 @@ export function ProcessListClient({
           </div>
         </Modal>
       )}
+      <PendingPrerequisitesModal
+        open={showPendingModal}
+        onClose={() => setShowPendingModal(false)}
+        entityType="process"
+        hasTeams={hasTeams}
+        hasLocations={hasLocations}
+      />
     </div>
   );
 }

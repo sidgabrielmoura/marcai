@@ -30,12 +30,8 @@ export function getDefaultEmailSender(): string {
     return process.env.EMAIL_FROM.trim();
   }
 
-  // Em ambiente de teste/desenvolvimento do Resend, onboarding@resend.dev é permitido
-  if (process.env.NODE_ENV !== "production") {
-    return "Tarefaí <onboarding@resend.dev>";
-  }
-
-  return "Tarefaí <nao-responder@tarefai.com.br>";
+  // Domínio verificado no Resend para produção e desenvolvimento
+  return "Tarefaí <nao-responder@tarefai.com>";
 }
 
 /**

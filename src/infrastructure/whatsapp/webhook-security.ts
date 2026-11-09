@@ -13,7 +13,10 @@ export function verifyWebhook(session: string, body: Uint8Array, headers: Header
   return timingSafeEqual(expected, Buffer.from(signature, "hex"));
 }
 export function backendOrigin() {
-  const configured = process.env.BASE_URL || process.env.NEXT_PUBLIC_APP_URL;
+  const configured =
+    process.env.WHATSAPP_WEBHOOK_BASE_URL ||
+    process.env.BASE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL;
   try {
     const url = new URL(configured || "");
     if (!["https:", "http:"].includes(url.protocol) || url.username || url.password || url.search || url.hash || (process.env.NODE_ENV === "production" && url.protocol !== "https:")) throw new Error();

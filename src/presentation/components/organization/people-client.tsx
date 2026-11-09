@@ -32,7 +32,7 @@ import {
   deleteMemberAction,
 } from "@/presentation/actions/org-management-actions";
 
-import { PageHeader, EmptyState } from "@/presentation/components/shared";
+import { PageHeader, EmptyState, PendingPrerequisitesModal } from "@/presentation/components/shared";
 import type { ManualSubscription } from "@/application/superadmin/manual-subscription";
 import { checkMemberLimit } from "@/domain/rules/subscription-limits";
 import { Button } from "@/components/ui/button";
@@ -131,6 +131,7 @@ export function PeopleClient({
 }: PeopleClientProps) {
   const router = useRouter();
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showPendingTeamModal, setShowPendingTeamModal] = useState(false);
   const [showPinModal, setShowPinModal] = useState<string | null>(null);
 
   const activeMembersCount = useMemo(
@@ -145,6 +146,12 @@ export function PeopleClient({
   const isMemberLimitReached = !memberLimitCheck.allowed;
 
   function handleOpenInviteModal() {
+    // Se a organização ainda não tiver equipes criadas, exibe modal orientando a criação prévia de equipe
+    if (teams.length === 0) {
+      setShowPendingTeamModal(true);
+      return;
+    }
+
     if (isMemberLimitReached) {
       toast.add({
         title: "Limite do plano atingido",
@@ -448,11 +455,11 @@ export function PeopleClient({
               <Button
                 type="button"
                 onClick={handleOpenInviteModal}
-                disabled={isMemberLimitReached}
-                title={isMemberLimitReached ? memberLimitCheck.reason : undefined}
+                disabled={teams.length > 0 && isMemberLimitReached}
+                title={teams.length > 0 && isMemberLimitReached ? memberLimitCheck.reason : undefined}
                 className={cn(
                   "shadow-none",
-                  isMemberLimitReached
+                  teams.length > 0 && isMemberLimitReached
                     ? "opacity-60 cursor-not-allowed bg-muted text-muted-foreground"
                     : "bg-[var(--brand-primary)] text-white hover:bg-[var(--brand-secondary)]"
                 )}
@@ -551,7 +558,7 @@ export function PeopleClient({
             ) : ["OWNER", "ADMIN"].includes(userRole) ? (
               <Button
                 size="sm"
-                onClick={() => setShowInviteModal(true)}
+                onClick={handleOpenInviteModal}
                 className="bg-[var(--brand-primary)] text-white hover:bg-[var(--brand-secondary)]"
               >
                 <Plus className="size-4 mr-1.5" />
@@ -1021,6 +1028,14 @@ export function PeopleClient({
           </AlertDialogContent>
         </AlertDialog>
       )}
+
+      {/* Modal: Equipe Pendente */}
+      <PendingPrerequisitesModal
+        open={showPendingTeamModal}
+        onClose={() => setShowPendingTeamModal(false)}
+        entityType="person"
+        hasTeams={teams.length > 0}
+      />
 
       {showInviteModal && (
         <Modal

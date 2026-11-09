@@ -67,17 +67,17 @@ async function main() {
   if(proxyCheck.status!==401||proxyBody?.error!=='Não autorizado.'){proxy.closeAllConnections();proxy.close();throw new Error('LOCAL_PROXY_UNREACHABLE');}
   const controlKey = randomBytes(32).toString('hex');
   let assignedOrigin, child, closing = false;
-  const originalLine = read(envFile).match(/^BASE_URL\s*=.*$/m)?.[0];
+  const originalLine = read(envFile).match(/^WHATSAPP_WEBHOOK_BASE_URL\s*=.*$/m)?.[0];
   const rewriteBase = value => {
     let content = read(envFile);
-    const line = value === undefined ? originalLine || '' : 'BASE_URL='+JSON.stringify(value);
-    if (/^BASE_URL\s*=.*$/m.test(content)) content=content.replace(/^BASE_URL\s*=.*$/m,line);
+    const line = value === undefined ? originalLine || '' : 'WHATSAPP_WEBHOOK_BASE_URL='+JSON.stringify(value);
+    if (/^WHATSAPP_WEBHOOK_BASE_URL\s*=.*$/m.test(content)) content=content.replace(/^WHATSAPP_WEBHOOK_BASE_URL\s*=.*$/m,line);
     else if(line) content=content.trimEnd()+'\n'+line+'\n';
     fs.writeFileSync(envFile,content);
   };
   const cleanup = () => {
     if(closing)return;closing=true;
-    if(assignedOrigin&&parser(read(envFile)).BASE_URL===assignedOrigin)rewriteBase(undefined);
+    if(assignedOrigin&&parser(read(envFile)).WHATSAPP_WEBHOOK_BASE_URL===assignedOrigin)rewriteBase(undefined);
     if(child&&!child.killed)child.kill();
     proxy.closeAllConnections();proxy.close();control.close();
     if(JSON.parse(read(stateFile)||'{}').pid===process.pid)fs.unlinkSync(stateFile);
