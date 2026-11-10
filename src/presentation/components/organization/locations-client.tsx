@@ -11,8 +11,12 @@ import {
   Users,
   Building2,
   Pencil,
+  Trash2,
 } from "lucide-react";
-import { saveLocationAction } from "@/presentation/actions/org-management-actions";
+import {
+  saveLocationAction,
+  deleteLocationAction,
+} from "@/presentation/actions/org-management-actions";
 
 import { PageHeader, EmptyState } from "@/presentation/components/shared";
 import type { ManualSubscription } from "@/application/superadmin/manual-subscription";
@@ -96,6 +100,8 @@ export function LocationsClient({
     "FRI",
     "SAT",
   ]);
+  const [deleteConfirmLocation, setDeleteConfirmLocation] = useState<LocationItem | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const locationLimitCheck = checkLocationLimit({
     subscription: subscription ?? null,
@@ -198,6 +204,38 @@ export function LocationsClient({
       });
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Excluir unidade (apenas OWNER)
+  async function handleDeleteLocation() {
+    if (!deleteConfirmLocation) return;
+    setDeleteLoading(true);
+    try {
+      const res = await deleteLocationAction(deleteConfirmLocation.id);
+      if (res.error) {
+        toast.add({
+          title: "Erro ao excluir unidade",
+          description: res.error,
+          type: "error",
+        });
+      } else {
+        setDeleteConfirmLocation(null);
+        toast.add({
+          title: "Unidade excluída",
+          description: "A unidade foi removida com sucesso.",
+          type: "success",
+        });
+        router.refresh();
+      }
+    } catch {
+      toast.add({
+        title: "Erro",
+        description: "Erro ao excluir unidade. Tente novamente.",
+        type: "error",
+      });
+    } finally {
+      setDeleteLoading(false);
     }
   }
 
@@ -315,16 +353,33 @@ export function LocationsClient({
               )}
             </div>
 
-            {["OWNER", "ADMIN"].includes(userRole) && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => openEditModal(loc)}
-                className="mt-1 flex items-center justify-center gap-1.5 text-xs font-semibold text-foreground hover:bg-muted"
-              >
-                <Pencil className="size-3.5 text-muted-foreground" />
-                <span>Editar unidade</span>
-              </Button>
+            {(["OWNER", "ADMIN"].includes(userRole) || userRole === "OWNER") && (
+              <div className="flex items-center gap-1.5 mt-1">
+                {["OWNER", "ADMIN"].includes(userRole) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openEditModal(loc)}
+                    className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold text-foreground hover:bg-muted"
+                  >
+                    <Pencil className="size-3.5 text-muted-foreground" />
+                    <span>Editar unidade</span>
+                  </Button>
+                )}
+                {userRole === "OWNER" && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={() => setDeleteConfirmLocation(loc)}
+                    className="size-8 rounded-lg text-muted-foreground hover:text-destructive hover:border-destructive/30 hover:bg-destructive/10 transition-colors"
+                    aria-label={`Excluir unidade ${loc.name}`}
+                    title="Excluir unidade"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                )}
+              </div>
             )}
           </Card>
         ))}
@@ -601,6 +656,48 @@ export function LocationsClient({
               </Button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {/* Modal Minimalista de Confirmação de Exclusão (Apenas OWNER) */}
+      {deleteConfirmLocation && (
+        <Modal
+          open
+          title="Excluir unidade"
+          onClose={() => {
+            if (!deleteLoading) setDeleteConfirmLocation(null);
+          }}
+          className="sm:max-w-sm p-5"
+        >
+          <div className="flex flex-col gap-5 pt-1">
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Tem certeza que deseja excluir a unidade <strong className="text-foreground font-medium">{deleteConfirmLocation.name}</strong>? Esta ação não pode ser desfeita.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/40">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={deleteLoading}
+                onClick={() => setDeleteConfirmLocation(null)}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                disabled={deleteLoading}
+                onClick={handleDeleteLocation}
+                className="text-xs shadow-none gap-1.5"
+              >
+                {deleteLoading && <Spinner className="size-3" />}
+                <span>Excluir</span>
+              </Button>
+            </div>
+          </div>
         </Modal>
       )}
     </div>

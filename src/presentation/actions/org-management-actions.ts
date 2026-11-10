@@ -14,6 +14,7 @@ import {
   assertCanAddMember,
 } from "@/domain/rules/subscription-limits";
 import { canonicalTimezone } from "@/domain/rules/date-time";
+import { progressiveMilestonesListSchema } from "@/domain/rules/progressive-milestones";
 
 export type ActionResult = {
   success?: boolean;
@@ -926,6 +927,140 @@ export async function updateTeamLocationsAction(
 }
 
 /**
+ * Excluir Equipe Operacional
+ * Permitido EXCLUSIVAMENTE para o OWNER (Proprietário da empresa).
+ */
+export async function deleteTeamAction(teamId: string): Promise<ActionResult> {
+  const context = await getAuthenticatedContext();
+  if (!context) return { error: "Não autenticado." };
+
+  if (context.role !== Role.OWNER) {
+    return { error: "Apenas o proprietário da organização pode excluir equipes." };
+  }
+
+  const team = await prisma.team.findFirst({
+    where: { id: teamId, organizationId: context.organizationId },
+  });
+
+  if (!team) return { error: "Equipe não encontrada nesta organização." };
+
+  await prisma.$transaction(async (tx) => {
+    // 1. Desvincular tarefas existentes para preservar o histórico operacional
+    await tx.task.updateMany({
+      where: { teamId: team.id, organizationId: context.organizationId },
+      data: { teamId: null },
+    });
+
+    // 2. Remover associações de integrantes e unidades da equipe
+    await tx.teamMember.deleteMany({
+      where: { teamId: team.id },
+    });
+
+    await tx.teamLocation.deleteMany({
+      where: { teamId: team.id },
+    });
+
+    // 3. Excluir a equipe
+    await tx.team.delete({
+      where: { id: team.id },
+    });
+
+    // 4. Auditoria
+    await tx.activityLog.create({
+      data: {
+        organizationId: context.organizationId,
+        actorId: context.memberId,
+        action: "TEAM_DELETED",
+        entityType: "TEAM",
+        entityId: team.id,
+        metadata: { name: team.name },
+      },
+    });
+  });
+
+  revalidatePath("/management/teams");
+  revalidatePath("/management/people");
+  revalidatePath("/management/tasks");
+  revalidatePath("/tasks");
+  return { success: true };
+}
+
+/**
+ * Excluir Unidade Operacional
+ * Permitido EXCLUSIVAMENTE para o OWNER (Proprietário da empresa).
+ */
+export async function deleteLocationAction(locationId: string): Promise<ActionResult> {
+  const context = await getAuthenticatedContext();
+  if (!context) return { error: "Não autenticado." };
+
+  if (context.role !== Role.OWNER) {
+    return { error: "Apenas o proprietário da organização pode excluir unidades." };
+  }
+
+  const loc = await prisma.location.findFirst({
+    where: { id: locationId, organizationId: context.organizationId },
+  });
+
+  if (!loc) return { error: "Unidade não encontrada nesta organização." };
+
+  await prisma.$transaction(async (tx) => {
+    // 1. Desvincular processos, execuções e tarefas para manter integridade do histórico
+    await tx.process.updateMany({
+      where: { locationId: loc.id, organizationId: context.organizationId },
+      data: { locationId: null },
+    });
+
+    await tx.processExecution.updateMany({
+      where: { locationId: loc.id, organizationId: context.organizationId },
+      data: { locationId: null },
+    });
+
+    await tx.task.updateMany({
+      where: { locationId: loc.id, organizationId: context.organizationId },
+      data: { locationId: null },
+    });
+
+    // 2. Remover acessos de membros e vínculos de equipes da unidade
+    await tx.memberLocationAccess.deleteMany({
+      where: { locationId: loc.id },
+    });
+
+    await tx.teamLocation.deleteMany({
+      where: { locationId: loc.id },
+    });
+
+    // 3. Remover instâncias de WhatsApp vinculadas à unidade se houver
+    await tx.whatsAppInstance.deleteMany({
+      where: { locationId: loc.id },
+    });
+
+    // 4. Excluir a unidade
+    await tx.location.delete({
+      where: { id: loc.id },
+    });
+
+    // 5. Auditoria
+    await tx.activityLog.create({
+      data: {
+        organizationId: context.organizationId,
+        actorId: context.memberId,
+        action: "LOCATION_DELETED",
+        entityType: "LOCATION",
+        entityId: loc.id,
+        metadata: { name: loc.name },
+      },
+    });
+  });
+
+  revalidatePath("/management/locations");
+  revalidatePath("/management/teams");
+  revalidatePath("/management/people");
+  revalidatePath("/management/tasks");
+  revalidatePath("/tasks");
+  return { success: true };
+}
+
+/**
  * Atualizar Parâmetros e Configurações da Organização (Item 29, 39, 57)
  */
 export async function updateOrganizationSettingsAction(formData: FormData): Promise<ActionResult> {
@@ -941,7 +1076,25 @@ export async function updateOrganizationSettingsAction(formData: FormData): Prom
   const updated = { ...settings };
   const name = formData.has("name") ? String(formData.get("name")).trim() : undefined;
   if (name !== undefined && name.length < 2) return { error: "Informe o nome da organização." };
-  if (formData.has("delayMilestones")) {
+  if (formData.has("progressiveMilestones")) {
+    try {
+      const raw = String(formData.get("progressiveMilestones"));
+      const parsed = JSON.parse(raw);
+      const val = progressiveMilestonesListSchema.safeParse(parsed);
+      if (!val.success) {
+        return { error: "Configuração de marcos progressivos inválida." };
+      }
+      updated.progressiveMilestones = val.data;
+      let acc = 0;
+      const computedDelays = val.data.map((m) => {
+        acc += m.offsetMinutes;
+        return acc;
+      });
+      updated.delayMilestones = [...new Set(computedDelays)].sort((a, b) => a - b);
+    } catch {
+      return { error: "Erro ao processar os marcos progressivos de alerta." };
+    }
+  } else if (formData.has("delayMilestones")) {
     const values = String(formData.get("delayMilestones")).split(",").map(Number);
     if (!values.length || values.some(v => !Number.isInteger(v) || v < 1 || v > 43200)) return { error: "Use marcos de atraso em minutos, separados por vírgulas." };
     updated.delayMilestones = [...new Set(values)].sort((a, b) => a - b);
@@ -978,7 +1131,8 @@ export async function updateOrganizationSettingsAction(formData: FormData): Prom
     const criticalityFilter = String(formData.get("whatsappCriticalityFilter") || "CRITICAL_ONLY");
     const triggerStep = Number(formData.get("whatsappTriggerStep") ?? 3);
     const repeatInterval = Number(formData.get("whatsappRepeatInterval") ?? 0);
-    const businessHoursOnly = formData.get("whatsappBusinessHoursOnly") === "true" || formData.get("whatsappBusinessHoursOnly") === "on";
+    // A opção de silenciar fora do horário comercial da unidade deve ser SEMPRE ativa
+    const businessHoursOnly = true;
     const alwaysUrgent = formData.get("whatsappAlwaysUrgent") === "true" || formData.get("whatsappAlwaysUrgent") === "on";
 
     updated.whatsappAlerts = {
@@ -991,7 +1145,7 @@ export async function updateOrganizationSettingsAction(formData: FormData): Prom
         : "CRITICAL_ONLY",
       triggerStep: Number.isInteger(triggerStep) ? triggerStep : 3,
       repeatInterval: Number.isInteger(repeatInterval) ? repeatInterval : 0,
-      businessHoursOnly,
+      businessHoursOnly: true,
       alwaysUrgent,
     };
 

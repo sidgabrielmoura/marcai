@@ -2,7 +2,8 @@ import { notificationTransaction } from "@/infrastructure/notifications/transact
 import {getEvidenceRound} from "@/application/tasks/evidence-round";
 import {prisma} from '@/infrastructure/database/prisma';
 import {lockTask} from '@/application/tasks/task-lock';
-import {notifyTaskAssignees,notifyManagers} from '@/application/tasks/notify-managers';
+import { notifyTaskAssignees, notifyManagers } from '@/application/tasks/notify-managers';
+import { isLocationOpenAt } from "@/domain/rules/operating-hours";
 export async function deadlineAlerts(budgetMs=12000){
  const deadlineAt=Date.now()+budgetMs;
  const [saved]=await prisma.$queryRaw<Array<{cursor:string}>>`SELECT cursor FROM mobile_job_cursors WHERE job='deadlines'`;
@@ -14,8 +15,9 @@ export async function deadlineAlerts(budgetMs=12000){
  if(!tasks.length){cursor="";break;}
  for(const row of tasks){if(Date.now()>=deadlineAt)break;await notificationTransaction(async tx=>{
  await lockTask(tx,row.organizationId,row.id);
- const t=await tx.task.findUnique({where:{id:row.id},include:{assignments:{where:{removedAt:null}},evidenceRequirements:true,organization:{select:{settings:true}}}});
+ const t=await tx.task.findUnique({where:{id:row.id},include:{assignments:{where:{removedAt:null}},evidenceRequirements:true,location:{select:{id:true,timezone:true,openingTime:true,closingTime:true,operatingDays:true}},organization:{select:{settings:true}}}});
  if(!t||t.deletedAt||!['AVAILABLE','IN_PROGRESS','PAUSED','NEEDS_CORRECTION'].includes(t.status)||t.scheduledDate&&t.scheduledDate>now)return;
+ if(t.location&&!isLocationOpenAt(t.location,now))return;
  const due=[t.deadlineAt?.getTime(),t.slaDueAt?.getTime()].filter((v):v is number=>v!==undefined);if(!due.length)return;
  const at=Math.min(...due),limit=at+(t.toleranceMinutes??20)*60000;
  const round=await getEvidenceRound(tx,t.organizationId,t.id);

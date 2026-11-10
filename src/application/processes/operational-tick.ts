@@ -6,6 +6,11 @@ import { generateRoutineExecution, routineScheduledAt } from "./generate-executi
 import { canGenerateExecutionForRoutine } from "@/domain/rules/routine-generator";
 import { evaluateTaskDependencies } from "@/domain/rules/dependency-rules";
 import { pendingSlaMilestone } from "@/domain/rules/operational-work";
+import {
+  resolveProgressiveMilestones,
+  evaluateStrictProgressiveMilestone,
+  type TaskAlertExecutionRecord,
+} from "@/domain/rules/progressive-milestones";
 import { recordWorkFailure, retryStates, clearWorkFailure } from "@/application/jobs/scheduled-job";
 import { notifyManagers } from "@/application/tasks/notify-managers";
 
@@ -208,19 +213,79 @@ export async function operationalTick(now = new Date(), options: OperationalOpti
         if (process.env.MOBILE_OUTBOX_ENABLED !== "1") {
             let taskCursor = "";
             while (Date.now() < stopAt) {
-                const overdue = await prisma.task.findMany({ where: { ...scope, id: { gt: taskCursor }, deletedAt: null, slaDueAt: { lt: now }, status: { in: ["AVAILABLE", "IN_PROGRESS", "PAUSED", "SUBMITTED", "NEEDS_CORRECTION"] }, organization: { status: "ACTIVE" } }, select: { id: true, organizationId: true, slaDueAt: true, updatedAt: true, organization: { select: { settings: true } } }, take: 500, orderBy: { id: "asc" } });
+                const overdue = await prisma.task.findMany({
+                  where: {
+                    ...scope,
+                    id: { gt: taskCursor },
+                    deletedAt: null,
+                    slaDueAt: { lt: now },
+                    status: { in: ["AVAILABLE", "IN_PROGRESS", "PAUSED", "SUBMITTED", "NEEDS_CORRECTION"] },
+                    organization: { status: "ACTIVE" }
+                  },
+                  select: {
+                    id: true,
+                    organizationId: true,
+                    slaDueAt: true,
+                    deadlineAt: true,
+                    toleranceMinutes: true,
+                    locationId: true,
+                    updatedAt: true,
+                    location: {
+                      select: {
+                        id: true,
+                        name: true,
+                        timezone: true,
+                        openingTime: true,
+                        closingTime: true,
+                        operatingDays: true,
+                      },
+                    },
+                    organization: { select: { settings: true } }
+                  },
+                  take: 500,
+                  orderBy: { id: "asc" }
+                });
                 if (!overdue.length)
                     break;
-                const breaches = await prisma.taskOccurrence.findMany({ where: { taskId: { in: overdue.map(t => t.id) }, type: 'SLA_BREACH' }, select: { taskId: true, category: true } });
-                const breachesByTask = new Map<string, string[]>();
+                const breaches = await prisma.taskOccurrence.findMany({
+                  where: { taskId: { in: overdue.map(t => t.id) }, type: 'SLA_BREACH' },
+                  select: { taskId: true, category: true, createdAt: true }
+                });
+                const breachesByTask = new Map<string, Array<{ category: string; createdAt: Date }>>();
+                for (const breach of breaches) {
+                  const arr = breachesByTask.get(breach.taskId) ?? [];
+                  arr.push({ category: breach.category, createdAt: breach.createdAt });
+                  breachesByTask.set(breach.taskId, arr);
+                }
                 const taskRetries = await retryStates(overdue.map(t => 'sla:' + t.id));
-                for (const breach of breaches)
-                    breachesByTask.set(breach.taskId, [...(breachesByTask.get(breach.taskId) ?? []), breach.category]);
+
                 for (const candidate of overdue) {
                     if (Date.now() >= stopAt)
                         break;
-                    if (!candidate.slaDueAt || pendingSlaMilestone(candidate.slaDueAt, candidate.organization.settings, breachesByTask.get(candidate.id) ?? [], now) === null)
+                    const taskBreaches = breachesByTask.get(candidate.id) ?? [];
+                    const historyRecords: TaskAlertExecutionRecord[] = taskBreaches.map(b => {
+                      const match = b.category.match(/^SLA_STEP_(\d+)_R(\d+)$/);
+                      if (match) {
+                        return { milestoneStep: Number(match[1]), round: Number(match[2]), sentAt: b.createdAt };
+                      }
+                      const legacyNum = b.category.startsWith("SLA_") ? Number(b.category.slice(4)) : 0;
+                      return { milestoneStep: legacyNum > 0 ? 1 : 0, round: 0, sentAt: b.createdAt };
+                    });
+
+                    const progressiveMilestones = resolveProgressiveMilestones(candidate.organization.settings);
+                    const evalResult = evaluateStrictProgressiveMilestone({
+                      deadlineAt: candidate.deadlineAt,
+                      slaDueAt: candidate.slaDueAt,
+                      toleranceMinutes: candidate.toleranceMinutes,
+                      milestones: progressiveMilestones,
+                      history: historyRecords,
+                      location: candidate.location,
+                      now,
+                    });
+
+                    if (!evalResult.shouldDispatch || !evalResult.milestone)
                         continue;
+
                     const retry = taskRetries.get('sla:' + candidate.id);
                     if ((retry?.nextAttemptAt?.getTime() ?? 0) > Date.now() && candidate.updatedAt <= retry!.updatedAt)
                         continue;
@@ -228,79 +293,138 @@ export async function operationalTick(now = new Date(), options: OperationalOpti
                         const newAlerts = await notificationTransaction(async (tx) => {
                             let count = 0;
                             await lockTask(tx, candidate.organizationId, candidate.id);
-                            const task = await tx.task.findFirst({ where: { id: candidate.id, organizationId: candidate.organizationId, deletedAt: null, slaDueAt: { lt: now }, status: { in: ["AVAILABLE", "IN_PROGRESS", "PAUSED", "SUBMITTED", "NEEDS_CORRECTION"] }, organization: { status: "ACTIVE" } }, include: { organization: { select: { settings: true } } } });
+                            const task = await tx.task.findFirst({
+                              where: {
+                                id: candidate.id,
+                                organizationId: candidate.organizationId,
+                                deletedAt: null,
+                                slaDueAt: { lt: now },
+                                status: { in: ["AVAILABLE", "IN_PROGRESS", "PAUSED", "SUBMITTED", "NEEDS_CORRECTION"] },
+                                organization: { status: "ACTIVE" }
+                              },
+                              include: {
+                                location: {
+                                  select: {
+                                    id: true,
+                                    name: true,
+                                    timezone: true,
+                                    openingTime: true,
+                                    closingTime: true,
+                                    operatingDays: true,
+                                  },
+                                },
+                                organization: { select: { settings: true } }
+                              }
+                            });
                             if (!task?.slaDueAt)
                                 return 0;
-                            const existingBreaches = await tx.taskOccurrence.findMany({
-                                where: { taskId: task.id, type: "SLA_BREACH" },
-                                select: { category: true },
-                            });
-                            const milestone = pendingSlaMilestone(task.slaDueAt, task.organization.settings, existingBreaches.map(b => b.category), now);
-                            if (milestone !== null) {
-                                // Seleciona unicamente o marco mais recente/crítico alcançado, evitando tempestade de notificações
-                                const category = "SLA_" + milestone;
-                                const reason = milestone
-                                    ? `Prazo limite excedido há ${milestone} minutos.`
-                                    : "O prazo limite foi excedido.";
-                                const notifTitle = milestone
-                                    ? `Prazo excedido há ${milestone} minutos`
-                                    : "Prazo limite excedido";
-                                await tx.taskOccurrence.create({
-                                    data: {
-                                        taskId: task.id,
-                                        type: "SLA_BREACH",
-                                        category,
-                                        severity: task.criticality,
-                                        reason,
-                                    },
-                                });
-                                await tx.task.update({
-                                    where: { id: task.id },
-                                    data: { slaExceededAt: task.slaDueAt },
-                                });
-                                const effectivePriority = task.priority === "CRITICAL" || task.criticality === "CRITICAL" ? "CRITICAL" : task.priority;
-                                await notifyManagers(tx, task, notifTitle, `${task.title} (${reason})`, {
-                                    type: "TASK_OVERDUE",
-                                    priority: effectivePriority,
-                                    data: {
-                                        taskId: task.id,
-                                        milestone,
-                                        taskTitle: task.title,
-                                    },
-                                });
-                                const assignments = await tx.taskAssignment.findMany({
-                                    where: { taskId: task.id, removedAt: null },
-                                    include: { member: { select: { userId: true } } },
-                                });
-                                const assigneeUserIds: string[] = [];
-                                for (const a of assignments) {
-                                    await tx.notification.create({
-                                        data: {
-                                            organizationId: task.organizationId,
-                                            userId: a.member.userId,
-                                            type: "TASK_OVERDUE",
-                                            priority: effectivePriority,
-                                            title: notifTitle,
-                                            message: `${task.title} (${reason})`,
-                                            data: { taskId: task.id, milestone, taskTitle: task.title },
-                                        },
-                                    });
-                                    assigneeUserIds.push(a.member.userId);
-                                }
-                                if (assigneeUserIds.length > 0) {
 
-                                }
-                                await tx.activityLog.create({
-                                    data: {
-                                        organizationId: task.organizationId,
-                                        action: "TASK_OVERDUE",
-                                        entityType: "TASK",
-                                        entityId: task.id,
-                                        metadata: { milestone },
-                                    },
-                                });
-                                count++;
+                            const freshBreaches = await tx.taskOccurrence.findMany({
+                                where: { taskId: task.id, type: "SLA_BREACH" },
+                                select: { category: true, createdAt: true },
+                            });
+                            const freshHistory: TaskAlertExecutionRecord[] = freshBreaches.map(b => {
+                              const match = b.category.match(/^SLA_STEP_(\d+)_R(\d+)$/);
+                              if (match) {
+                                return { milestoneStep: Number(match[1]), round: Number(match[2]), sentAt: b.createdAt };
+                              }
+                              const legacyNum = b.category.startsWith("SLA_") ? Number(b.category.slice(4)) : 0;
+                              return { milestoneStep: legacyNum > 0 ? 1 : 0, round: 0, sentAt: b.createdAt };
+                            });
+
+                            const freshMilestones = resolveProgressiveMilestones(task.organization.settings);
+                            const freshEval = evaluateStrictProgressiveMilestone({
+                              deadlineAt: task.deadlineAt,
+                              slaDueAt: task.slaDueAt,
+                              toleranceMinutes: task.toleranceMinutes,
+                              milestones: freshMilestones,
+                              history: freshHistory,
+                              location: task.location,
+                              now,
+                            });
+
+                            if (!freshEval.shouldDispatch || !freshEval.milestone) {
+                              return 0;
                             }
+
+                            const ms = freshEval.milestone;
+                            const category = `SLA_STEP_${ms.stepIndex}_R${freshEval.round}`;
+                            const notifTitle = `${ms.title}${freshEval.isRepeat ? ` (Repetição ${freshEval.round})` : ""}`;
+                            const notifMessage = ms.message;
+
+                            await tx.taskOccurrence.create({
+                                data: {
+                                    taskId: task.id,
+                                    type: "SLA_BREACH",
+                                    category,
+                                    severity: task.criticality,
+                                    reason: notifMessage,
+                                },
+                            });
+                            await tx.task.update({
+                                where: { id: task.id },
+                                data: { slaExceededAt: task.slaDueAt },
+                            });
+                            const effectivePriority = task.priority === "CRITICAL" || task.criticality === "CRITICAL" ? "CRITICAL" : task.priority;
+
+                            const target = ms.target;
+                            const notifyManagersTarget = target === "MANAGERS" || target === "BOTH";
+                            const notifyOperatorsTarget = target === "OPERATORS" || target === "BOTH";
+
+                            if (notifyManagersTarget) {
+                              await notifyManagers(tx, task, notifTitle, `${task.title} - ${notifMessage}`, {
+                                  type: "TASK_OVERDUE",
+                                  priority: effectivePriority,
+                                  data: {
+                                      taskId: task.id,
+                                      milestone: ms.stepIndex,
+                                      round: freshEval.round,
+                                      taskTitle: task.title,
+                                      locationId: task.locationId,
+                                  },
+                              });
+                            }
+
+                            if (notifyOperatorsTarget) {
+                              const assignments = await tx.taskAssignment.findMany({
+                                  where: { taskId: task.id, removedAt: null },
+                                  include: { member: { select: { userId: true } } },
+                              });
+                              for (const a of assignments) {
+                                  await tx.notification.create({
+                                      data: {
+                                          organizationId: task.organizationId,
+                                          userId: a.member.userId,
+                                          type: "TASK_OVERDUE",
+                                          priority: effectivePriority,
+                                          title: notifTitle,
+                                          message: `${task.title} - ${notifMessage}`,
+                                          data: {
+                                            taskId: task.id,
+                                            milestone: ms.stepIndex,
+                                            round: freshEval.round,
+                                            taskTitle: task.title,
+                                            locationId: task.locationId,
+                                          },
+                                      },
+                                  });
+                              }
+                            }
+
+                            await tx.activityLog.create({
+                                data: {
+                                    organizationId: task.organizationId,
+                                    action: "TASK_OVERDUE",
+                                    entityType: "TASK",
+                                    entityId: task.id,
+                                    metadata: {
+                                      milestoneStep: ms.stepIndex,
+                                      round: freshEval.round,
+                                      target: ms.target,
+                                    },
+                                },
+                            });
+                            count++;
                             return count;
                         });
                         alerts += newAlerts;

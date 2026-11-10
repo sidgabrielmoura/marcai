@@ -16,11 +16,13 @@ import {
   Pencil,
   MoreVertical,
   Building2,
+  Trash2,
 } from "lucide-react";
 import {
   saveTeamAction,
   updateTeamMembersAction,
   updateTeamLocationsAction,
+  deleteTeamAction,
 } from "@/presentation/actions/org-management-actions";
 
 import { PageHeader, EmptyState } from "@/presentation/components/shared";
@@ -132,6 +134,10 @@ export function TeamsClient({
   const [teamLocationIds, setTeamLocationIds] = useState<string[]>([]);
   const [locationSearchQuery, setLocationSearchQuery] = useState("");
   const [savingLocations, setSavingLocations] = useState(false);
+
+  // Estado para exclusão da equipe (exclusivo para OWNER)
+  const [deleteConfirmTeam, setDeleteConfirmTeam] = useState<TeamItem | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   // Busca e filtro da lista de equipes
   const [teamSearchQuery, setTeamSearchQuery] = useState("");
@@ -298,6 +304,38 @@ export function TeamsClient({
       });
     } finally {
       setSavingLocations(false);
+    }
+  }
+
+  // Excluir equipe (apenas OWNER)
+  async function handleDeleteTeam() {
+    if (!deleteConfirmTeam) return;
+    setDeleteLoading(true);
+    try {
+      const res = await deleteTeamAction(deleteConfirmTeam.id);
+      if (res.error) {
+        toast.add({
+          title: "Erro ao excluir equipe",
+          description: res.error,
+          type: "error",
+        });
+      } else {
+        setDeleteConfirmTeam(null);
+        toast.add({
+          title: "Equipe excluída",
+          description: "A equipe foi removida com sucesso.",
+          type: "success",
+        });
+        router.refresh();
+      }
+    } catch {
+      toast.add({
+        title: "Erro",
+        description: "Erro ao excluir equipe. Tente novamente.",
+        type: "error",
+      });
+    } finally {
+      setDeleteLoading(false);
     }
   }
 
@@ -491,6 +529,18 @@ export function TeamsClient({
                           <DropdownMenuItem onClick={() => openCreateEditModal(team)}>
                             <Pencil className="size-3.5 mr-2 text-muted-foreground" />
                             <span>Editar informações</span>
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                      {userRole === "OWNER" && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => setDeleteConfirmTeam(team)}
+                            className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
+                          >
+                            <Trash2 className="size-3.5 mr-2" />
+                            <span>Excluir equipe</span>
                           </DropdownMenuItem>
                         </>
                       )}
@@ -1030,6 +1080,48 @@ export function TeamsClient({
               </Button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {/* Modal Minimalista de Confirmação de Exclusão (Apenas OWNER) */}
+      {deleteConfirmTeam && (
+        <Modal
+          open
+          title="Excluir equipe"
+          onClose={() => {
+            if (!deleteLoading) setDeleteConfirmTeam(null);
+          }}
+          className="sm:max-w-sm p-5"
+        >
+          <div className="flex flex-col gap-5 pt-1">
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Tem certeza que deseja excluir a equipe <strong className="text-foreground font-medium">{deleteConfirmTeam.name}</strong>? Esta ação não pode ser desfeita.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/40">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={deleteLoading}
+                onClick={() => setDeleteConfirmTeam(null)}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                disabled={deleteLoading}
+                onClick={handleDeleteTeam}
+                className="text-xs shadow-none gap-1.5"
+              >
+                {deleteLoading && <Spinner className="size-3" />}
+                <span>Excluir</span>
+              </Button>
+            </div>
+          </div>
         </Modal>
       )}
     </div>

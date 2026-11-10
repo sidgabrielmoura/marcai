@@ -38,9 +38,12 @@ export function isLocationOpenAt(location: LocationOperatingRules, date = new Da
   const weekdayShort = parts.weekday?.toUpperCase().slice(0, 3) || "";
 
   // Verificar dia de operação
-  const activeDays = (location.operatingDays || "MON,TUE,WED,THU,FRI,SAT")
-    .split(",")
-    .map(d => d.trim().toUpperCase());
+  const rawDays = location.operatingDays;
+  const activeDays = Array.isArray(rawDays)
+    ? rawDays.map(d => (typeof d === "number" ? dayMap[d] : String(d).trim().toUpperCase()))
+    : (typeof rawDays === "string" ? rawDays : "MON,TUE,WED,THU,FRI,SAT")
+        .split(",")
+        .map(d => d.trim().toUpperCase());
 
   if (!activeDays.includes(weekdayShort)) {
     return false;

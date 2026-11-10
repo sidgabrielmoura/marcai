@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { WhatsAppAlertSettings } from "./whatsapp-alert-settings";
 import { WhatsAppInstances } from "./whatsapp-instances";
+import { ProgressiveAlertsTimeline } from "./progressive-alerts-timeline";
+import { resolveProgressiveMilestones } from "@/domain/rules/progressive-milestones";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -10,6 +12,7 @@ import {
   Shield,
   Clock,
   Database,
+  MessageSquare,
   Save,
   Trash2,
 } from "lucide-react";
@@ -53,17 +56,11 @@ export function SettingsClient({
 
   const orgSettings = organization.settings || {};
 
-  const initialMilestones: number[] =
-    Array.isArray(orgSettings.delayMilestones) && orgSettings.delayMilestones.length > 0
-      ? orgSettings.delayMilestones
-      : [15, 30, 60, 120];
-
-  const [milestones, setMilestones] = useState<{ [stage: number]: number }>({
-    1: initialMilestones[0] ?? 15,
-    2: initialMilestones[1] ?? 30,
-    3: initialMilestones[2] ?? 60,
-    4: initialMilestones[3] ?? 120,
-  });
+  const progressiveMilestones = useMemo(
+    () => resolveProgressiveMilestones(orgSettings),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [organization.id, organization.settings]
+  );
 
   const [allowManagersToEditSensitiveData, setAllowManagersToEditSensitiveData] =
     useState<boolean>(Boolean(orgSettings.allowManagersToEditSensitiveData));
@@ -170,8 +167,9 @@ export function SettingsClient({
 
   const tabs = [
     { id: "org", label: "Organização", icon: Settings },
-    { id: "sla", label: "Prazos e alertas", icon: Clock },
-    { id: "retention", label: "Histórico", icon: Database },
+    { id: "sla", label: "Prazos e tolerância", icon: Clock },
+    { id: "whatsapp", label: "Alertas via WhatsApp", icon: MessageSquare },
+    // { id: "retention", label: "Histórico", icon: Database }, // Comentado temporariamente para o admin não ver
   ];
 
   return (
@@ -182,12 +180,32 @@ export function SettingsClient({
       />
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        {/* Lógica de retenção/histórico mantida ativa por baixo dos panos */}
+        <input
+          type="hidden"
+          name="operationalRetentionMonths"
+          value={String(
+            [6, 12].includes(Number(orgSettings.operationalRetentionMonths))
+              ? orgSettings.operationalRetentionMonths
+              : 6
+          )}
+        />
+        <input
+          type="hidden"
+          name="delayRetentionDays"
+          value={String(
+            [30, 60, 90].includes(Number(orgSettings.delayRetentionDays))
+              ? orgSettings.delayRetentionDays
+              : 60
+          )}
+        />
+
         <Tabs
           value={activeTab}
           onValueChange={(val) => setActiveTab(val as string)}
           className="w-full"
         >
-          <TabsList className="bg-canvas border border-(--border-subtle) p-1 rounded-[14px] h-fit! flex flex-wrap gap-1">
+          <TabsList className="bg-canvas border border-(--border-subtle) p-1 rounded-[14px] h-fit! flex flex-wrap gap-1 mb-10!">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
@@ -243,193 +261,41 @@ export function SettingsClient({
             </Card>
           </TabsContent>
 
-          <TabsContent value="sla" keepMounted>
-            <Card className="p-6">
-              <CardContent className="p-0 flex flex-col gap-5">
-                <div>
-                  <h3 className="text-[var(--text-primary)] text-[length:var(--type-card-title)] font-bold">
-                    Alertas progressivos de atraso
-                  </h3>
-                  <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
-                    Quando uma tarefa ultrapassar o prazo limite estipulado, o sistema enviará notificações em fases para garantir que a equipe não perca os prazos. Escolha o tempo de tolerância para cada alerta.
-                  </p>
-                </div>
+          <TabsContent value="sla" keepMounted className="flex flex-col gap-6">
+            <ProgressiveAlertsTimeline
+              initialMilestones={progressiveMilestones}
+            />
+          </TabsContent>
 
-                {/* Input oculto com a lista de minutos separados por vírgula */}
-                <input
-                  type="hidden"
-                  name="delayMilestones"
-                  value={Object.values(milestones)
-                    .filter((m) => m > 0)
-                    .sort((a, b) => a - b)
-                    .join(",")}
+          {/* Aba Própria: Alertas via WhatsApp */}
+          <TabsContent value="whatsapp" keepMounted className="flex flex-col gap-6">
+            {userRole === "OWNER" || userRole === "ADMIN" ? (
+              <>
+                <WhatsAppAlertSettings
+                  enabled={whatsappEnabled}
+                  onEnabledChange={setWhatsappEnabled}
+                  events={notificationTypes}
+                  onEventsChange={setNotificationTypes}
+                  criticality={criticalityFilter}
+                  onCriticalityChange={setCriticalityFilter}
+                  trigger={triggerStep}
+                  onTriggerChange={setTriggerStep}
+                  repeat={repeatInterval}
+                  onRepeatChange={setRepeatInterval}
+                  businessHours={true}
+                  onBusinessHoursChange={() => { }}
+                  urgent={alwaysUrgent}
+                  onUrgentChange={setAlwaysUrgent}
                 />
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Card 1 */}
-                  <div className="p-4 sm:p-5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] flex flex-col gap-3 transition-colors hover:border-[var(--brand-900)]/30">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className="size-7 rounded-lg bg-[var(--canvas)] text-[var(--text-primary)] border border-[var(--border-subtle)] flex items-center justify-center font-bold text-xs">
-                          1º
-                        </div>
-                        <span className="font-semibold text-sm text-[var(--text-primary)]">
-                          Lembrete de Tolerância
-                        </span>
-                      </div>
-                      <span className="text-[11px] font-medium text-[var(--text-secondary)] bg-[var(--canvas)] border border-[var(--border-subtle)] px-2.5 py-0.5 rounded-full">
-                        Início do atraso
-                      </span>
-                    </div>
-                    <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                      Primeiro aviso à equipe assim que o prazo limite da tarefa expirar.
-                    </p>
-                    <div className="mt-1">
-                      <NativeSelect
-                        value={milestones[1]}
-                        onChange={(e) =>
-                          setMilestones((prev) => ({
-                            ...prev,
-                            1: Number(e.target.value),
-                          }))
-                        }
-                        className="w-full h-10 bg-[var(--canvas)] border-[var(--border-subtle)] text-sm"
-                      >
-                        <NativeSelectOption value={5}>5 minutos de atraso</NativeSelectOption>
-                        <NativeSelectOption value={10}>10 minutos de atraso</NativeSelectOption>
-                        <NativeSelectOption value={15}>15 minutos de atraso (Padrão)</NativeSelectOption>
-                        <NativeSelectOption value={20}>20 minutos de atraso</NativeSelectOption>
-                        <NativeSelectOption value={30}>30 minutos de atraso</NativeSelectOption>
-                      </NativeSelect>
-                    </div>
-                  </div>
-
-                  {/* Card 2 */}
-                  <div className="p-4 sm:p-5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] flex flex-col gap-3 transition-colors hover:border-[var(--brand-900)]/30">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className="size-7 rounded-lg bg-[var(--canvas)] text-[var(--text-primary)] border border-[var(--border-subtle)] flex items-center justify-center font-bold text-xs">
-                          2º
-                        </div>
-                        <span className="font-semibold text-sm text-[var(--text-primary)]">
-                          Atenção Operacional
-                        </span>
-                      </div>
-                      <span className="text-[11px] font-medium text-[var(--text-secondary)] bg-[var(--canvas)] border border-[var(--border-subtle)] px-2.5 py-0.5 rounded-full">
-                        Atraso moderado
-                      </span>
-                    </div>
-                    <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                      Segundo aviso caso a tarefa permaneça sem finalização.
-                    </p>
-                    <div className="mt-1">
-                      <NativeSelect
-                        value={milestones[2]}
-                        onChange={(e) =>
-                          setMilestones((prev) => ({
-                            ...prev,
-                            2: Number(e.target.value),
-                          }))
-                        }
-                        className="w-full h-10 bg-[var(--canvas)] border-[var(--border-subtle)] text-sm"
-                      >
-                        <NativeSelectOption value={15}>15 minutos de atraso</NativeSelectOption>
-                        <NativeSelectOption value={30}>30 minutos de atraso (Padrão)</NativeSelectOption>
-                        <NativeSelectOption value={45}>45 minutos de atraso</NativeSelectOption>
-                        <NativeSelectOption value={60}>60 minutos (1 hora)</NativeSelectOption>
-                        <NativeSelectOption value={90}>90 minutos (1h 30m)</NativeSelectOption>
-                      </NativeSelect>
-                    </div>
-                  </div>
-
-                  {/* Card 3 */}
-                  <div className="p-4 sm:p-5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] flex flex-col gap-3 transition-colors hover:border-[var(--brand-900)]/30">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className="size-7 rounded-lg bg-[var(--canvas)] text-[var(--text-primary)] border border-[var(--border-subtle)] flex items-center justify-center font-bold text-xs">
-                          3º
-                        </div>
-                        <span className="font-semibold text-sm text-[var(--text-primary)]">
-                          Atraso Crítico
-                        </span>
-                      </div>
-                      <span className="text-[11px] font-medium text-[var(--text-secondary)] bg-[var(--canvas)] border border-[var(--border-subtle)] px-2.5 py-0.5 rounded-full">
-                        Aviso aos gestores
-                      </span>
-                    </div>
-                    <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                      Notificação direta aos gestores e supervisores da equipe.
-                    </p>
-                    <div className="mt-1">
-                      <NativeSelect
-                        value={milestones[3]}
-                        onChange={(e) =>
-                          setMilestones((prev) => ({
-                            ...prev,
-                            3: Number(e.target.value),
-                          }))
-                        }
-                        className="w-full h-10 bg-[var(--canvas)] border-[var(--border-subtle)] text-sm"
-                      >
-                        <NativeSelectOption value={45}>45 minutos de atraso</NativeSelectOption>
-                        <NativeSelectOption value={60}>60 minutos (1 hora - Padrão)</NativeSelectOption>
-                        <NativeSelectOption value={90}>90 minutos (1h 30m)</NativeSelectOption>
-                        <NativeSelectOption value={120}>120 minutos (2 horas)</NativeSelectOption>
-                        <NativeSelectOption value={180}>180 minutos (3 horas)</NativeSelectOption>
-                      </NativeSelect>
-                    </div>
-                  </div>
-
-                  {/* Card 4 */}
-                  <div className="p-4 sm:p-5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] flex flex-col gap-3 transition-colors hover:border-[var(--brand-900)]/30">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className="size-7 rounded-lg bg-[var(--canvas)] text-[var(--text-primary)] border border-[var(--border-subtle)] flex items-center justify-center font-bold text-xs">
-                          4º
-                        </div>
-                        <span className="font-semibold text-sm text-[var(--text-primary)]">
-                          Incidente Grave
-                        </span>
-                      </div>
-                      <span className="text-[11px] font-medium text-[var(--text-secondary)] bg-[var(--canvas)] border border-[var(--border-subtle)] px-2.5 py-0.5 rounded-full">
-                        Escalação máxima
-                      </span>
-                    </div>
-                    <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                      Alerta máximo por estouro severo de prazo de entrega.
-                    </p>
-                    <div className="mt-1">
-                      <NativeSelect
-                        value={milestones[4]}
-                        onChange={(e) =>
-                          setMilestones((prev) => ({
-                            ...prev,
-                            4: Number(e.target.value),
-                          }))
-                        }
-                        className="w-full h-10 bg-[var(--canvas)] border-[var(--border-subtle)] text-sm"
-                      >
-                        <NativeSelectOption value={90}>90 minutos (1h 30m)</NativeSelectOption>
-                        <NativeSelectOption value={120}>120 minutos (2 horas - Padrão)</NativeSelectOption>
-                        <NativeSelectOption value={180}>180 minutos (3 horas)</NativeSelectOption>
-                        <NativeSelectOption value={240}>240 minutos (4 horas)</NativeSelectOption>
-                        <NativeSelectOption value={0}>Desativar 4º alerta</NativeSelectOption>
-                      </NativeSelect>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {userRole === "OWNER" ? <><WhatsAppAlertSettings
-              enabled={whatsappEnabled} onEnabledChange={setWhatsappEnabled}
-              events={notificationTypes} onEventsChange={setNotificationTypes}
-              criticality={criticalityFilter} onCriticalityChange={setCriticalityFilter}
-              trigger={triggerStep} onTriggerChange={setTriggerStep}
-              repeat={repeatInterval} onRepeatChange={setRepeatInterval}
-              businessHours={businessHoursOnly} onBusinessHoursChange={setBusinessHoursOnly}
-              urgent={alwaysUrgent} onUrgentChange={setAlwaysUrgent}
-            /><WhatsAppInstances key={organization.id} /></> : <p className="mt-4 text-sm text-[var(--text-secondary)]">Somente o proprietário pode gerenciar o WhatsApp e seus destinatários.</p>}
+                <WhatsAppInstances key={organization.id} />
+              </>
+            ) : (
+              <Card className="p-6">
+                <p className="text-sm text-[var(--text-secondary)]">
+                  Somente o proprietário da organização possui permissão para gerenciar as credenciais e regras de envio do WhatsApp.
+                </p>
+              </Card>
+            )}
           </TabsContent>
 
           {/* Aba Segurança */}
@@ -501,7 +367,11 @@ export function SettingsClient({
             </Card>
           </TabsContent>
 
-          {/* Aba Retenção */}
+          {/*
+            Aba Retenção/Histórico comentada temporariamente a pedido do usuário.
+            A lógica por baixo dos panos é mantida ativa via inputs hidden no topo do formulário.
+          */}
+          {/*
           <TabsContent value="retention" keepMounted>
             <Card className="p-6">
               <CardContent className="p-0 flex flex-col gap-5">
@@ -515,7 +385,6 @@ export function SettingsClient({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Card Histórico Operacional */}
                   <div className="p-4 rounded-xl border border-slate-200 bg-white flex flex-col gap-2.5 shadow-xs">
                     <div className="flex items-center gap-2">
                       <div className="size-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
@@ -544,7 +413,6 @@ export function SettingsClient({
                     </div>
                   </div>
 
-                  {/* Card Limpeza da Lixeira */}
                   <div className="p-4 rounded-xl border border-slate-200 bg-white flex flex-col gap-2.5 shadow-xs">
                     <div className="flex items-center gap-2">
                       <div className="size-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
@@ -601,6 +469,7 @@ export function SettingsClient({
               </CardContent>
             </Card>
           </TabsContent>
+          */}
         </Tabs>
 
         {["OWNER", "ADMIN"].includes(userRole) && (

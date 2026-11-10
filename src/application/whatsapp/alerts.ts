@@ -13,6 +13,7 @@ import {
   getNextOperatingOpening,
   type LocationOperatingRules,
 } from "@/domain/rules/operating-hours";
+import { resolveProgressiveMilestones } from "@/domain/rules/progressive-milestones";
 import { wahaClient } from "@/infrastructure/whatsapp/waha-client";
 
 export interface AlertRuleEvaluation {
@@ -39,12 +40,22 @@ export function evaluateAlertRules(
     return { eligible: false, suppressionReason: "ALERTS_DISABLED", scheduledFor: now };
   }
 
+  // 1. Horário Comercial da Unidade (SEMPRE ATIVO conforme regra de negócio)
+  // O disparo é configurado com base no horário da unidade onde a tarefa foi criada
+  if (params.location) {
+    const open = isLocationOpenAt(params.location, now);
+    if (!open) {
+      const nextOpening = getNextOperatingOpening(params.location, now);
+      return { eligible: true, suppressionReason: "WAITING_BUSINESS_HOURS", scheduledFor: nextOpening };
+    }
+  }
+
   const isCritical = params.priority === "CRITICAL";
   const isUrgent = isCritical && settings.alwaysUrgent;
 
   // Se não for urgente, aplica todos os filtros configurados
   if (!isUrgent) {
-    // 1. Tipos de Notificação: lista vazia não envia nada
+    // 2. Tipos de Notificação: lista vazia não envia nada
     if (!settings.notificationTypes || settings.notificationTypes.length === 0) {
       return { eligible: false, suppressionReason: "NO_NOTIFICATION_TYPES_CONFIGURED", scheduledFor: now };
     }
@@ -56,7 +67,7 @@ export function evaluateAlertRules(
       return { eligible: false, suppressionReason: "EVENT_TYPE_FILTERED", scheduledFor: now };
     }
 
-    // 2. Filtro de Criticidade
+    // 3. Filtro de Criticidade
     if (settings.criticalityFilter === "CRITICAL_ONLY" && !isCritical) {
       return { eligible: false, suppressionReason: "CRITICALITY_FILTERED", scheduledFor: now };
     }
@@ -64,22 +75,13 @@ export function evaluateAlertRules(
       return { eligible: false, suppressionReason: "CRITICALITY_FILTERED", scheduledFor: now };
     }
 
-    // 3. Marco de Atraso (triggerStep): marco mínimo
+    // 4. Marco de Atraso (triggerStep): marco mínimo
     if (
       settings.triggerStep > 0 &&
       params.milestoneStep !== undefined &&
       params.milestoneStep < settings.triggerStep
     ) {
       return { eligible: false, suppressionReason: "MILESTONE_STEP_BELOW_TRIGGER", scheduledFor: now };
-    }
-
-    // 4. Horário Comercial: se fechado, agenda para a próxima abertura da unidade
-    if (settings.businessHoursOnly && params.location) {
-      const open = isLocationOpenAt(params.location, now);
-      if (!open) {
-        const nextOpening = getNextOperatingOpening(params.location, now);
-        return { eligible: true, suppressionReason: "WAITING_BUSINESS_HOURS", scheduledFor: nextOpening };
-      }
     }
   }
 
@@ -551,7 +553,87 @@ export async function dispatchPendingWhatsAppAlerts(options?: {
 }
 
 /**
+ * Verifica se algum gestor (OWNER, ADMIN, MANAGER) entrou no sistema ou interagiu
+ * com a tarefa/plataforma desde o instante especificado.
+ */
+export async function hasManagerEnteredSystem(
+  organizationId: string,
+  taskId?: string | null,
+  sinceDate?: Date | null
+): Promise<boolean> {
+  const cutoff = sinceDate || new Date(Date.now() - 60 * 60 * 1000);
+
+  const managers = await prisma.organizationMember.findMany({
+    where: {
+      organizationId,
+      role: { in: ["OWNER", "ADMIN", "MANAGER"] },
+      status: "ACTIVE",
+    },
+    select: { id: true, userId: true },
+  });
+
+  if (!managers.length) return false;
+
+  const managerMemberIds = managers.map((m) => m.id);
+  const managerUserIds = managers.map((m) => m.userId);
+
+  // 1. Atividade direta na tarefa por qualquer gestor
+  if (taskId) {
+    const taskActivity = await prisma.activityLog.findFirst({
+      where: {
+        organizationId,
+        entityType: "TASK",
+        entityId: taskId,
+        createdAt: { gte: cutoff },
+        actorId: { in: managerMemberIds },
+      },
+      select: { id: true },
+    });
+    if (taskActivity) return true;
+  }
+
+  // 2. Qualquer ação operacional/administrativa de gestores no sistema
+  const recentAction = await prisma.activityLog.findFirst({
+    where: {
+      organizationId,
+      actorId: { in: managerMemberIds },
+      createdAt: { gte: cutoff },
+    },
+    select: { id: true },
+  });
+  if (recentAction) return true;
+
+  // 3. Novas sessões ativas autenticadas por gestores
+  const recentSession = await prisma.nativeSession.findFirst({
+    where: {
+      memberId: { in: managerMemberIds },
+      createdAt: { gte: cutoff },
+    },
+    select: { id: true },
+  });
+  if (recentSession) return true;
+
+  // 4. Notificações lidas por gestores
+  const readNotification = await prisma.notification.findFirst({
+    where: {
+      organizationId,
+      userId: { in: managerUserIds },
+      readAt: { gte: cutoff },
+    },
+    select: { id: true },
+  });
+  if (readNotification) return true;
+
+  return false;
+}
+
+/**
  * Cria rodadas de repetição para ocorrências ativas cujo `nextRepeatAt` venceu.
+ * Para estritamente se:
+ * - A tarefa foi finalizada ou cancelada
+ * - O gestor entrou no sistema
+ * - O horário de funcionamento da unidade foi batido (fora do expediente)
+ * - A quantidade de repetições configuradas para o marco foi atingida
  */
 export async function processDueRepeatAlerts(options?: {
   organizationId?: string;
@@ -569,7 +651,23 @@ export async function processDueRepeatAlerts(options?: {
       ...(options?.organizationId ? { organizationId: options.organizationId } : {}),
     },
     include: {
-      task: { select: { id: true, status: true } },
+      task: {
+        select: {
+          id: true,
+          status: true,
+          locationId: true,
+          location: {
+            select: {
+              id: true,
+              name: true,
+              timezone: true,
+              openingTime: true,
+              closingTime: true,
+              operatingDays: true,
+            },
+          },
+        },
+      },
     },
     take: limit,
   });
@@ -577,9 +675,80 @@ export async function processDueRepeatAlerts(options?: {
   let repeated = 0;
 
   for (const occ of occurrences) {
-    // Se a tarefa foi finalizada ou cancelada, resolve a ocorrência e encerra repetições
+    // 1. Se a tarefa foi finalizada ou cancelada, resolve a ocorrência e encerra repetições
     if (occ.task && (occ.task.status === "COMPLETED" || occ.task.status === "CANCELLED")) {
       await resolveAlertsForTask(occ.task.id, occ.organizationId);
+      continue;
+    }
+
+    // 2. PARADA DE REPETIÇÃO: Se o gestor entrar no sistema (regra explícita)
+    const managerEntered = await hasManagerEnteredSystem(
+      occ.organizationId,
+      occ.taskId,
+      occ.createdAt
+    );
+    if (managerEntered) {
+      await prisma.whatsAppAlertOccurrence.update({
+        where: { id: occ.id },
+        data: {
+          status: "RESOLVED",
+          isResolved: true,
+          resolvedAt: now,
+          nextRepeatAt: null,
+        },
+      });
+      continue;
+    }
+
+    // 3. PARADA DE REPETIÇÃO: Se o horário de operação da unidade onde a tarefa foi criada for batido (fechou)
+    let taskLocation = occ.task?.location;
+    if (!taskLocation && occ.locationId) {
+      taskLocation = await prisma.location.findUnique({
+        where: { id: occ.locationId },
+        select: {
+          id: true,
+          name: true,
+          timezone: true,
+          openingTime: true,
+          closingTime: true,
+          operatingDays: true,
+        },
+      });
+    }
+
+    if (taskLocation) {
+      const open = isLocationOpenAt(taskLocation, now);
+      if (!open) {
+        // Encerra repetições fora do expediente da unidade da tarefa
+        await prisma.whatsAppAlertOccurrence.update({
+          where: { id: occ.id },
+          data: {
+            nextRepeatAt: null,
+            status: "RESOLVED",
+          },
+        });
+        continue;
+      }
+    }
+
+    // 4. Limite de repetições configuradas para o marco específico
+    const org = await prisma.organization.findUnique({
+      where: { id: occ.organizationId },
+      select: { settings: true },
+    });
+    const progressiveMilestones = resolveProgressiveMilestones(org?.settings);
+    const matchedMilestone = progressiveMilestones.find((m) => m.stepIndex === occ.milestoneStep);
+    const maxRepeats = matchedMilestone?.repeatCount ?? 3;
+
+    if (occ.repeatCount >= maxRepeats) {
+      // Concluiu a última repetição do marco atual!
+      await prisma.whatsAppAlertOccurrence.update({
+        where: { id: occ.id },
+        data: {
+          nextRepeatAt: null,
+          status: "RESOLVED",
+        },
+      });
       continue;
     }
 
@@ -637,12 +806,13 @@ export async function processDueRepeatAlerts(options?: {
       });
     }
 
-    // Avança o contador e agenda o próximo intervalo
+    // Avança o contador e agenda o próximo intervalo (respeitando repeatIntervalMinutes do marco se configurado)
+    const intervalMinutes = matchedMilestone?.repeatIntervalMinutes || occ.repeatInterval;
     await prisma.whatsAppAlertOccurrence.update({
       where: { id: occ.id },
       data: {
         repeatCount: nextRound,
-        nextRepeatAt: new Date(Date.now() + occ.repeatInterval * 60 * 1000),
+        nextRepeatAt: new Date(Date.now() + intervalMinutes * 60 * 1000),
       },
     });
 
